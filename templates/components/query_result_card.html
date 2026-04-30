@@ -1,0 +1,164 @@
+{# 查询结果卡片组件 #}
+<div class="query-result-card {{ card_class|default('') }}" 
+     style="{{ card_style|default('') }}"
+     {% if card_id %}id="{{ card_id }}"{% endif %}>
+    
+    {% if card_header %}
+        <div class="card-header {{ header_class|default('') }}">
+            {% if header_icon %}
+                <i class="bi {{ header_icon }} me-2"></i>
+            {% endif %}
+            {{ card_header }}
+        </div>
+    {% endif %}
+    
+    <div class="card-body {{ body_class|default('') }}">
+        {% if card_title %}
+            <h5 class="card-title">
+                {% if title_icon %}
+                    <i class="bi {{ title_icon }} me-2"></i>
+                {% endif %}
+                {{ card_title }}
+            </h5>
+        {% endif %}
+        
+        {% if card_subtitle %}
+            <h6 class="card-subtitle mb-3 text-muted">{{ card_subtitle }}</h6>
+        {% endif %}
+        
+        <div class="query-result-content">
+            {% if result_type == 'key_value' %}
+                {# 键值对显示 #}
+                <div class="row">
+                    {% for field in fields %}
+                        <div class="{{ field.width|default('col-md-6') }} mb-3">
+                            <div class="field-label">
+                                <strong>{{ field.label }}:</strong>
+                            </div>
+                            <div class="field-value">
+                                {% if field.format == 'code' %}
+                                    <code>{{ data[field.key]|default('') }}</code>
+                                {% elif field.format == 'badge' %}
+                                    <span class="badge bg-{{ field.badge_type|default('secondary') }}">
+                                        {{ data[field.key]|default('') }}
+                                    </span>
+                                {% elif field.format == 'date' %}
+                                    {{ data[field.key]|default('') }}
+                                {% elif field.format == 'boolean' %}
+                                    {% if data[field.key] %}
+                                        <i class="bi bi-check-circle text-success"></i> 是
+                                    {% else %}
+                                        <i class="bi bi-x-circle text-danger"></i> 否
+                                    {% endif %}
+                                {% elif field.format == 'link' and field.link_key %}
+                                    <a href="{{ data[field.link_key]|default('#') }}" 
+                                       class="text-decoration-none">
+                                        {{ data[field.key]|default('') }}
+                                    </a>
+                                {% else %}
+                                    {{ data[field.key]|default('') }}
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% elif result_type == 'custom' %}
+                {# 自定义内容 #}
+                {{ content|safe }}
+            {% endif %}
+        </div>
+        
+        {% if actions and actions|length > 0 %}
+            <div class="mt-4 pt-3 border-top">
+                <div class="d-flex flex-wrap gap-2">
+                    {% for action in actions %}
+                        {% if action.type == 'link' %}
+                            <a href="{{ action.url }}" 
+                               class="btn {{ action.class|default('btn-outline-primary') }}"
+                               {% if action.target %}target="{{ action.target }}"{% endif %}>
+                                {% if action.icon %}
+                                    <i class="bi {{ action.icon }} me-2"></i>
+                                {% endif %}
+                                {{ action.text }}
+                            </a>
+                        {% elif action.type == 'button' %}
+                            <button type="button" 
+                                    class="btn {{ action.class|default('btn-primary') }}"
+                                    {% if action.onclick %}onclick="{{ action.onclick }}"{% endif %}>
+                                {% if action.icon %}
+                                    <i class="bi {{ action.icon }} me-2"></i>
+                                {% endif %}
+                                {{ action.text }}
+                            </button>
+                        {% elif action.type == 'dropdown' %}
+                            <div class="dropdown">
+                                <button class="btn {{ action.class|default('btn-outline-secondary') }} dropdown-toggle" 
+                                        type="button" 
+                                        data-bs-toggle="dropdown">
+                                    {% if action.icon %}
+                                        <i class="bi {{ action.icon }} me-2"></i>
+                                    {% endif %}
+                                    {{ action.text }}
+                                </button>
+                                <ul class="dropdown-menu">
+                                    {% for item in action.items %}
+                                        <li>
+                                            <a class="dropdown-item" 
+                                               href="{{ item.url }}"
+                                               {% if item.onclick %}onclick="{{ item.onclick }}"{% endif %}>
+                                                {% if item.icon %}
+                                                    <i class="bi {{ item.icon }} me-2"></i>
+                                                {% endif %}
+                                                {{ item.text }}
+                                            </a>
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+    
+    {% if footer %}
+        <div class="card-footer {{ footer_class|default('') }}">
+            {{ footer|safe }}
+        </div>
+    {% endif %}
+</div>
+
+<style>
+    .query-result-card {
+        background-color: var(--card-bg);
+        border-radius: 12px;
+        box-shadow: var(--card-shadow);
+        border: 1px solid var(--border-color);
+        margin-bottom: 1.5rem;
+    }
+    
+    .query-result-card .card-header {
+        background-color: var(--detail-card-bg);
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+    }
+    
+    .query-result-card .field-label {
+        color: var(--text-color);
+        opacity: 0.8;
+        font-size: 0.9rem;
+        margin-bottom: 0.25rem;
+    }
+    
+    .query-result-card .field-value {
+        color: var(--text-color);
+        font-size: 1rem;
+        word-break: break-word;
+    }
+    
+    .query-result-card .card-footer {
+        background-color: var(--detail-card-bg);
+        border-top: 1px solid var(--border-color);
+    }
+</style>

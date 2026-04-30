@@ -1,0 +1,482 @@
+{% extends "base.html" %}
+{% block title %}调车配置管理{% endblock %}
+
+{% block extra_css %}
+<style>
+    .config-section {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+    }
+    .config-section .section-header {
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .config-section .section-body { padding: 1.25rem; }
+    .template-row {
+        display: flex; align-items: center; gap: 0.5rem;
+        padding: 0.5rem; margin-bottom: 0.5rem;
+        background: var(--detail-card-bg);
+        border-radius: 8px;
+    }
+    .template-row input, .template-row select {
+        background: var(--bg-color);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        border-radius: 6px; padding: 0.35rem 0.5rem; font-size: 0.9rem;
+    }
+    .template-row .code-input { width: 100px; }
+    .template-row .name-input { flex: 1; min-width: 80px; }
+    .template-row .type-select { width: 130px; font-size: 0.8rem; }
+    .template-row .shared-check { width: 60px; text-align: center; }
+    .region-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 1rem;
+        overflow: hidden;
+        transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .region-card.drag-over {
+        border-color: var(--primary-color, #0d6efd);
+        box-shadow: 0 0 0 2px var(--primary-color, #0d6efd);
+        transform: scale(1.01);
+    }
+    .region-card.dragging {
+        opacity: 0.4;
+    }
+    .region-card .region-header {
+        padding: 0.75rem 1rem;
+        background: var(--detail-card-bg);
+        border-bottom: 1px solid var(--border-color);
+        display: flex; align-items: center; justify-content: space-between;
+    }
+    .region-card .region-body { padding: 1rem; }
+    .badge-in { background: #198754; }
+    .badge-out { background: #dc3545; }
+    .nav-tabs .nav-link { color: var(--text-color); }
+    .nav-tabs .nav-link.active { background: var(--card-bg); border-color: var(--border-color); color: var(--text-color); }
+    .tab-content { background: var(--card-bg); border: 1px solid var(--border-color); border-top: none; border-radius: 0 0 12px 12px; padding: 1.25rem; }
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 8px; overflow: auto; max-height: 500px; }
+    .backup-item {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0.75rem; margin-bottom: 0.5rem;
+        background: var(--detail-card-bg); border-radius: 8px;
+        border: 1px solid var(--border-color);
+    }
+    .backup-item:hover { border-color: var(--primary-color); }
+    #gitgraph-container { width: 100%; min-height: 300px; overflow: auto; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="animate__animated animate__fadeIn">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="mb-1"><i class="bi bi-gear me-2"></i>调车配置管理</h3>
+            <p class="text-muted mb-0">管理区域配置、模板映射和服务器信息</p>
+        </div>
+        <div>
+            <button class="btn btn-success me-2" onclick="saveConfig()"><i class="bi bi-check-lg"></i> 保存配置</button>
+            <a href="/dispatch" class="btn btn-outline-secondary me-2"><i class="bi bi-arrow-left"></i> 返回看板</a>
+            <a href="/docs/module/dispatch" class="btn btn-outline-info" target="_blank"><i class="bi bi-question-circle"></i> 帮助</a>
+        </div>
+    </div>
+
+    <ul class="nav nav-tabs" id="configTabs" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#visual">可视化编辑</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#source">源文件编辑</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#backup">备份恢复</button></li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- 可视化编辑 -->
+        <div class="tab-pane fade show active" id="visual">
+            <div class="config-section mb-3">
+                <div class="section-header"><span><i class="bi bi-sliders me-2"></i>全局设置</span></div>
+                <div class="section-body">
+                    <div class="row g-2">
+                        <div class="col-md-3"><label class="form-label small">自动调度防抖(秒)</label>
+                            <input class="form-control form-control-sm" type="number" id="globalDebounce" value="5" min="1" max="60" onchange="updateGlobalDebounce(parseInt(this.value)||5)">
+                            <div class="form-text">同一区域两次自动调度最小间隔</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="regionList"></div>
+            <button class="btn btn-primary mt-2" onclick="addRegion()"><i class="bi bi-plus-lg"></i> 新增区域</button>
+        </div>
+
+        <!-- 源文件编辑 -->
+        <div class="tab-pane fade" id="source">
+            <div class="mb-3">
+                <label class="form-label">JSON 配置内容：</label>
+                <textarea id="sourceEditor" class="form-control" rows="20" style="font-family: monospace; background: #1e1e1e; color: #d4d4d4; border: 1px solid var(--border-color);"></textarea>
+            </div>
+            <button class="btn btn-warning" onclick="applySource()"><i class="bi bi-arrow-left-right"></i> 应用到可视化编辑器</button>
+        </div>
+
+        <!-- 备份恢复 -->
+        <div class="tab-pane fade" id="backup">
+            <div class="d-flex gap-2 mb-3">
+                <button class="btn btn-primary" onclick="createBackup()"><i class="bi bi-save"></i> 创建备份</button>
+                <button class="btn btn-outline-info" onclick="loadBackups()"><i class="bi bi-arrow-clockwise"></i> 刷新</button>
+            </div>
+            <div class="row">
+                <div class="col-md-7">
+                    <h6 class="mb-2"><i class="bi bi-diagram-3 me-1"></i>版本历史</h6>
+                    <div id="gitgraph-container" style="border:1px solid var(--border-color);border-radius:8px;padding:15px;background:var(--bg-color);">
+                        <div class="text-center text-muted py-5">加载中...</div>
+                    </div>
+                </div>
+                <div class="col-md-5">
+                    <h6 class="mb-2"><i class="bi bi-list-ul me-1"></i>备份列表</h6>
+                    <div id="backup-list" style="max-height:400px;overflow-y:auto;">
+                        <div class="text-center text-muted py-3">暂无备份</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 查看备份模态框 -->
+<div class="modal fade" id="viewBackupModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">备份内容</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><pre id="backupContent" style="max-height:500px;overflow:auto;"></pre></div>
+        </div>
+    </div>
+</div>
+
+<!-- 创建备份模态框 -->
+<div class="modal fade" id="createBackupModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">创建备份</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <label class="form-label">备份描述（可选）：</label>
+                <textarea id="backupMessage" class="form-control" rows="3" placeholder="描述本次备份的原因..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button class="btn btn-primary" onclick="confirmCreateBackup()">确认创建</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="toastContainer" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/vendor/gitgraph/gitgraph.js"></script>
+<script>
+let configData = {};
+let backups = [];
+let viewBackupModal = null;
+
+$(document).ready(function() {
+    loadConfig();
+    viewBackupModal = new bootstrap.Modal(document.getElementById('viewBackupModal'));
+});
+
+function loadConfig() {
+    fetch('/api/dispatch/config')
+        .then(r => r.json())
+        .then(data => {
+            configData = data;
+            // 加载全局防抖设置
+            document.getElementById('globalDebounce').value = data.auto_dispatch_debounce || 5;
+            renderVisualEditor(data);
+            document.getElementById('sourceEditor').value = JSON.stringify(data, null, 2);
+            loadBackups();
+        })
+        .catch(err => showToast('加载配置失败: ' + err.message, 'danger'));
+}
+
+function updateGlobalDebounce(value) {
+    configData.auto_dispatch_debounce = value;
+    syncSourceEditor();
+}
+
+function renderVisualEditor(data) {
+    const container = document.getElementById('regionList');
+    container.innerHTML = '';
+    // 按 id 排序，没有 id 的放最后
+    const entries = Object.entries(data).map(([key, region]) => {
+        if (region.id === undefined) region.id = 999;
+        return [key, region];
+    });
+    entries.sort((a, b) => (a[1].id || 999) - (b[1].id || 999));
+    
+    entries.forEach(([key, region]) => {
+        let templatesHtml = '';
+        (region.templates || []).forEach((t, idx) => {
+            const taskType = t.task_type || (t.direction==='in'?'load_in':'load_out');
+            const typeOptions = [
+                ['empty_in','🚛 调空车来'],['empty_out','🚛 调空车回'],
+                ['load_in','📦 其他来'],['load_out','📦 其他回']
+            ].map(o=>`<option value="${o[0]}" ${taskType===o[0]?'selected':''}>${o[1]}</option>`).join('');
+            const sharedChecked = t.shared ? 'checked' : '';
+            const autoFile = (t.name ? t.name + '.json' : '');
+            templatesHtml += `<div class="template-row">
+                <input class="code-input" value="${t.name||''}" placeholder="模板代码" onchange="updateTemplateName('${key}',${idx},this.value)">
+                <span class="name-input text-muted small d-flex align-items-center" style="min-width:80px;" title="自动生成: ${autoFile}">📄 ${autoFile||'(自动)'}</span>
+                <select class="type-select" onchange="updateTemplate('${key}',${idx},'task_type',this.value)">${typeOptions}</select>
+                <label class="shared-check" title="跨区域共享模板"><input type="checkbox" ${sharedChecked} onchange="updateTemplate('${key}',${idx},'shared',this.checked)"> 共享</label>
+                <button class="btn btn-sm btn-outline-danger" onclick="removeTemplate('${key}',${idx})"><i class="bi bi-x"></i></button>
+            </div>`;
+        });
+        card = document.createElement('div'); card.className='region-card';
+        card.draggable = true;
+        card.dataset.regionKey = key;
+        // 拖动事件
+        card.addEventListener('dragstart', onDragStart);
+        card.addEventListener('dragenter', onDragEnter);
+        card.addEventListener('dragleave', onDragLeave);
+        card.addEventListener('dragover', onDragOver);
+        card.addEventListener('drop', onDrop);
+        card.addEventListener('dragend', onDragEnd);
+        
+        const enabledChecked = region.enabled ? 'checked' : '';
+        const regionId = region.id !== undefined ? region.id : '-';
+        card.innerHTML = `<div class="region-header">
+            <span><i class="bi bi-grip-vertical me-2" style="cursor:grab;color:var(--text-muted);"></i><span class="badge bg-secondary me-2">#${regionId}</span><strong>${key}</strong> <small class="text-muted ms-2">areaId: ${region.areaId||''}</small></span>
+            <div class="form-check form-switch d-inline-block">
+                <input class="form-check-input" type="checkbox" ${enabledChecked} onchange="updateRegionField('${key}','enabled',this.checked)">
+                <label class="form-check-label small">启用</label>
+                <button class="btn btn-sm btn-outline-danger ms-2" onclick="removeRegion('${key}')"><i class="bi bi-trash"></i></button>
+            </div></div>
+            <div class="region-body">
+            <div class="row g-2 mb-3">
+                <div class="col-md-3"><label class="form-label small">区域标识</label>
+                    <input class="form-control form-control-sm" value="${key}" onchange="updateRegionKey('${key}',this.value)"></div>
+                <div class="col-md-1"><label class="form-label small">areaId</label>
+                    <input class="form-control form-control-sm" value="${region.areaId||''}" onchange="updateRegionField('${key}','areaId',this.value)"></div>
+                <div class="col-md-2"><label class="form-label small">id</label>
+                    <input class="form-control form-control-sm" type="number" value="${region.id||0}" onchange="updateRegionField('${key}','id',parseInt(this.value)||0)"></div>
+                <div class="col-md-4"><label class="form-label small">服务器</label>
+                    <input class="form-control form-control-sm" value="${region.server||''}" placeholder="10.68.2.31:7000" onchange="updateRegionField('${key}','server',this.value)"></div>
+                <div class="col-md-2"><label class="form-label small">xmin</label>
+                    <input class="form-control form-control-sm" type="number" value="${region.xmin||2}" onchange="updateRegionField('${key}','xmin',parseInt(this.value)||2)"></div>
+                <div class="col-md-2"><label class="form-label small">xmax</label>
+                    <input class="form-control form-control-sm" type="number" value="${region.xmax||4}" onchange="updateRegionField('${key}','xmax',parseInt(this.value)||4)"></div>
+            </div>
+            <div class="row g-2 mb-3">
+                <div class="col-md-3"><label class="form-label small">单次最大调车数</label>
+                    <input class="form-control form-control-sm" type="number" value="${region.max_dispatch_once||3}" onchange="updateRegionField('${key}','max_dispatch_once',parseInt(this.value)||3)"></div>
+            </div>
+            <label class="form-label small fw-bold">模板列表：</label>${templatesHtml}
+            <button class="btn btn-sm btn-outline-primary mt-1" onclick="addTemplate('${key}')"><i class="bi bi-plus"></i> 新增模板</button>
+            <hr class="my-2">
+            <details class="mb-2"><summary class="form-label small fw-bold" style="cursor:pointer;display:inline;">🚛 空车下发配置</summary>
+            <div class="row g-2 mt-1">
+                <div class="col-md-5"><label class="form-label small">下发模板代码</label>
+                    <input class="form-control form-control-sm" value="${(region.empty_dispatch||{}).template||''}" placeholder="如 EmptyCarstoHY1_503" onchange="updateEmptyDispatch('${key}','template',this.value)"></div>
+                <div class="col-md-7"><label class="form-label small">下发地址 (URL)</label>
+                    <input class="form-control form-control-sm" value="${(region.empty_dispatch||{}).url||''}" placeholder="http://10.68.2.40:7000/ics/taskOrder/addTask" onchange="updateEmptyDispatch('${key}','url',this.value)"></div>
+            </div></details>
+            <details class="mb-2"><summary class="form-label small fw-bold" style="cursor:pointer;display:inline;">🩺 自恢复配置</summary>
+            <div class="row g-2 mt-1">
+                <div class="col-md-3"><label class="form-label small">启用</label>
+                    <select class="form-select form-select-sm" onchange="updateRegionField('${key}','self_heal',{...configData['${key}']?.self_heal||{},enabled:this.value==='true'})">
+                        <option value="false" ${(region.self_heal||{}).enabled?'':'selected'}>关闭</option>
+                        <option value="true" ${(region.self_heal||{}).enabled?'selected':''}>启用</option>
+                    </select></div>
+                <div class="col-md-3"><label class="form-label small">检查间隔(秒)</label>
+                    <input class="form-control form-control-sm" type="number" value="${(region.self_heal||{}).check_interval||300}" onchange="updateSelfHeal('${key}','check_interval',parseInt(this.value)||300)"></div>
+                <div class="col-md-3"><label class="form-label small">异常超时恢复间隔(分钟)</label>
+                    <input class="form-control form-control-sm" type="number" value="${(region.self_heal||{}).recover_timeout_minutes||30}" onchange="updateSelfHeal('${key}','recover_timeout_minutes',parseInt(this.value)||30)"></div>
+                <div class="col-md-3"><label class="form-label small">查询API路径</label>
+                    <input class="form-control form-control-sm" value="${(region.self_heal||{}).device_query_api||'/ics/out/device/list/deviceInfo'}" onchange="updateSelfHeal('${key}','device_query_api',this.value)"></div>
+            </div></details></div>`;
+        container.appendChild(card);
+    });
+}
+
+// ========== 拖动排序 ==========
+let dragSrcKey = null;
+
+function onDragStart(e) {
+    dragSrcKey = this.dataset.regionKey;
+    this.style.opacity = '0.5';
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', this.dataset.regionKey);
+}
+
+function onDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+}
+
+function onDragEnter(e) {
+    e.preventDefault();
+    this.classList.add('drag-over');
+}
+
+function onDragLeave(e) {
+    this.classList.remove('drag-over');
+}
+
+function onDrop(e) {
+    e.preventDefault();
+    this.classList.remove('drag-over');
+    const targetKey = this.dataset.regionKey;
+    if (!dragSrcKey || dragSrcKey === targetKey) return;
+    
+    // 交换 id 值
+    const srcId = configData[dragSrcKey].id || 999;
+    const tgtId = configData[targetKey].id || 999;
+    configData[dragSrcKey].id = tgtId;
+    configData[targetKey].id = srcId;
+    
+    renderVisualEditor(configData);
+    syncSourceEditor();
+    showToast('区域顺序已调整', 'success');
+}
+
+function onDragEnd(e) {
+    this.style.opacity = '1';
+    document.querySelectorAll('.region-card').forEach(c => c.classList.remove('drag-over'));
+    dragSrcKey = null;
+}
+
+function updateRegionField(key, field, value) { if(configData[key]){configData[key][field]=value;syncSourceEditor();} }
+function updateRegionKey(oldKey, newKey) { if(oldKey===newKey||!newKey)return;configData[newKey]=configData[oldKey];delete configData[oldKey];renderVisualEditor(configData);syncSourceEditor(); }
+function updateTemplate(rk,idx,f,v) { if(configData[rk]&&configData[rk].templates[idx]){configData[rk].templates[idx][f]=v;syncSourceEditor();} }
+function updateTemplateName(rk,idx,v) { if(configData[rk]&&configData[rk].templates[idx]){configData[rk].templates[idx].name=v;configData[rk].templates[idx].file=v? v+'.json' : '';renderVisualEditor(configData);syncSourceEditor();} }
+function updateSelfHeal(rk, field, value) { if(configData[rk]){if(!configData[rk].self_heal)configData[rk].self_heal={};configData[rk].self_heal[field]=value;syncSourceEditor();} }
+function updateEmptyDispatch(rk, field, value) { if(configData[rk]){if(!configData[rk].empty_dispatch)configData[rk].empty_dispatch={};configData[rk].empty_dispatch[field]=value;syncSourceEditor();} }
+function addTemplate(rk) { if(!configData[rk])return;if(!configData[rk].templates)configData[rk].templates=[];configData[rk].templates.push({name:'',file:'',task_type:'load_in',shared:false});renderVisualEditor(configData);syncSourceEditor(); }
+function removeTemplate(rk,idx) { if(!configData[rk])return;configData[rk].templates.splice(idx,1);renderVisualEditor(configData);syncSourceEditor(); }
+function addRegion() {
+    const keys = Object.keys(configData);
+    // 自动分配 id：取最大 id + 1
+    let maxId = 0;
+    keys.forEach(k => { if (configData[k].id !== undefined && configData[k].id > maxId) maxId = configData[k].id; });
+    const k = 'region_' + (keys.length + 1);
+    configData[k] = { id: maxId + 1, areaId: String(keys.length + 1), server: '', templates: [] };
+    renderVisualEditor(configData);
+    syncSourceEditor();
+}
+function removeRegion(k) { if(!confirm('确定删除区域 '+k+'？'))return;delete configData[k];renderVisualEditor(configData);syncSourceEditor(); }
+function syncSourceEditor() { document.getElementById('sourceEditor').value=JSON.stringify(configData,null,2); }
+function applySource() { try{const p=JSON.parse(document.getElementById('sourceEditor').value);configData=p;renderVisualEditor(p);showToast('已应用到可视化编辑器','success');}catch(e){showToast('JSON格式错误: '+e.message,'danger');} }
+function saveConfig() { try{const d=JSON.parse(document.getElementById('sourceEditor').value);fetch('/api/dispatch/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).then(r=>r.json()).then(r=>{if(r.success){showToast('配置保存成功','success');configData=d;}else showToast('保存失败: '+(r.error||'未知错误'),'danger');}).catch(e=>showToast('保存失败: '+e.message,'danger'));}catch(e){showToast('JSON格式错误: '+e.message,'danger');} }
+
+// ========== 备份恢复功能 ==========
+
+function loadBackups() {
+    fetch('/api/dispatch/config/backups')
+        .then(r => r.json())
+        .then(data => {
+            backups = data;
+            renderBackupList();
+            renderGitGraph();
+        })
+        .catch(err => showToast('加载备份失败: '+err.message, 'danger'));
+}
+
+function renderBackupList() {
+    const el = document.getElementById('backup-list');
+    if (!backups.length) {
+        el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-inbox me-2"></i>暂无备份</div>';
+        return;
+    }
+    el.innerHTML = backups.map(b => `
+        <div class="backup-item">
+            <div>
+                <strong>${b.name}</strong>
+                <div class="text-muted small">${new Date(b.timestamp).toLocaleString()} | ${(b.size/1024).toFixed(2)} KB</div>
+                ${b.message ? `<div class="text-info small"><i class="bi bi-chat-left me-1"></i>${b.message}</div>` : ''}
+            </div>
+            <div class="d-flex gap-1">
+                <button class="btn btn-sm btn-outline-primary" onclick="restoreBackup('${b.name}')" title="恢复"><i class="bi bi-arrow-counterclockwise"></i></button>
+                <button class="btn btn-sm btn-outline-info" onclick="viewBackup('${b.name}')" title="查看"><i class="bi bi-eye"></i></button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteBackup('${b.name}')" title="删除"><i class="bi bi-trash"></i></button>
+            </div>
+        </div>`).join('');
+}
+
+function renderGitGraph() {
+    const container = document.getElementById('gitgraph-container');
+    container.innerHTML = '';
+    if (!backups.length) {
+        container.innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-inbox me-2"></i>暂无备份历史</div>';
+        return;
+    }
+    try {
+        if (typeof GitGraph === 'undefined') { container.innerHTML = '<div class="text-center text-muted py-3">GitGraph库未加载</div>'; return; }
+        const gitgraph = new GitGraph({ element: container, orientation: 'vertical', template: 'metro', mode: 'compact' });
+        const master = gitgraph.branch('master');
+        master.commit({ subject: '初始配置', author: '系统', hash: 'v0' });
+        [...backups].sort((a,b)=>a.timestamp-b.timestamp).forEach(b => {
+            const isManual = b.name.includes('manual');
+            master.commit({
+                subject: b.message || b.name,
+                author: isManual ? '手动备份' : '自动备份',
+                hash: b.name.replace('.json','').slice(-8),
+                onClick: () => viewBackup(b.name)
+            });
+        });
+    } catch(e) {
+        container.innerHTML = '<div class="text-center text-muted py-3">渲染失败: '+e.message+'</div>';
+    }
+}
+
+function createBackup() {
+    new bootstrap.Modal(document.getElementById('createBackupModal')).show();
+}
+
+function confirmCreateBackup() {
+    const msg = document.getElementById('backupMessage').value.trim();
+    fetch('/api/dispatch/config/backup', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message:msg}) })
+        .then(r=>r.json()).then(r=>{
+            if(r.success) { showToast('备份创建成功','success'); bootstrap.Modal.getInstance(document.getElementById('createBackupModal')).hide(); document.getElementById('backupMessage').value=''; loadBackups(); }
+            else showToast('创建失败: '+(r.error||'未知错误'),'danger');
+        }).catch(e=>showToast('创建失败: '+e.message,'danger'));
+}
+
+function restoreBackup(name) {
+    if (!confirm('确定恢复备份 '+name+' 吗？当前未保存的更改将丢失。')) return;
+    fetch('/api/dispatch/config/backup/'+name+'/restore', {method:'POST'})
+        .then(r=>r.json()).then(r=>{
+            if(r.success) { showToast('备份恢复成功','success'); loadConfig(); }
+            else showToast('恢复失败: '+(r.error||'未知错误'),'danger');
+        }).catch(e=>showToast('恢复失败: '+e.message,'danger'));
+}
+
+function viewBackup(name) {
+    fetch('/api/dispatch/config/backup/'+name)
+        .then(r=>r.text()).then(content=>{
+            document.getElementById('backupContent').textContent = content;
+            viewBackupModal.show();
+        }).catch(e=>showToast('加载失败: '+e.message,'danger'));
+}
+
+function deleteBackup(name) {
+    if (!confirm('确定删除备份 '+name+'？')) return;
+    fetch('/api/dispatch/config/backup/'+name, {method:'DELETE'})
+        .then(r=>r.json()).then(r=>{
+            if(r.success) { showToast('备份已删除','success'); loadBackups(); }
+            else showToast('删除失败: '+(r.error||'未知错误'),'danger');
+        }).catch(e=>showToast('删除失败: '+e.message,'danger'));
+}
+
+function showToast(message, type) {
+    const c = document.getElementById('toastContainer');
+    const t = document.createElement('div');
+    t.className = 'toast align-items-center text-bg-'+type+' border-0 show';
+    t.innerHTML = '<div class="d-flex"><div class="toast-body">'+message+'</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>';
+    c.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+}
+</script>
+{% endblock %}

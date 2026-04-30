@@ -1,0 +1,157 @@
+{# 表单区域组件 #}
+<div class="form-section {{ section_class|default('') }}" 
+     style="{{ section_style|default('') }}"
+     {% if section_id %}id="{{ section_id }}"{% endif %}>
+    
+    {% if section_title %}
+        <h2 class="section-title">
+            {% if section_icon %}
+                <i class="bi {{ section_icon }} me-2"></i>
+            {% endif %}
+            {{ section_title }}
+        </h2>
+    {% endif %}
+    
+    {% if section_description %}
+        <p class="section-description text-muted mb-4">{{ section_description }}</p>
+    {% endif %}
+    
+    <form action="{{ form_action|default('#') }}" 
+          method="{{ form_method|default('post') }}" 
+          class="{{ form_class|default('') }}"
+          {% if form_id %}id="{{ form_id }}"{% endif %}
+          {% if form_enctype %}enctype="{{ form_enctype }}"{% endif %}>
+        
+        {% if form_fields %}
+            <div class="row g-3">
+                {% for field in form_fields %}
+                    <div class="{{ field.width|default('col-md-12') }}">
+                        <div class="mb-3">
+                            <label for="{{ field.id|default(field.name) }}" class="form-label">
+                                {{ field.label }}
+                                {% if field.required %}
+                                    <span class="text-danger">*</span>
+                                {% endif %}
+                            </label>
+                            
+                            {% if field.type == 'select' %}
+                                <select class="form-select {{ field.class|default('') }}" 
+                                        id="{{ field.id|default(field.name) }}" 
+                                        name="{{ field.name }}"
+                                        {% if field.required %}required{% endif %}
+                                        {% if field.multiple %}multiple{% endif %}>
+                                    {% if field.placeholder %}
+                                        <option value="">{{ field.placeholder }}</option>
+                                    {% endif %}
+                                    {% for option in field.options %}
+                                        <option value="{{ option.value }}" 
+                                                {% if option.selected %}selected{% endif %}>
+                                            {{ option.text }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            {% elif field.type == 'textarea' %}
+                                <textarea class="form-control {{ field.class|default('') }}" 
+                                          id="{{ field.id|default(field.name) }}" 
+                                          name="{{ field.name }}"
+                                          rows="{{ field.rows|default(3) }}"
+                                          placeholder="{{ field.placeholder|default('') }}"
+                                          {% if field.required %}required{% endif %}>{{ field.value|default('') }}</textarea>
+                            {% elif field.type == 'checkbox' %}
+                                <div class="form-check">
+                                    <input class="form-check-input {{ field.class|default('') }}" 
+                                           type="checkbox" 
+                                           id="{{ field.id|default(field.name) }}" 
+                                           name="{{ field.name }}"
+                                           value="{{ field.value|default('1') }}"
+                                           {% if field.checked %}checked{% endif %}>
+                                    <label class="form-check-label" for="{{ field.id|default(field.name) }}">
+                                        {{ field.checkbox_label|default(field.label) }}
+                                    </label>
+                                </div>
+                            {% else %}
+                                <input type="{{ field.type|default('text') }}" 
+                                       class="form-control {{ field.class|default('') }}" 
+                                       id="{{ field.id|default(field.name) }}" 
+                                       name="{{ field.name }}"
+                                       value="{{ field.value|default('') }}"
+                                       placeholder="{{ field.placeholder|default('') }}"
+                                       {% if field.required %}required{% endif %}
+                                       {% if field.readonly %}readonly{% endif %}>
+                            {% endif %}
+                            
+                            {% if field.help_text %}
+                                <div class="form-text">{{ field.help_text }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+        
+        {% if form_content %}
+            {{ form_content|safe }}
+        {% endif %}
+        
+        {% if form_buttons %}
+            <div class="mt-4">
+                <div class="d-flex justify-content-{{ form_buttons_align|default('end') }} gap-2">
+                    {% for button in form_buttons %}
+                        {% if button.type == 'submit' %}
+                            <button type="submit" class="btn {{ button.class|default('btn-primary') }}">
+                                {% if button.icon %}
+                                    <i class="bi {{ button.icon }} me-2"></i>
+                                {% endif %}
+                                {{ button.text }}
+                            </button>
+                        {% elif button.type == 'reset' %}
+                            <button type="reset" class="btn {{ button.class|default('btn-secondary') }}">
+                                {% if button.icon %}
+                                    <i class="bi {{ button.icon }} me-2"></i>
+                                {% endif %}
+                                {{ button.text }}
+                            </button>
+                        {% elif button.type == 'link' %}
+                            <a href="{{ button.url|default('#') }}" class="btn {{ button.class|default('btn-outline-secondary') }}">
+                                {% if button.icon %}
+                                    <i class="bi {{ button.icon }} me-2"></i>
+                                {% endif %}
+                                {{ button.text }}
+                            </a>
+                        {% elif button.type == 'button' %}
+                            <button type="button" class="btn {{ button.class|default('btn-outline-secondary') }}"
+                                    {% if button.onclick %}onclick="{{ button.onclick }}"{% endif %}>
+                                {% if button.icon %}
+                                    <i class="bi {{ button.icon }} me-2"></i>
+                                {% endif %}
+                                {{ button.text }}
+                            </button>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+    </form>
+</div>
+
+<style>
+    .form-section {
+        background-color: var(--form-section-bg);
+        border-radius: 12px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: var(--card-shadow);
+        border: 1px solid var(--border-color);
+    }
+    
+    .section-title {
+        color: #0d6efd;
+        margin-bottom: 1.5rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 2px solid var(--border-color);
+    }
+    
+    .section-description {
+        font-size: 0.95rem;
+    }
+</style>

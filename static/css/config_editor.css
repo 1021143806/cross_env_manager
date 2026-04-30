@@ -1,0 +1,531 @@
+:root {
+    --primary-color: #4a6cf7;
+    --success-color: #28a745;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+    --bg-color: #f8f9fa;
+    --card-bg: #ffffff;
+    --text-color: #212529;
+    --border-color: #dee2e6;
+    --input-bg: #ffffff;
+    --input-color: #212529;
+}
+
+[data-bs-theme="dark"] {
+    --bg-color: #121212;
+    --card-bg: #1e1e1e;
+    --text-color: #e9ecef;
+    --border-color: #495057;
+    --input-bg: #2d2d2d;
+    --input-color: #e9ecef;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    padding: 20px;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+.header {
+    background: linear-gradient(135deg, var(--primary-color), #6c5ce7);
+    color: white;
+    padding: 2rem;
+    border-radius: 12px;
+    margin-bottom: 2rem;
+}
+
+.editor-container {
+    background: var(--card-bg);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    border: 1px solid var(--border-color);
+}
+
+.editor-tabs {
+    border-bottom: 1px solid #dee2e6;
+    margin-bottom: 1.5rem;
+}
+
+.tab-btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s;
+    color: var(--text-color);
+}
+
+.tab-btn.active {
+    border-bottom-color: var(--primary-color);
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.editor-content {
+    display: none;
+}
+
+.editor-content.active {
+    display: block;
+}
+
+/* 左侧区域列表 */
+.area-tree {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.area-item {
+    padding: 0.5rem 0.75rem;
+    margin: 0.25rem 0;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+}
+
+.area-item:hover {
+    background-color: rgba(74, 108, 247, 0.1);
+}
+
+.area-item.active {
+    background-color: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.area-actions {
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.area-item:hover .area-actions {
+    opacity: 1;
+}
+
+/* 任务列表 */
+.task-list {
+    max-height: 250px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.5rem;
+    background-color: var(--bg-color);
+}
+
+.task-item {
+    padding: 0.5rem 0.75rem;
+    margin: 0.25rem 0;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    background-color: var(--card-bg);
+}
+
+.task-item:hover {
+    border-color: var(--primary-color);
+    background-color: rgba(74, 108, 247, 0.05);
+}
+
+.task-item.active {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.task-item.active .text-muted {
+    color: rgba(255,255,255,0.7) !important;
+}
+
+/* 表单样式 */
+.form-section {
+    background: var(--bg-color);
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-color);
+}
+
+.path-options-table {
+    background-color: var(--card-bg);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.path-options-table th {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+}
+
+.config-textarea {
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    background-color: var(--input-bg);
+    color: var(--input-color);
+    border: 1px solid var(--border-color);
+}
+
+.json-error, .url-error {
+    color: var(--danger-color);
+    font-size: 14px;
+    margin-top: 5px;
+}
+
+.backup-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.backup-item {
+    border-left: 4px solid var(--primary-color);
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    background: var(--card-bg);
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.version-badge {
+    font-size: 0.8rem;
+}
+
+.btn-icon {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+/* 树状图样式 */
+.tree-node {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.tree-node:hover {
+    fill: rgba(74, 108, 247, 0.1);
+}
+
+.tree-node-circle {
+    stroke: var(--primary-color);
+    stroke-width: 2;
+    transition: all 0.2s;
+}
+
+.tree-node-circle:hover {
+    stroke-width: 3;
+    r: 8;
+}
+
+.tree-node-text {
+    font-size: 12px;
+    fill: var(--text-color);
+    pointer-events: none;
+}
+
+.tree-link {
+    stroke: var(--border-color);
+    stroke-width: 1.5;
+    fill: none;
+}
+
+.tree-tooltip {
+    position: absolute;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    z-index: 1000;
+    max-width: 300px;
+}
+
+.tree-current-node {
+    stroke: var(--success-color);
+    stroke-width: 3;
+}
+
+/* 树状图容器响应式设计 */
+.tree-container-responsive {
+    position: relative;
+    overflow: auto;
+}
+
+/* 树状图图例样式 */
+.tree-legend {
+    font-size: 11px;
+    fill: var(--text-color);
+}
+
+/* 树状图节点高亮效果 */
+.tree-node-highlight {
+    filter: drop-shadow(0 0 3px rgba(74, 108, 247, 0.5));
+}
+
+/* 树状图缩放控制 */
+.tree-zoom-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 10;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 5px;
+    display: flex;
+    gap: 5px;
+}
+
+.tree-zoom-btn {
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-color);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+}
+
+.tree-zoom-btn:hover {
+    background: var(--primary-color);
+    color: white;
+}
+
+/* Git图形样式 */
+.gitgraph-controls {
+    margin-bottom: 15px;
+    padding: 10px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.gitgraph-svg {
+    width: 100%;
+    height: 500px;
+    background: var(--bg-color);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.gitgraph-commit {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.gitgraph-commit:hover {
+    filter: drop-shadow(0 0 3px rgba(74, 108, 247, 0.5));
+}
+
+.gitgraph-commit-dot {
+    transition: all 0.2s;
+}
+
+.gitgraph-commit-dot:hover {
+    r: 12;
+    stroke-width: 3;
+}
+
+.gitgraph-commit-message {
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    fill: var(--text-color);
+    pointer-events: none;
+}
+
+.gitgraph-branch-line {
+    stroke-linecap: round;
+    transition: all 0.2s;
+}
+
+.gitgraph-legend {
+    margin-top: 20px;
+    padding: 10px;
+    background: var(--bg-secondary, var(--bg-color));
+    border-radius: 4px;
+    font-size: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.gitgraph-legend div {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.gitgraph-legend span {
+    margin-left: 8px;
+}
+
+/* Git图形工具提示 */
+#gitgraph-tooltip {
+    position: absolute;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 12px;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    z-index: 1000;
+    max-width: 300px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .gitgraph-svg {
+        height: 400px;
+    }
+    
+    .gitgraph-controls {
+        flex-wrap: wrap;
+    }
+    
+    .gitgraph-commit-message {
+        font-size: 10px;
+    }
+}
+
+/* 动画效果 */
+@keyframes gitgraph-pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+.gitgraph-commit-highlight {
+    animation: gitgraph-pulse 0.5s ease-in-out;
+}
+
+/* 优化Git图形文本显示 - 解决文字重叠问题 */
+.gitgraph-commit-title {
+    font-weight: bold !important;
+    font-size: 13px !important;
+    fill: var(--primary-color) !important;
+}
+
+.gitgraph-commit-message {
+    font-size: 11px !important;
+    fill: var(--text-color) !important;
+    opacity: 0.9;
+}
+
+.gitgraph-commit-background {
+    fill: var(--card-bg) !important;
+    fill-opacity: 0.9 !important;
+    stroke: var(--border-color) !important;
+    stroke-width: 1 !important;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+}
+
+/* 优化Git图形容器 */
+#backup-tree-container {
+    min-height: 600px;
+    position: relative;
+    overflow: auto;
+    padding: 20px;
+    background: var(--bg-color);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+/* 优化Git图形SVG */
+.gitgraph-svg {
+    min-height: 600px;
+    background: transparent !important;
+    border: none !important;
+}
+
+/* 优化提交点样式 */
+.gitgraph-commit-dot {
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.2));
+    z-index: 10;
+}
+
+.gitgraph-commit-dot:hover {
+    r: 14 !important;
+    stroke-width: 3 !important;
+    filter: drop-shadow(0 3px 5px rgba(74, 108, 247, 0.3));
+}
+
+/* 优化分支线 */
+.gitgraph-branch-line {
+    stroke-width: 2.5 !important;
+    stroke-linecap: round;
+    opacity: 0.7;
+}
+
+/* 优化文本换行和截断 */
+.gitgraph-commit text {
+    white-space: pre;
+    pointer-events: none;
+}
+
+/* 优化鼠标悬停效果 */
+.gitgraph-commit:hover .gitgraph-commit-background {
+    fill-opacity: 0.95 !important;
+    stroke: var(--primary-color) !important;
+    stroke-width: 1.5 !important;
+}
+
+.gitgraph-commit:hover .gitgraph-commit-title {
+    fill: var(--primary-color) !important;
+    font-weight: bold !important;
+}
+
+/* 响应式优化 */
+@media (max-width: 768px) {
+    #backup-tree-container {
+        min-height: 400px;
+        padding: 10px;
+    }
+    
+    .gitgraph-svg {
+        min-height: 400px;
+    }
+    
+    .gitgraph-commit-title {
+        font-size: 11px !important;
+    }
+    
+    .gitgraph-commit-message {
+        font-size: 9px !important;
+    }
+    
+    .gitgraph-commit-background {
+        rx: 3 !important;
+        ry: 3 !important;
+    }
+}
+
+/* Git图形操作按钮样式 */
+.gitgraph-action-btn {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.gitgraph-action-btn:hover text {
+    opacity: 1 !important;
+}
+
+.gitgraph-action-btn:hover rect {
+    fill: var(--bg-color) !important;
+    stroke: var(--border-color) !important;
+}

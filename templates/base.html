@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}跨环境任务模板管理系统{% endblock %}</title>
+    <link href="/static/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/vendor/bootstrap-icons/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/static/vendor/animate.css/animate.min.css">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --primary-gradient-dark: linear-gradient(135deg, #4c63b6 0%, #5d3a8c 100%);
+            --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            --card-shadow-hover: 0 15px 40px rgba(0, 0, 0, 0.12);
+            --transition-speed: 0.3s;
+        }
+
+        [data-bs-theme="light"] {
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --text-color: #212529;
+            --border-color: #dee2e6;
+            --header-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --detail-card-bg: #f8f9fa;
+            --form-section-bg: #ffffff;
+            --copy-box-bg: #e7f3ff;
+            --copy-box-border: #007bff;
+        }
+
+        [data-bs-theme="dark"] {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-color: #e9ecef;
+            --border-color: #495057;
+            --header-bg: linear-gradient(135deg, #4c63b6 0%, #5d3a8c 100%);
+            --detail-card-bg: #2d2d2d;
+            --form-section-bg: #2d2d2d;
+            --copy-box-bg: #1a3a5f;
+            --copy-box-border: #0d6efd;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding-top: 20px;
+            transition: background-color var(--transition-speed), color var(--transition-speed);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+        }
+
+        .header {
+            background: var(--header-bg);
+            color: white;
+            padding: 2.5rem;
+            border-radius: 16px;
+            margin-bottom: 2.5rem;
+            box-shadow: var(--card-shadow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23ffffff' fill-opacity='0.05' fill-rule='evenodd'/%3E%3C/svg%3E");
+            opacity: 0.3;
+        }
+
+        .template-card {
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            background: var(--card-bg);
+            box-shadow: var(--card-shadow);
+            transition: all var(--transition-speed);
+            overflow: hidden;
+        }
+
+        .template-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--card-shadow-hover);
+        }
+
+        .template-header {
+            background-color: var(--detail-card-bg);
+            padding: 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .template-body {
+            padding: 1.75rem;
+        }
+
+        .detail-card {
+            border-left: 4px solid #0d6efd;
+            margin-bottom: 1rem;
+            background-color: var(--detail-card-bg);
+            border-radius: 8px;
+            transition: transform 0.2s;
+        }
+
+        .detail-card:hover {
+            transform: translateX(5px);
+        }
+
+        .btn-action {
+            margin-right: 8px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            font-weight: 500;
+        }
+
+        .alert-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+            max-width: 400px;
+        }
+
+        .search-box {
+            max-width: 700px;
+            margin: 0 auto 2.5rem;
+        }
+
+        .form-section {
+            background: var(--form-section-bg);
+            padding: 2rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            box-shadow: var(--card-shadow);
+            border: 1px solid var(--border-color);
+        }
+
+        .form-section h4 {
+            border-bottom: 3px solid #0d6efd;
+            padding-bottom: 0.75rem;
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            font-size: 0.85rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+
+        .copy-template-box {
+            background-color: var(--copy-box-bg);
+            border: 2px dashed var(--copy-box-border);
+            padding: 2.5rem;
+            border-radius: 12px;
+            text-align: center;
+            margin: 2.5rem 0;
+            transition: all var(--transition-speed);
+        }
+
+        .copy-template-box:hover {
+            transform: scale(1.02);
+        }
+
+        .theme-switcher {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .theme-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s;
+        }
+
+        .theme-btn:hover {
+            transform: rotate(15deg) scale(1.1);
+        }
+
+        .floating-action {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .floating-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s;
+        }
+
+        .floating-btn:hover {
+            transform: translateY(-3px);
+        }
+
+        .form-control, .form-select {
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background-color: var(--card-bg);
+            color: var(--text-color);
+            transition: all 0.3s;
+        }
+
+        .form-control:focus, .form-select:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+            background-color: var(--card-bg);
+            color: var(--text-color);
+        }
+
+        .table-modern {
+            --bs-table-bg: var(--card-bg);
+            --bs-table-color: var(--text-color);
+            --bs-table-border-color: var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .table-modern th {
+            background-color: var(--detail-card-bg);
+            border-bottom: 2px solid var(--border-color);
+            font-weight: 600;
+        }
+
+        .table-modern tbody tr:hover {
+            background-color: var(--detail-card-bg);
+        }
+
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        [data-bs-theme="dark"] .glass-effect {
+            background: rgba(30, 30, 30, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 2rem;
+            height: 2rem;
+            border: 3px solid var(--border-color);
+            border-radius: 50%;
+            border-top-color: #0d6efd;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(13, 110, 253, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0); }
+        }
+
+        .pulse-animation {
+            animation: pulse 2s infinite;
+        }
+
+        .glass-navbar {
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            transition: all var(--transition-speed);
+            z-index: 1030;
+            position: relative;
+        }
+
+        [data-bs-theme="light"] .glass-navbar {
+            background: rgba(255, 255, 255, 0.75);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        }
+
+        [data-bs-theme="dark"] .glass-navbar {
+            background: rgba(30, 30, 30, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .glass-navbar .navbar-brand {
+            color: var(--text-color) !important;
+        }
+
+        .glass-navbar .nav-link {
+            color: var(--text-color) !important;
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            margin: 0 0.1rem;
+            transition: all 0.3s;
+            font-weight: 500;
+            opacity: 0.9;
+        }
+
+        .glass-navbar .nav-link:hover,
+        .glass-navbar .nav-link.active {
+            background-color: rgba(13, 110, 253, 0.1);
+            color: var(--text-color) !important;
+            opacity: 1;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(13, 110, 253, 0.2);
+        }
+
+        .glass-navbar .navbar-toggler {
+            border-color: rgba(var(--text-color-rgb, 33, 37, 41), 0.2);
+        }
+
+        .glass-navbar .navbar-toggler-icon {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%2833, 37, 41, 0.8%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+        }
+        [data-bs-theme="dark"] .glass-navbar .navbar-toggler-icon {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255, 255, 255, 0.8%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+        }
+
+        .glass-navbar .navbar-toggler:focus {
+            box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+        }
+
+        /* 移动端折叠菜单样式 */
+        @media (max-width: 991.98px) {
+            .glass-navbar .navbar-collapse {
+                background: inherit;
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
+                border-radius: 0 0 12px 12px;
+                margin-top: 0.5rem;
+                padding: 1rem;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-top: none;
+            }
+            [data-bs-theme="light"] .glass-navbar .navbar-collapse {
+                border: 1px solid rgba(0, 0, 0, 0.06);
+                border-top: none;
+            }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- 浮动操作按钮（仅保留回到顶部） -->
+    <div class="floating-action">
+        <button onclick="window.scrollTo({top: 0, behavior: 'smooth'})" class="btn btn-primary floating-btn" title="回到顶部">
+            <i class="bi bi-arrow-up"></i>
+        </button>
+    </div>
+
+    <div class="container">
+        <!-- 消息提示 -->
+        <div class="alert-container">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show animate__animated animate__fadeInRight" role="alert">
+                            <i class="bi bi-{{ 'exclamation-triangle' if category == 'error' else 'info-circle' if category == 'info' else 'check-circle' if category == 'success' else 'exclamation-circle' }} me-2"></i>
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+
+        <!-- 简约玻璃态导航栏 -->
+        <nav class="navbar navbar-expand-lg glass-navbar rounded-3 mb-4 animate__animated animate__fadeInDown">
+            <div class="container-fluid">
+                <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
+                    <i class="bi bi-diagram-3 fs-2 me-2"></i>
+                    <div>
+                        <div class="fw-bold fs-4">跨环境任务模板管理系统</div>
+                        <div class="small opacity-75">现代化界面 · 暗黑模式支持 · 智能管理AGV跨环境任务模板</div>
+                    </div>
+                </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav me-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('index') }}">
+                                <i class="bi bi-house me-1"></i> 首页
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('addtask') }}">
+                                <i class="bi bi-send me-1"></i> 任务下发
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('query_index') }}">
+                                <i class="bi bi-search me-1"></i> 查询功能
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('show_docs') }}">
+                                <i class="bi bi-journal-text me-1"></i> 文档
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('show_stats') }}">
+                                <i class="bi bi-graph-up me-1"></i> 统计
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('dispatch.dashboard') }}">
+                                <i class="bi bi-truck me-1"></i> 调车管理
+                            </a>
+                        </li>
+                    </ul>
+                    <div class="navbar-nav d-flex align-items-center">
+                        <span id="navUserInfo" class="text-light me-2 small" style="display:none;">
+                            <i class="bi bi-person-circle"></i> <span id="navUsername"></span>
+                            <span id="navAdminBadge" class="badge bg-warning text-dark ms-1" style="display:none;">管理员</span>
+                        </span>
+                        <button id="navLogoutBtn" class="btn btn-outline-danger btn-sm me-2" style="display:none;" title="注销">
+                            <i class="bi bi-box-arrow-right"></i>
+                        </button>
+                        <button id="themeToggleNav" class="btn btn-outline-secondary btn-sm me-2" title="切换主题">
+                            <i class="bi bi-moon-stars"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- 主要内容 -->
+        {% block content %}{% endblock %}
+
+        <!-- 页脚 -->
+        <footer class="mt-5 pt-4 text-center animate__animated animate__fadeInUp">
+            <div class="glass-effect rounded-3 p-4">
+                <p class="mb-2">跨环境任务模板管理系统 &copy; 2026 | 版本 2.0</p>
+                <p class="small opacity-75 mb-0">基于《跨环境配置及实施说明书》开发 · 现代化UI · 暗黑模式支持</p>
+                <div class="mt-3">
+                    <span class="badge bg-primary me-2">Bootstrap 5.3</span>
+                    <span class="badge bg-success me-2">Python Flask</span>
+                    <span class="badge bg-info me-2">MySQL</span>
+                    <span class="badge bg-warning">响应式设计</span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+    <script src="/static/vendor/jquery/jquery-3.6.0.min.js"></script>
+    <!-- Mermaid JS (支持流程图渲染) -->
+    <script src="/static/vendor/mermaid/mermaid.min.js"></script>
+    <!-- 统一的主题管理器 -->
+    <script src="/static/js/theme-manager.js"></script>
+    <script>
+        // 渲染 Markdown 内容中的 Mermaid 流程图
+        function renderMermaidDiagrams() {
+            if (typeof mermaid === 'undefined') return;
+            try {
+                // 将 <pre><code class="mermaid"> 转换为 <div class="mermaid">
+                document.querySelectorAll('.markdown-content pre code.language-mermaid').forEach(code => {
+                    const pre = code.parentElement;
+                    if (!pre) return;
+                    const div = document.createElement('div');
+                    div.className = 'mermaid';
+                    div.textContent = code.textContent;
+                    pre.replaceWith(div);
+                });
+                const els = document.querySelectorAll('.markdown-content .mermaid:not([data-processed])');
+                if (els.length > 0) {
+                    // 逐个渲染以确保兼容性
+                    Array.prototype.slice.call(els).forEach(node => {
+                        mermaid.run({ nodes: [node] }).catch(e => {
+                            console.warn('Mermaid 渲染警告:', e);
+                            node.innerHTML = '<pre style="color:var(--text-color);background:var(--detail-card-bg);padding:1rem;border-radius:8px;font-size:0.85rem;overflow:auto;"><code>' + 
+                                node.textContent.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</code></pre>';
+                            node.setAttribute('data-processed', 'true');
+                        });
+                    });
+                }
+            } catch(e) {
+                console.warn('Mermaid 渲染失败:', e);
+            }
+        }
+        // 初始化 Mermaid
+        mermaid.initialize({ 
+            startOnLoad: false,
+            securityLevel: 'loose',
+            theme: document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'default'
+        });
+        // 页面加载后渲染 Mermaid 流程图
+        document.addEventListener('DOMContentLoaded', renderMermaidDiagrams);
+        // 监听主题变化
+        document.addEventListener('themeChanged', function(e) {
+            mermaid.initialize({
+                theme: e.detail.theme === 'dark' ? 'dark' : 'default',
+                securityLevel: 'loose'
+            });
+            document.querySelectorAll('.markdown-content .mermaid[data-processed]').forEach(el => {
+                el.removeAttribute('data-processed');
+                el.innerHTML = '';
+            });
+            renderMermaidDiagrams();
+        });
+    </script>
+    <script>
+        // 全局拦截 fetch 403 响应，Toast 提示需要管理员权限
+        const originalFetch = window.fetch;
+        window.fetch = function(...args) {
+            return originalFetch.apply(this, args).then(response => {
+                if (response.status === 403) {
+                    response.clone().json().then(data => {
+                        showToast(data.error || '需要管理员权限，请在首页启用管理员提权', 'warning');
+                    }).catch(() => {
+                        showToast('需要管理员权限，请在首页启用管理员提权', 'warning');
+                    });
+                }
+                return response;
+            });
+        };
+        
+        // Toast 通知函数
+        function showToast(message, type) {
+            const bgClass = type === 'warning' ? 'bg-warning text-dark' : 'bg-danger text-white';
+            const icon = type === 'warning' ? 'bi-exclamation-triangle' : 'bi-x-circle';
+            const toastHtml = '<div class="toast align-items-center ' + bgClass + ' border-0" role="alert"><div class="d-flex"><div class="toast-body"><i class="bi ' + icon + ' me-2"></i>' + message + '</div><button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button></div></div>';
+            const container = document.getElementById('toastContainer') || (() => { const d = document.createElement('div'); d.id = 'toastContainer'; d.className = 'toast-container position-fixed top-0 end-0 p-3'; d.style.zIndex = '9999'; document.body.appendChild(d); return d; })();
+            const toastEl = document.createElement('div');
+            toastEl.innerHTML = toastHtml;
+            container.appendChild(toastEl.firstElementChild);
+            const toast = new bootstrap.Toast(container.lastElementChild, { delay: 4000 });
+            toast.show();
+        };
+        
+        // 自动关闭警告消息
+        $(document).ready(function() {
+            setTimeout(function() {
+                $('.alert').alert('close');
+            }, 5000);
+            
+            // 添加工具提示
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        });
+        
+        
+        
+        // 复制到剪贴板功能
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                // 显示成功消息
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-success alert-dismissible fade show';
+                alertDiv.innerHTML = `
+                    <i class="bi bi-check-circle me-2"></i>已复制到剪贴板: ${text}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.querySelector('.alert-container').appendChild(alertDiv);
+                
+                setTimeout(() => {
+                    alertDiv.remove();
+                }, 3000);
+            });
+        }
+        
+        // 加载动画
+        function showLoading() {
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'd-flex justify-content-center align-items-center position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-50';
+            loadingDiv.style.zIndex = '9999';
+            loadingDiv.innerHTML = `
+                <div class="text-center">
+                    <div class="loading-spinner mb-3"></div>
+                    <p class="text-white">加载中...</p>
+                </div>
+            `;
+            document.body.appendChild(loadingDiv);
+            return loadingDiv;
+        }
+        
+        function hideLoading(loadingDiv) {
+            if (loadingDiv) {
+                loadingDiv.remove();
+            }
+        }
+
+        // 初始化登录状态
+        $(document).ready(function() {
+            // 检查登录状态
+            fetch('/api/auth/status')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.logged_in) {
+                        $('#navUserInfo').show();
+                        $('#navUsername').text(data.username);
+                        if (data.is_admin) {
+                            $('#navAdminBadge').show();
+                        }
+                        $('#navLogoutBtn').show().click(async () => {
+                            await fetch('/api/logout', { method: 'POST' });
+                            window.location.reload();
+                        });
+                    }
+                });
+        });
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 跨环境任务模板管理系统</title>
+    <link href="/static/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/vendor/bootstrap-icons/bootstrap-icons.min.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-card {
+            background: rgba(30, 30, 30, 0.9);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 2.5rem;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        .login-card h3 { color: #e9ecef; margin-bottom: 1.5rem; }
+        .form-control {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #e9ecef;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+        }
+        .form-control:focus {
+            background: rgba(255,255,255,0.1);
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.25rem rgba(13,110,253,0.25);
+            color: #fff;
+        }
+        .btn-login { padding: 0.75rem; font-size: 1.1rem; border-radius: 8px; }
+        .error-msg { color: #dc3545; font-size: 0.9rem; display: none; }
+        #adminFields { display: none; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="text-center mb-4">
+            <i class="bi bi-shield-lock fs-1 text-primary"></i>
+            <h3 class="mt-2">系统登录</h3>
+            <p class="text-muted small">跨环境任务模板管理系统</p>
+        </div>
+        <div id="errorMsg" class="error-msg mb-3"></div>
+        <div class="mb-3">
+            <label class="form-label text-light">RCS用户名</label>
+            <input type="text" class="form-control" id="username" placeholder="请输入RCS用户名" autofocus>
+        </div>
+        <div class="mb-3">
+            <label class="form-label text-light">RCS密码</label>
+            <input type="password" class="form-control" id="password" placeholder="请输入RCS密码">
+        </div>
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="isAdmin" onchange="toggleAdmin()">
+            <label class="form-check-label text-light" for="isAdmin">
+                管理员提权（需额外验证管理员账号）
+            </label>
+        </div>
+        <div id="adminFields">
+            <div class="mb-3">
+                <label class="form-label text-warning">管理员账号</label>
+                <input type="text" class="form-control" id="adminUsername" placeholder="请输入管理员账号">
+            </div>
+            <div class="mb-3">
+                <label class="form-label text-warning">管理员密码</label>
+                <input type="password" class="form-control" id="adminPassword" placeholder="请输入管理员密码">
+            </div>
+        </div>
+        <button class="btn btn-primary w-100 btn-login" onclick="doLogin()">
+            <i class="bi bi-box-arrow-in-right me-2"></i>登录
+        </button>
+        <p class="text-muted text-center mt-3 small">
+            使用RCS账号登录，勾选后可提权为管理员
+        </p>
+    </div>
+    <script>
+        function toggleAdmin() {
+            document.getElementById('adminFields').style.display = 
+                document.getElementById('isAdmin').checked ? 'block' : 'none';
+        }
+        document.getElementById('password').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') doLogin();
+        });
+        document.getElementById('adminPassword').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') doLogin();
+        });
+        async function doLogin() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
+            const isAdmin = document.getElementById('isAdmin').checked;
+            const adminUsername = document.getElementById('adminUsername').value.trim();
+            const adminPassword = document.getElementById('adminPassword').value.trim();
+            const errorEl = document.getElementById('errorMsg');
+            if (!username || !password) {
+                errorEl.textContent = '请输入RCS用户名和密码';
+                errorEl.style.display = 'block';
+                return;
+            }
+            errorEl.style.display = 'none';
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        username, password,
+                        admin_username: isAdmin ? adminUsername : '',
+                        admin_password: isAdmin ? adminPassword : ''
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    window.location.href = '/';
+                } else {
+                    errorEl.textContent = data.error || '登录失败';
+                    errorEl.style.display = 'block';
+                }
+            } catch (e) {
+                errorEl.textContent = '网络错误: ' + e.message;
+                errorEl.style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,124 @@
+<!-- 可视化编辑器内容 -->
+<div class="row g-3">
+    <!-- 左侧区域导航 -->
+    <div class="col-md-4">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>区域列表</h5>
+            <button class="btn btn-sm btn-outline-primary" id="add-area-btn">
+                <i class="bi bi-plus-lg"></i> 新增区域
+            </button>
+        </div>
+        <div class="area-tree" id="area-tree">
+            <!-- 动态渲染区域 -->
+        </div>
+    </div>
+    
+    <!-- 右侧任务与表单 -->
+    <div class="col-md-8">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="mb-0" id="current-area-title">请选择一个区域</h5>
+            <button class="btn btn-sm btn-outline-success" id="add-task-btn" disabled>
+                <i class="bi bi-plus-lg"></i> 新增任务
+            </button>
+        </div>
+        
+        <!-- 任务列表 -->
+        <div class="task-list mb-3" id="task-list">
+            <div class="text-center py-3 text-muted">
+                <i class="bi bi-arrow-left me-2"></i>请先选择左侧区域
+            </div>
+        </div>
+        
+        <!-- 任务编辑表单 -->
+        <div class="form-section" id="task-form-container" style="display: none;">
+            <h6 class="mb-3"><i class="bi bi-pencil-square me-2"></i>编辑任务</h6>
+            <form id="task-form">
+                <input type="hidden" id="task-original-name">
+                <div class="mb-3">
+                    <label class="form-label">任务名称</label>
+                    <input type="text" class="form-control" id="task-name" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Base URL</label>
+                    <input type="text" class="form-control" id="task-base-url" required placeholder="http://...">
+                    <div class="url-error" id="url-error"></div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Code</label>
+                    <input type="text" class="form-control" id="task-code" required>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="task-requires-shelf">
+                            <label class="form-check-label" for="task-requires-shelf">需要货架</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="task-requires-path">
+                            <label class="form-check-label" for="task-requires-path">需要指定路径</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 容量字段优化：可手动启用 -->
+                <div class="mb-3 border rounded p-3 bg-light bg-opacity-10">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="enable-capacity">
+                        <label class="form-check-label" for="enable-capacity">启用容量限制 (capacity)</label>
+                    </div>
+                    <div id="capacity-input-wrapper" style="display: none; margin-top: 10px;">
+                        <label class="form-label">容量值</label>
+                        <input type="number" class="form-control" id="task-capacity" placeholder="例如: 10">
+                    </div>
+                </div>
+                
+                <div class="mb-3" id="path-options-section">
+                    <label class="form-label">路径选项</label>
+                    <div class="path-options-table">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Value</th>
+                                    <th>Label</th>
+                                    <th style="width: 50px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="path-options-body">
+                                <!-- 动态行 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="add-path-option">
+                        <i class="bi bi-plus"></i> 添加选项
+                    </button>
+                </div>
+                
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg me-2"></i>保存任务
+                    </button>
+                    <button type="button" class="btn btn-outline-danger" id="delete-task-btn">
+                        <i class="bi bi-trash me-2"></i>删除任务
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="cancel-task-btn">
+                        取消
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 全局操作栏 -->
+<hr class="my-4">
+<div class="d-flex gap-2 justify-content-end align-items-center">
+    <span class="badge bg-secondary me-2" id="version-badge">版本: 加载中...</span>
+    <button class="btn btn-outline-success" id="save-config-btn" title="自动保存已启用，此按钮用于手动保存或解决冲突">
+        <i class="bi bi-save me-2"></i>手动保存到文件
+    </button>
+    <button class="btn btn-outline-info" id="export-config-btn">
+        <i class="bi bi-download me-2"></i>导出 config.js
+    </button>
+</div>

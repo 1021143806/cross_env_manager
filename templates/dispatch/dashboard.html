@@ -1,0 +1,1603 @@
+{% extends "base.html" %}
+{% block title %}空车调车管理系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.25rem;
+        text-align: center;
+        transition: all 0.3s;
+    }
+    .stat-card:hover {
+        transform: translateY(-3px);
+        box-shadow: var(--card-shadow-hover);
+    }
+    .stat-card .stat-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .stat-card .stat-value { font-size: 1.75rem; font-weight: 700; }
+    .stat-card .stat-label { font-size: 0.85rem; opacity: 0.7; }
+
+    .area-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+        transition: all 0.3s;
+    }
+    .area-card:hover { box-shadow: var(--card-shadow-hover); }
+    .area-card .area-header {
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .area-card .area-header .area-title { font-size: 1.1rem; font-weight: 600; }
+    .area-card .area-body { padding: 1.25rem; }
+
+    .balance-panel {
+        background: var(--detail-card-bg);
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+    }
+    .balance-item { text-align: center; min-width: 60px; }
+    .balance-item .value { font-size: 1.5rem; font-weight: 700; }
+    .balance-item .label { font-size: 0.75rem; opacity: 0.7; }
+    .balance-divider { width: 1px; height: 40px; background: var(--border-color); }
+
+    .template-table { width: 100%; font-size: 0.9rem; }
+    .template-table th {
+        font-weight: 600; font-size: 0.8rem;
+        text-transform: uppercase; letter-spacing: 0.5px;
+        opacity: 0.7; padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .template-table td {
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .template-table tr:last-child td { border-bottom: none; }
+    .template-table tr:hover td { background: var(--detail-card-bg); }
+    .template-table .tpl-name {
+        word-break: break-all;
+        max-width: 140px;
+        display: inline-block;
+        vertical-align: middle;
+    }
+    .template-section-title {
+        font-size: 0.85rem; font-weight: 600;
+        padding: 0.5rem 0; display: flex; align-items: center; gap: 0.5rem;
+    }
+
+    .log-item {
+        display: flex; align-items: flex-start; gap: 0.75rem;
+        padding: 0.6rem 0; border-bottom: 1px solid var(--border-color);
+        font-size: 0.9rem;
+    }
+    .log-item:last-child { border-bottom: none; }
+    .log-item .log-time { min-width: 45px; font-weight: 600; opacity: 0.7; font-size: 0.8rem; }
+    .log-item .log-icon { font-size: 1rem; opacity: 0.6; }
+    .log-item .log-area { font-weight: 600; min-width: 50px; }
+
+    .direction-badge {
+        display: inline-flex; align-items: center; gap: 0.3rem;
+        padding: 0.25rem 0.6rem; border-radius: 20px;
+        font-size: 0.8rem; font-weight: 500;
+    }
+
+    /* JSON 文件展开面板 */
+    .json-panel {
+        border-top: 1px solid var(--border-color);
+        padding: 1rem 1.25rem;
+        background: var(--detail-card-bg);
+        display: none;
+    }
+    .json-panel.open { display: block; }
+    .json-file-item {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0.5rem 0.75rem; margin-bottom: 0.4rem;
+        background: var(--card-bg); border-radius: 8px;
+        border: 1px solid var(--border-color);
+        font-size: 0.9rem;
+    }
+    .json-file-item:hover { border-color: var(--primary-color); }
+    .json-file-item .file-info { display: flex; align-items: center; gap: 0.5rem; }
+    .json-file-item .file-actions { display: flex; gap: 0.3rem; }
+    .json-viewer {
+        margin-top: 0.75rem;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .json-viewer .viewer-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0.5rem 0.75rem;
+        background: var(--card-bg);
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.85rem; font-weight: 600;
+    }
+    .json-viewer pre {
+        margin: 0; padding: 0.75rem;
+        background: #1e1e1e; color: #d4d4d4;
+        font-size: 0.8rem; max-height: 300px; overflow: auto;
+        white-space: pre-wrap; word-break: break-all;
+    }
+    .json-viewer textarea {
+        width: 100%; min-height: 200px;
+        background: #1e1e1e; color: #d4d4d4;
+        border: none; padding: 0.75rem;
+        font-family: monospace; font-size: 0.8rem;
+        resize: vertical;
+    }
+
+    .log-tab {
+        font-size:0.78rem; padding:0.2rem 0.6rem; border-radius:12px;
+        border:1px solid var(--border-color); background:transparent; color:var(--text-color);
+        cursor:pointer; transition:all 0.15s;
+    }
+    .log-tab:hover { border-color:var(--primary-color); color:var(--primary-color); }
+    .log-tab.active { background:var(--primary-color); border-color:var(--primary-color); color:#fff; }
+
+    @media (max-width: 768px) {
+        .balance-panel { gap: 0.8rem; }
+        .balance-divider { display: none; }
+        .stat-card .stat-value { font-size: 1.3rem; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="animate__animated animate__fadeIn">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="mb-1"><i class="bi bi-truck me-2"></i>空车调车管理系统</h3>
+            <p class="text-muted mb-0">实时监控各区域设备平衡状态，自动调度空车任务</p>
+        </div>
+        <div>
+            <button id="refreshBtn" class="btn btn-outline-primary btn-sm me-2" onclick="refreshData()">
+                <i class="bi bi-arrow-clockwise"></i> 刷新
+            </button>
+            <a href="{{ url_for('dispatch.config_page') }}" class="btn btn-outline-secondary btn-sm me-2">
+                <i class="bi bi-gear"></i> 配置
+            </a>
+            <a href="/docs/module/dispatch" class="btn btn-outline-info btn-sm" target="_blank">
+                <i class="bi bi-question-circle"></i> 帮助
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4" id="summaryRow">
+        <div class="col-6 col-md-3">
+            <div class="stat-card">
+                <div class="stat-icon text-primary"><i class="bi bi-building"></i></div>
+                <div class="stat-value" id="totalAreas">-</div>
+                <div class="stat-label">总区域</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-card">
+                <div class="stat-icon text-info"><i class="bi bi-device-hdd"></i></div>
+                <div class="stat-value" id="totalDevices">-</div>
+                <div class="stat-label">总设备</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-card">
+                <div class="stat-icon text-warning"><i class="bi bi-exclamation-triangle"></i></div>
+                <div class="stat-value" id="needDispatch">-</div>
+                <div class="stat-label">需调度</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-card">
+                <div class="stat-icon text-success"><i class="bi bi-check-circle"></i></div>
+                <div class="stat-value" id="balanced">-</div>
+                <div class="stat-label">平衡</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="areaCardsContainer"></div>
+
+    <div class="area-card">
+        <div class="area-header">
+            <span class="area-title"><i class="bi bi-clock-history me-2"></i>操作日志</span>
+            <div class="d-flex align-items-center gap-2">
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" id="logAutoScroll" checked onchange="toggleLogAutoScroll()">
+                    <label class="form-check-label small" for="logAutoScroll">自动</label>
+                </div>
+                <span class="badge bg-secondary" id="logCount">0</span>
+            </div>
+        </div>
+        <div class="area-body" style="padding:0;">
+            <div class="d-flex border-bottom" style="padding:0.5rem 1rem;gap:0.25rem;">
+                <button class="btn btn-sm log-tab active" data-filter="all" onclick="switchLogTab('all')">全部</button>
+                <button class="btn btn-sm log-tab" data-filter="execute" onclick="switchLogTab('execute')">执行</button>
+                <button class="btn btn-sm log-tab" data-filter="report_status" onclick="switchLogTab('report_status')">上报</button>
+                <button class="btn btn-sm log-tab" data-filter="clean" onclick="switchLogTab('clean')">清理</button>
+            </div>
+            <div id="logContainer" style="max-height:300px;overflow-y:auto;padding:0.5rem 1rem;">
+                <div class="text-center text-muted py-3">加载中...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="toastContainer" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/vendor/chart.js/chart.min.js"></script>
+<script>
+let refreshInterval = null;
+let chartInstances = {};
+
+let lastDataRefresh = 0;
+const DATA_REFRESH_DEBOUNCE = 100; // 0.1s 防抖
+
+$(document).ready(function() {
+    refreshData();
+    // 日志每0.5s刷新，连带刷新数据（带防抖）
+    refreshInterval = setInterval(refreshAll, 500);
+});
+
+function refreshAll() {
+    if (logAutoScroll) loadGlobalLog();
+    refreshDataDebounced();
+}
+
+function refreshDataDebounced() {
+    const now = Date.now();
+    if (now - lastDataRefresh < DATA_REFRESH_DEBOUNCE) return;
+    lastDataRefresh = now;
+    refreshData();
+}
+
+function refreshData() {
+    fetch('/api/dispatch/status')
+        .then(r => r.json())
+        .then(data => {
+            renderSummary(data.summary);
+            const container = document.getElementById('areaCardsContainer');
+            if (!container.hasChildNodes() || container.children.length === 0) {
+                renderAreas(data.areas);
+            } else {
+                updateAreasData(data.areas);
+            }
+        })
+        .catch(err => console.error('获取数据失败:', err));
+}
+
+let allLogs = [];
+let logFilter = 'all';
+let logAutoScroll = true;
+
+function toggleLogAutoScroll() {
+    logAutoScroll = document.getElementById('logAutoScroll').checked;
+    if (logAutoScroll) scrollLogToTop();
+}
+
+function switchLogTab(filter) {
+    logFilter = filter;
+    document.querySelectorAll('.log-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === filter);
+    });
+    renderLogs();
+}
+
+function getLogActionMeta(action, level) {
+    if (action === 'execute') return { icon: 'bi-send', color: 'text-primary' };
+    if (action === 'execute_balanced') return { icon: 'bi-check-circle', color: 'text-success' };
+    if (action === 'execute_mutex') return { icon: 'bi-shield-exclamation', color: 'text-warning' };
+    if (action === 'clean_simulated' || action === 'clean_simulated_error') return { icon: 'bi-broom', color: 'text-teal' };
+    if (action === 'report_status') return { icon: 'bi-arrow-up-circle', color: 'text-info' };
+    if (level === 'error') return { icon: 'bi-exclamation-triangle', color: 'text-danger' };
+    if (level === 'warning') return { icon: 'bi-exclamation-triangle', color: 'text-warning' };
+    return { icon: 'bi-info-circle', color: 'text-info' };
+}
+
+function filterLogs(logs, filter) {
+    if (filter === 'all') return logs;
+    if (filter === 'execute') return logs.filter(l => l.action && l.action.startsWith('execute'));
+    if (filter === 'report_status') return logs.filter(l => l.action === 'report_status');
+    if (filter === 'clean') return logs.filter(l => l.action && (l.action.startsWith('clean') || l.action.startsWith('clean_simulated')));
+    return logs;
+}
+
+function renderLogs() {
+    const container = document.getElementById('logContainer');
+    const countBadge = document.getElementById('logCount');
+    const filtered = filterLogs(allLogs, logFilter);
+    if (countBadge) countBadge.textContent = filtered.length;
+    
+    if (!filtered.length) {
+        container.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-inbox me-2"></i>暂无操作日志</div>';
+        return;
+    }
+    
+    container.innerHTML = filtered.map(log => {
+        const time = log.time || '';
+        const timeStr = time.length > 16 ? time.slice(11, 19) : time;
+        const action = log.action || '';
+        const detail = log.detail || '';
+        const region = log.region_key || '';
+        const level = log.level || 'info';
+        const meta = getLogActionMeta(action, level);
+        
+        return `<div class="log-item">
+            <div class="log-time">${timeStr}</div>
+            <div class="log-icon ${meta.color}"><i class="bi ${meta.icon}"></i></div>
+            <div style="flex:1;min-width:0;">
+                <span class="badge bg-secondary me-1" style="font-size:0.7rem;">${region}</span>
+                <span>${detail || action}</span>
+            </div>
+        </div>`;
+    }).join('');
+    
+    if (logAutoScroll) scrollLogToTop();
+}
+
+function scrollLogToTop() {
+    const container = document.getElementById('logContainer');
+    if (container) container.scrollTop = 0;
+}
+
+function loadGlobalLog() {
+    fetch('/api/dispatch/global_log?_=' + Date.now())
+        .then(r => {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(data => {
+            allLogs = data.logs || [];
+            renderLogs();
+        })
+        .catch(err => {
+            console.error('加载日志失败:', err);
+            const container = document.getElementById('logContainer');
+            if (container) container.innerHTML = '<div class="text-center text-muted py-3">加载日志失败</div>';
+        });
+}
+
+function renderSummary(summary) {
+    if (!summary) return;
+    document.getElementById('totalAreas').textContent = summary.total_areas;
+    document.getElementById('totalDevices').textContent = summary.total_devices;
+    document.getElementById('needDispatch').textContent = summary.need_dispatch;
+    document.getElementById('balanced').textContent = summary.balanced;
+}
+
+function renderAreas(areas) {
+    const container = document.getElementById('areaCardsContainer');
+    if (!areas || areas.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted py-5">暂无区域数据</div>';
+        return;
+    }
+    let html = '<div class="row">';
+    areas.forEach(area => {
+        const dirBadge = getDirectionBadge(area);
+        const incomingRows = renderTemplateRows(area.templates.incoming);
+        const outgoingRows = renderTemplateRows(area.templates.outgoing);
+        html += `
+        <div class="col-lg-6">
+            <div class="area-card">
+                <div class="area-header">
+                    <span class="area-title">
+                        <i class="bi bi-geo-alt me-1 text-primary"></i>${area.name}
+                        <small class="text-muted ms-2" style="font-size:0.8rem;">xmin:${area.xmin} xmax:${area.xmax}</small>
+                        ${area.server ? `<small class="text-muted ms-2" style="font-size:0.75rem;opacity:0.6;">📡 ${area.server}</small>` : ''}
+                        <div class="form-check form-switch d-inline-block ms-2">
+                            <input class="form-check-input" type="checkbox" ${area.enabled ? 'checked' : ''} onchange="toggleRegion('${area.region_key}', this.checked)" style="cursor:pointer;">
+                            <label class="form-check-label small ${area.enabled ? 'text-success' : 'text-muted'}">${area.enabled ? '已启用' : '已禁用'}</label>
+                        </div>
+                    </span>
+                    ${dirBadge}
+                </div>
+                <div class="area-body">
+                    <div class="balance-panel">
+                        <div class="balance-item">
+                            <div class="value ${area.currentCount === 0 || area.currentCount ? 'text-primary' : 'text-muted'}">${area.currentCount ?? 0}</div>
+                            <div class="label">当前设备</div>
+                        </div>
+                        <div class="balance-divider"></div>
+                        <div class="balance-item">
+                            <div class="value text-info">${area.a ?? 0}</div>
+                            <div class="label">来区域(a)</div>
+                        </div>
+                        <div class="balance-divider"></div>
+                        <div class="balance-item">
+                            <div class="value text-danger">${area.b ?? 0}</div>
+                            <div class="label">离开(b)</div>
+                        </div>
+                        <div class="balance-divider"></div>
+                        <div class="balance-item">
+                            <div class="value ${area.need > 0 ? 'text-warning' : 'text-success'}">${area.need}</div>
+                            <div class="label">需调度</div>
+                        </div>
+                        <div class="balance-divider"></div>
+                        <div class="balance-item">
+                            <div class="value text-muted" style="font-size:0.9rem;">${area.xmin} ~ ${area.xmax}</div>
+                            <div class="label">保留范围</div>
+                        </div>
+                        <div class="balance-divider"></div>
+                        <div class="balance-item flex-grow-1 text-start">
+                            <div class="small ${area.direction === 'none' ? 'text-success' : area.direction === 'out' ? 'text-danger' : 'text-warning'}">
+                                <i class="${area.direction_icon} me-1"></i>${area.direction_text}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="formula-row" id="formula-${area.region_key}" style="font-size:0.8rem;padding:0.25rem 0;opacity:0.8;">
+                        ${getFormulaText(area)}
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-start gap-2 mb-2">
+                                <div style="position:relative;width:100px;height:100px;flex-shrink:0;">
+                                    <canvas id="chart-in-${area.region_key}" width="100" height="100"></canvas>
+                                    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;">
+                                        <div style="font-size:1rem;font-weight:700;line-height:1.2;">${area.a ?? 0}</div>
+                                        <div style="font-size:0.5rem;opacity:0.6;">来</div>
+                                    </div>
+                                </div>
+                                <div id="legend-in-${area.region_key}" class="small" style="flex:1;min-width:0;line-height:1.6;">
+                                    ${renderChartLegend(area.templates?.incoming || [], 'in')}
+                                </div>
+                            </div>
+                            <div class="template-section-title text-success"><i class="bi bi-box-arrow-in-down"></i> 来区域 <button class="btn btn-sm btn-outline-success ms-2" onclick="manualDispatch('${area.region_key}','in','${area.enabled}')" title="手动发空车来"><i class="bi bi-truck"></i> 发空车</button></div>
+                            <table class="template-table" style="width:100%;">
+                                <thead><tr><th>模板</th><th>名称</th><th class="text-center">数量</th></tr></thead>
+                                <tbody>${incomingRows}</tbody>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-start gap-2 mb-2">
+                                <div style="position:relative;width:100px;height:100px;flex-shrink:0;">
+                                    <canvas id="chart-out-${area.region_key}" width="100" height="100"></canvas>
+                                    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;">
+                                        <div style="font-size:1rem;font-weight:700;line-height:1.2;">${area.b ?? 0}</div>
+                                        <div style="font-size:0.5rem;opacity:0.6;">离</div>
+                                    </div>
+                                </div>
+                                <div id="legend-out-${area.region_key}" class="small" style="flex:1;min-width:0;line-height:1.6;">
+                                    ${renderChartLegend(area.templates?.outgoing || [], 'out')}
+                                </div>
+                            </div>
+                            <div class="template-section-title text-danger"><i class="bi bi-box-arrow-up"></i> 离开 <button class="btn btn-sm btn-outline-danger ms-2" onclick="manualDispatch('${area.region_key}','out','${area.enabled}')" title="手动发空车回"><i class="bi bi-truck"></i> 发空车</button></div>
+                            <table class="template-table" style="width:100%;">
+                                <thead><tr><th>模板</th><th>名称</th><th class="text-center">数量</th></tr></thead>
+                                <tbody>${outgoingRows}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-top border-secondary d-flex gap-2 flex-wrap">
+                        <button class="btn btn-outline-warning btn-sm" onclick="executeCalculation('${area.region_key}', '${area.name}')"><i class="bi bi-play-circle"></i> 执行计算</button>
+                        <button class="btn btn-outline-info btn-sm" onclick="toggleJsonPanel('${area.region_key}', this)"><i class="bi bi-filetype-json"></i> JSON文件</button>
+                        <button class="btn btn-outline-teal btn-sm" onclick="toggleDispatchLogPanel('${area.region_key}', this)"><i class="bi bi-send"></i> 下发记录</button>
+                        <button class="btn btn-outline-purple btn-sm" onclick="toggleTimeSlotPanel('${area.region_key}', this)"><i class="bi bi-clock"></i> 分时配置</button>
+                        <button class="btn btn-outline-success btn-sm" onclick="toggleSelfHealPanel('${area.region_key}', this)"><i class="bi bi-heart-pulse"></i> 自恢复</button>
+                        <a href="/dispatch/config" class="btn btn-outline-secondary btn-sm"><i class="bi bi-gear"></i> 配置</a>
+                    </div>
+                </div>
+                <!-- JSON 文件展开面板 -->
+                <div class="json-panel" id="json-panel-${area.region_key}">
+                    <div id="json-files-list-${area.region_key}">
+                        <div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm me-2"></div>加载文件列表...</div>
+                    </div>
+                    <div class="json-viewer" id="json-viewer-${area.region_key}" style="display:none;">
+                        <div class="viewer-header">
+                            <span id="viewer-title-${area.region_key}"></span>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-sm btn-outline-primary" id="btn-edit-${area.region_key}" onclick="enableEditMode('${area.region_key}')" style="display:none;"><i class="bi bi-pencil"></i> 编辑</button>
+                                <button class="btn btn-sm btn-outline-success" id="btn-save-${area.region_key}" onclick="saveFileContent('${area.region_key}')" style="display:none;"><i class="bi bi-check-lg"></i> 保存</button>
+                                <button class="btn btn-sm btn-outline-secondary" id="btn-cancel-${area.region_key}" onclick="cancelEdit('${area.region_key}')" style="display:none;"><i class="bi bi-x"></i> 取消</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="closeViewer('${area.region_key}')"><i class="bi bi-x-lg"></i></button>
+                            </div>
+                        </div>
+                        <pre id="viewer-content-${area.region_key}"></pre>
+                        <textarea id="viewer-editor-${area.region_key}" style="display:none;"></textarea>
+                    </div>
+                </div>
+                <!-- 下发记录展开面板 -->
+                <div class="json-panel" id="dispatch-log-panel-${area.region_key}">
+                    <div id="dispatch-log-list-${area.region_key}">
+                        <div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm me-2"></div>加载下发记录...</div>
+                    </div>
+                    <div class="json-viewer" id="dispatch-log-viewer-${area.region_key}" style="display:none;">
+                        <div class="viewer-header">
+                            <span id="dispatch-log-title-${area.region_key}"></span>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('dispatch-log-viewer-${area.region_key}').style.display='none'"><i class="bi bi-x-lg"></i></button>
+                        </div>
+                        <pre id="dispatch-log-content-${area.region_key}"></pre>
+                    </div>
+                </div>
+                <!-- 分时配置展开面板 -->
+                <div class="json-panel" id="time-slot-panel-${area.region_key}">
+                    <div id="time-slot-content-${area.region_key}">
+                        <div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm me-2"></div>加载分时配置...</div>
+                    </div>
+                </div>
+                <!-- 自恢复状态面板 -->
+                <div class="json-panel" id="self-heal-panel-${area.region_key}">
+                    <div id="self-heal-content-${area.region_key}">
+                        <div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm me-2"></div>加载自恢复状态...</div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+    
+    // 渲染完成后初始化双环形图
+    areas.forEach(area => {
+        initDualCharts(area);
+    });
+}
+
+function createDoughnutChart(canvasId, labels, data, colors) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return null;
+    const ctx = canvas.getContext('2d');
+    if (data.length === 0) {
+        data = [1];
+        labels = ['无数据'];
+        colors = ['#374151'];
+    }
+    return new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors,
+                borderWidth: 1,
+                borderColor: 'transparent',
+                hoverBorderColor: '#fff',
+                hoverBorderWidth: 2
+            }]
+        },
+        options: {
+            responsive: false,
+            maintainAspectRatio: false,
+            cutout: '60%',
+            animation: {
+                duration: 400,
+                easing: 'easeOutQuad'
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const pct = ((context.parsed / total) * 100).toFixed(1);
+                            return context.label + ': ' + context.parsed + ' (' + pct + '%)';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function initDualCharts(area) {
+    const rk = area.region_key;
+    
+    // 来区域环形图
+    const inLabels = [];
+    const inData = [];
+    const inCols = [];
+    (area.templates?.incoming || []).forEach((t, i) => {
+        if (t.count > 0) {
+            inLabels.push(t.code);
+            inData.push(t.count);
+            inCols.push(CHART_COLORS.in[i % 5]);
+        }
+    });
+    if (chartInstances['in-' + rk]) chartInstances['in-' + rk].destroy();
+    chartInstances['in-' + rk] = createDoughnutChart('chart-in-' + rk, inLabels, inData, inCols);
+    
+    // 离开环形图
+    const outLabels = [];
+    const outData = [];
+    const outCols = [];
+    (area.templates?.outgoing || []).forEach((t, i) => {
+        if (t.count > 0) {
+            outLabels.push(t.code);
+            outData.push(t.count);
+            outCols.push(CHART_COLORS.out[i % 5]);
+        }
+    });
+    if (chartInstances['out-' + rk]) chartInstances['out-' + rk].destroy();
+    chartInstances['out-' + rk] = createDoughnutChart('chart-out-' + rk, outLabels, outData, outCols);
+}
+
+function updateDualCharts(area) {
+    const rk = area.region_key;
+    
+    // 更新来区域环形图
+    const inLabels = [];
+    const inData = [];
+    const inCols = [];
+    (area.templates?.incoming || []).forEach((t, i) => {
+        if (t.count > 0) {
+            inLabels.push(t.code);
+            inData.push(t.count);
+            inCols.push(CHART_COLORS.in[i % 5]);
+        }
+    });
+    let chart = chartInstances['in-' + rk];
+    if (chart) {
+        if (inData.length === 0) { inData.push(1); inLabels.push('无数据'); inCols.push('#374151'); }
+        chart.data.labels = inLabels;
+        chart.data.datasets[0].data = inData;
+        chart.data.datasets[0].backgroundColor = inCols;
+        chart.update();
+    } else {
+        chartInstances['in-' + rk] = createDoughnutChart('chart-in-' + rk, inLabels, inData, inCols);
+    }
+    
+    // 更新离开环形图
+    const outLabels = [];
+    const outData = [];
+    const outCols = [];
+    (area.templates?.outgoing || []).forEach((t, i) => {
+        if (t.count > 0) {
+            outLabels.push(t.code);
+            outData.push(t.count);
+            outCols.push(CHART_COLORS.out[i % 5]);
+        }
+    });
+    chart = chartInstances['out-' + rk];
+    if (chart) {
+        if (outData.length === 0) { outData.push(1); outLabels.push('无数据'); outCols.push('#374151'); }
+        chart.data.labels = outLabels;
+        chart.data.datasets[0].data = outData;
+        chart.data.datasets[0].backgroundColor = outCols;
+        chart.update();
+    } else {
+        chartInstances['out-' + rk] = createDoughnutChart('chart-out-' + rk, outLabels, outData, outCols);
+    }
+    
+    // 更新中间数字
+    const inCenter = document.querySelector('#chart-in-' + rk)?.parentElement?.querySelector('div[style*="position:absolute"]');
+    if (inCenter) inCenter.querySelector('div:first-child').textContent = area.a ?? 0;
+    const outCenter = document.querySelector('#chart-out-' + rk)?.parentElement?.querySelector('div[style*="position:absolute"]');
+    if (outCenter) outCenter.querySelector('div:first-child').textContent = area.b ?? 0;
+    
+    // 更新图例
+    const legendIn = document.getElementById('legend-in-' + rk);
+    if (legendIn) legendIn.innerHTML = renderChartLegend(area.templates?.incoming || [], 'in');
+    const legendOut = document.getElementById('legend-out-' + rk);
+    if (legendOut) legendOut.innerHTML = renderChartLegend(area.templates?.outgoing || [], 'out');
+}
+
+/**
+ * 增量更新区域数据 - 只更新数字和状态，不重新渲染 DOM
+ * 这样展开的 JSON 面板不会被销毁
+ */
+function updateAreasData(areas) {
+    if (!areas || areas.length === 0) return;
+    
+    const container = document.getElementById('areaCardsContainer');
+    const cards = container.querySelectorAll('.area-card');
+    
+    areas.forEach((area, idx) => {
+        const card = cards[idx];
+        if (!card) return;
+        
+        // 更新平衡面板数字（6个: 当前设备, a, b, 需调度, 保留范围, 方向文本）
+        const balanceItems = card.querySelectorAll('.balance-item .value');
+        if (balanceItems.length >= 5) {
+            // 当前设备数
+            const cc = area.currentCount ?? 0;
+            balanceItems[0].textContent = cc;
+            balanceItems[0].className = 'value ' + (cc === 0 ? 'text-muted' : 'text-primary');
+            // a (来区域)
+            balanceItems[1].textContent = area.a ?? 0;
+            // b (离开)
+            balanceItems[2].textContent = area.b ?? 0;
+            // 需调度数
+            balanceItems[3].textContent = area.need;
+            balanceItems[3].className = 'value ' + (area.need > 0 ? 'text-warning' : 'text-success');
+            // 保留范围
+            balanceItems[4].textContent = (area.xmin ?? 0) + ' ~ ' + (area.xmax ?? 0);
+        }
+        
+        // 更新启用开关状态
+        const switchInput = card.querySelector('.form-check-input');
+        if (switchInput) {
+            switchInput.checked = area.enabled;
+            const switchLabel = card.querySelector('.form-check-label');
+            if (switchLabel) {
+                switchLabel.textContent = area.enabled ? '已启用' : '已禁用';
+                switchLabel.className = 'form-check-label small ' + (area.enabled ? 'text-success' : 'text-muted');
+            }
+        }
+        
+        // 更新公式行
+        const formulaRow = card.querySelector('.formula-row');
+        if (formulaRow) {
+            formulaRow.innerHTML = getFormulaText(area);
+        }
+        
+        // 更新方向徽章
+        const header = card.querySelector('.area-header');
+        const oldBadge = header.querySelector('.direction-badge');
+        if (oldBadge) oldBadge.remove();
+        header.insertAdjacentHTML('beforeend', getDirectionBadge(area));
+        
+        // 更新方向文本
+        const dirText = card.querySelector('.balance-item.flex-grow-1 .small');
+        if (dirText) {
+            dirText.className = 'small ' + (area.direction === 'none' ? 'text-success' : area.direction === 'out' ? 'text-danger' : 'text-warning');
+            dirText.innerHTML = '<i class="' + area.direction_icon + ' me-1"></i>' + area.direction_text;
+        }
+        
+        // 更新模板表格计数
+        const tables = card.querySelectorAll('.template-table tbody');
+        if (tables.length >= 2) {
+            // 来区域表格
+            updateTableCounts(tables[0], area.templates.incoming);
+            // 离开表格
+            updateTableCounts(tables[1], area.templates.outgoing);
+        }
+        
+        // 更新双环形图
+        updateDualCharts(area);
+
+    });
+}
+
+function updateTableCounts(tbody, templates) {
+    const rows = tbody.querySelectorAll('tr');
+    templates.forEach((t, idx) => {
+        if (rows[idx]) {
+            const badge = rows[idx].querySelector('.count-badge');
+            if (badge) {
+                badge.textContent = t.count;
+                const is_empty = (t.task_type === 'empty_in' || t.task_type === 'empty_out');
+                badge.className = 'badge count-badge ' + (t.count > 0 ? (is_empty ? 'bg-warning text-dark' : 'bg-info text-dark') : 'bg-secondary');
+            }
+        }
+    });
+}
+
+function renderTemplateRows(templates) {
+    if (!templates || templates.length === 0) return '<tr><td colspan="3" class="text-center text-muted">无配置</td></tr>';
+    return templates.map(t => {
+        const is_empty = (t.task_type === 'empty_in' || t.task_type === 'empty_out');
+        const icon = is_empty ? 'bi-truck' : 'bi-box-seam';
+        const badgeClass = is_empty ? (t.count > 0 ? 'bg-warning text-dark' : 'bg-secondary') : (t.count > 0 ? 'bg-info text-dark' : 'bg-secondary');
+        const label = is_empty ? '<span class="badge bg-warning bg-opacity-25 text-warning small me-1">空车</span>' : '<span class="badge bg-info bg-opacity-25 text-info small me-1">负载</span>';
+        return `<tr><td><code>${t.code}</code></td><td>${label}<i class="${icon} me-1 small opacity-50"></i><span class="tpl-name">${t.name}</span></td>
+            <td class="text-center"><span class="badge count-badge ${badgeClass}">${t.count}</span></td></tr>`;
+    }).join('');
+}
+
+// 颜色配置：高对比度色板
+const CHART_COLORS = {
+    in: ['#059669', '#2563eb', '#7c3aed', '#d97706', '#0891b2'],  // 翠绿/蓝/紫/橙/青
+    out: ['#dc2626', '#db2777', '#ea580c', '#9333ea', '#0d9488']  // 正红/玫红/橙红/紫/青绿
+};
+
+function renderChartLegend(templates, direction) {
+    if (!templates || templates.length === 0) return '<div class="text-muted">无任务</div>';
+    const colors = CHART_COLORS[direction] || CHART_COLORS.in;
+    return templates.map((t, i) => {
+        const color = colors[i % colors.length];
+        const count = t.count || 0;
+        return `<div style="display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;"></span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${t.code}</span>
+            <span style="font-weight:600;flex-shrink:0;">${count}</span>
+        </div>`;
+    }).join('');
+}
+
+function getDirectionBadge(area) {
+    if (area.direction === 'none') return `<span class="direction-badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-circle"></i>平衡</span>`;
+    if (area.direction === 'out') return `<span class="direction-badge bg-danger-subtle text-danger border border-danger-subtle"><i class="bi bi-arrow-up"></i>调出 ${area.need}辆</span>`;
+    return `<span class="direction-badge bg-warning-subtle text-warning border border-warning-subtle"><i class="bi bi-arrow-down"></i>调入 ${area.need}辆</span>`;
+}
+
+function getFormulaText(area) {
+    const cc = area.currentCount ?? 0;
+    const a = area.a ?? 0;
+    const b = area.b ?? 0;
+    const ec = area.expectedCount ?? 0;
+    const xmin = area.xmin ?? 0;
+    const xmax = area.xmax ?? 0;
+    
+    let formula = `<span class="text-muted">公式: </span>`;
+    formula += `<span class="text-primary">${cc}</span>`;
+    formula += `<span class="text-muted"> + </span>`;
+    formula += `<span class="text-info">${a}</span>`;
+    formula += `<span class="text-muted"> - </span>`;
+    formula += `<span class="text-danger">${b}</span>`;
+    formula += `<span class="text-muted"> = </span>`;
+    formula += `<strong>${ec}</strong>`;
+    
+    if (area.direction === 'none') {
+        formula += `<span class="text-muted">, ${xmin} ≤ ${ec} ≤ ${xmax} → </span>`;
+        formula += `<span class="text-success">✅ 平衡</span>`;
+    } else if (area.direction === 'out') {
+        formula += `<span class="text-muted">, ${ec} > ${xmax} → </span>`;
+        formula += `<span class="text-danger">⬆ 需调出 ${area.need} 辆</span>`;
+    } else {
+        formula += `<span class="text-muted">, ${ec} < ${xmin} → </span>`;
+        formula += `<span class="text-warning">⬇ 需调入 ${Math.abs(area.need)} 辆</span>`;
+    }
+    
+    return formula;
+}
+
+function toggleRegion(regionKey, enabled) {
+    fetch('/api/dispatch/config')
+        .then(r => r.json())
+        .then(config => {
+            if (config[regionKey]) {
+                config[regionKey].enabled = enabled;
+                return fetch('/api/dispatch/config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(config)
+                });
+            }
+        })
+        .then(r => r && r.json())
+        .then(result => {
+            if (result && result.success) {
+                if (enabled) {
+                    // 启用时清理模拟数据
+                    fetch('/api/dispatch/clean_simulated/' + regionKey, {method: 'POST'})
+                        .then(r => r.json())
+                        .then(cleanResult => {
+                            if (cleanResult.success) {
+                                showToast(cleanResult.message, 'info');
+                            }
+                            refreshData();
+                        })
+                        .catch(() => refreshData());
+                } else {
+                    refreshData();
+                }
+            }
+        })
+        .catch(err => console.error('切换失败:', err));
+}
+
+function executeCalculation(regionKey, areaName) {
+    if (!confirm(`确定对 ${areaName} 执行完整计算流程？`)) return;
+    
+    showToast('正在执行计算...', 'info');
+    
+    fetch('/api/dispatch/execute/' + regionKey, {method: 'POST'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                if (data.dispatched) {
+                    const simLabel = data.simulated ? '（模拟）' : '（真实下发）';
+                    showToast(`${data.message} ${simLabel}`, data.simulated ? 'warning' : 'success');
+                } else {
+                    showToast(data.message, 'info');
+                }
+                refreshData();
+            } else {
+                showToast('执行失败: ' + (data.error || '未知错误'), 'danger');
+            }
+        })
+        .catch(err => showToast('执行失败: ' + err.message, 'danger'));
+}
+
+// ========== JSON 文件展开面板 ==========
+
+let currentViewerRegion = null;
+let currentViewerFilename = null;
+let currentViewerContent = null;
+
+function toggleJsonPanel(regionKey, btn) {
+    const panel = document.getElementById('json-panel-' + regionKey);
+    const isOpen = panel.classList.contains('open');
+    
+    // 关闭所有其他面板
+    document.querySelectorAll('.json-panel.open').forEach(p => {
+        p.classList.remove('open');
+    });
+    
+    if (isOpen) {
+        panel.classList.remove('open');
+        return;
+    }
+    
+    panel.classList.add('open');
+    loadRegionFiles(regionKey);
+}
+
+function loadRegionFiles(regionKey) {
+    const listEl = document.getElementById('json-files-list-' + regionKey);
+    listEl.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm me-2"></div>加载文件列表...</div>';
+    
+    fetch('/api/dispatch/region_files/' + regionKey)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                listEl.innerHTML = '<div class="text-center text-danger py-2">' + data.error + '</div>';
+                return;
+            }
+            if (!data.files || data.files.length === 0) {
+                listEl.innerHTML = '<div class="text-center text-muted py-2">暂无关联文件</div>';
+                return;
+            }
+            listEl.innerHTML = data.files.map(f => {
+                const dirLabel = f.direction === 'in' ? '来区域' : (f.direction === 'out' ? '离开' : '系统');
+                const dirColor = f.direction === 'in' ? 'success' : (f.direction === 'out' ? 'danger' : 'secondary');
+                const sizeStr = f.exists ? (f.size / 1024).toFixed(2) + ' KB' : '<span class="text-warning">未创建</span>';
+                return '<div class="json-file-item">' +
+                    '<div class="file-info">' +
+                        '<i class="bi bi-filetype-json text-warning"></i>' +
+                        '<strong>' + f.filename + '</strong>' +
+                        '<span class="badge bg-' + dirColor + '">' + dirLabel + '</span>' +
+                        '<small class="text-muted">' + sizeStr + '</small>' +
+                    '</div>' +
+                    '<div class="file-actions">' +
+                        '<button class="btn btn-sm btn-outline-primary" onclick="viewFile(\'' + regionKey + '\',\'' + f.filename + '\')"><i class="bi bi-eye"></i> 查看</button>' +
+                        '<button class="btn btn-sm btn-outline-warning" onclick="editFile(\'' + regionKey + '\',\'' + f.filename + '\')"><i class="bi bi-pencil"></i> ' + (f.exists ? '编辑' : '创建') + '</button>' +
+                        (f.exists ? '<button class="btn btn-sm btn-outline-danger" onclick="clearFile(\'' + regionKey + '\',\'' + f.filename + '\')"><i class="bi bi-trash"></i> 清空</button>' : '') +
+                    '</div>' +
+                '</div>';
+            }).join('');
+        })
+        .catch(err => {
+            listEl.innerHTML = '<div class="text-center text-danger py-2">加载失败: ' + err.message + '</div>';
+        });
+}
+
+function viewFile(regionKey, filename) {
+    currentViewerRegion = regionKey;
+    currentViewerFilename = filename;
+    currentViewerContent = null;
+    
+    const viewer = document.getElementById('json-viewer-' + regionKey);
+    const title = document.getElementById('viewer-title-' + regionKey);
+    const content = document.getElementById('viewer-content-' + regionKey);
+    const editor = document.getElementById('viewer-editor-' + regionKey);
+    const btnEdit = document.getElementById('btn-edit-' + regionKey);
+    const btnSave = document.getElementById('btn-save-' + regionKey);
+    const btnCancel = document.getElementById('btn-cancel-' + regionKey);
+    
+    viewer.style.display = 'block';
+    title.textContent = '📄 ' + filename + '（只读）';
+    content.style.display = 'block';
+    editor.style.display = 'none';
+    btnEdit.style.display = 'inline-block';
+    btnSave.style.display = 'none';
+    btnCancel.style.display = 'none';
+    content.textContent = '加载中...';
+    
+    fetch('/api/dispatch/region_file/' + regionKey + '/' + filename)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                content.textContent = '错误: ' + data.error;
+                return;
+            }
+            currentViewerContent = data.content;
+            content.textContent = data.content;
+        })
+        .catch(err => {
+            content.textContent = '加载失败: ' + err.message;
+        });
+}
+
+function editFile(regionKey, filename) {
+    currentViewerRegion = regionKey;
+    currentViewerFilename = filename;
+    currentViewerContent = null;
+    
+    const viewer = document.getElementById('json-viewer-' + regionKey);
+    const title = document.getElementById('viewer-title-' + regionKey);
+    const content = document.getElementById('viewer-content-' + regionKey);
+    const editor = document.getElementById('viewer-editor-' + regionKey);
+    const btnEdit = document.getElementById('btn-edit-' + regionKey);
+    const btnSave = document.getElementById('btn-save-' + regionKey);
+    const btnCancel = document.getElementById('btn-cancel-' + regionKey);
+    
+    viewer.style.display = 'block';
+    title.textContent = '✏️ ' + filename + '（编辑中）';
+    content.style.display = 'none';
+    editor.style.display = 'block';
+    btnEdit.style.display = 'none';
+    btnSave.style.display = 'inline-block';
+    btnCancel.style.display = 'inline-block';
+    editor.value = '加载中...';
+    
+    fetch('/api/dispatch/region_file/' + regionKey + '/' + filename)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                editor.value = '错误: ' + data.error;
+                return;
+            }
+            currentViewerContent = data.content;
+            editor.value = data.content;
+        })
+        .catch(err => {
+            editor.value = '加载失败: ' + err.message;
+        });
+}
+
+function enableEditMode(regionKey) {
+    const content = document.getElementById('viewer-content-' + regionKey);
+    const editor = document.getElementById('viewer-editor-' + regionKey);
+    const btnEdit = document.getElementById('btn-edit-' + regionKey);
+    const btnSave = document.getElementById('btn-save-' + regionKey);
+    const btnCancel = document.getElementById('btn-cancel-' + regionKey);
+    const title = document.getElementById('viewer-title-' + regionKey);
+    
+    title.textContent = '✏️ ' + currentViewerFilename + '（编辑中）';
+    editor.value = content.textContent;
+    content.style.display = 'none';
+    editor.style.display = 'block';
+    btnEdit.style.display = 'none';
+    btnSave.style.display = 'inline-block';
+    btnCancel.style.display = 'inline-block';
+}
+
+function saveFileContent(regionKey) {
+    const editor = document.getElementById('viewer-editor-' + regionKey);
+    const content = editor.value;
+    
+    // 验证 JSON
+    try {
+        JSON.parse(content);
+    } catch (e) {
+        showToast('JSON 格式错误: ' + e.message, 'danger');
+        return;
+    }
+    
+    fetch('/api/dispatch/region_file/' + regionKey + '/' + currentViewerFilename, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({content: content})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.message, 'success');
+            // 切换回查看模式
+            const viewerContent = document.getElementById('viewer-content-' + regionKey);
+            const editor = document.getElementById('viewer-editor-' + regionKey);
+            const btnEdit = document.getElementById('btn-edit-' + regionKey);
+            const btnSave = document.getElementById('btn-save-' + regionKey);
+            const btnCancel = document.getElementById('btn-cancel-' + regionKey);
+            const title = document.getElementById('viewer-title-' + regionKey);
+            
+            currentViewerContent = content;
+            viewerContent.textContent = content;
+            viewerContent.style.display = 'block';
+            editor.style.display = 'none';
+            btnEdit.style.display = 'inline-block';
+            btnSave.style.display = 'none';
+            btnCancel.style.display = 'none';
+            title.textContent = '📄 ' + currentViewerFilename + '（只读）';
+            
+            // 刷新看板数据
+            refreshData();
+        } else {
+            showToast('保存失败: ' + (data.error || '未知错误'), 'danger');
+        }
+    })
+    .catch(err => showToast('保存失败: ' + err.message, 'danger'));
+}
+
+function cancelEdit(regionKey) {
+    const viewerContent = document.getElementById('viewer-content-' + regionKey);
+    const editor = document.getElementById('viewer-editor-' + regionKey);
+    const btnEdit = document.getElementById('btn-edit-' + regionKey);
+    const btnSave = document.getElementById('btn-save-' + regionKey);
+    const btnCancel = document.getElementById('btn-cancel-' + regionKey);
+    const title = document.getElementById('viewer-title-' + regionKey);
+    
+    if (currentViewerContent !== null) {
+        viewerContent.textContent = currentViewerContent;
+    }
+    viewerContent.style.display = 'block';
+    editor.style.display = 'none';
+    btnEdit.style.display = 'inline-block';
+    btnSave.style.display = 'none';
+    btnCancel.style.display = 'none';
+    title.textContent = '📄 ' + currentViewerFilename + '（只读）';
+}
+
+function closeViewer(regionKey) {
+    const viewer = document.getElementById('json-viewer-' + regionKey);
+    viewer.style.display = 'none';
+    currentViewerRegion = null;
+    currentViewerFilename = null;
+    currentViewerContent = null;
+}
+
+function clearFile(regionKey, filename) {
+    if (!confirm('确定清空文件 ' + filename + ' 吗？此操作不可恢复。')) return;
+    
+    fetch('/api/dispatch/region_file/' + regionKey + '/' + filename, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({content: '[]'})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast(filename + ' 已清空', 'success');
+            loadRegionFiles(regionKey);
+            refreshData();
+        } else {
+            showToast('清空失败: ' + (data.error || '未知错误'), 'danger');
+        }
+    })
+    .catch(err => showToast('清空失败: ' + err.message, 'danger'));
+}
+
+// ========== 下发记录展开面板 ==========
+
+function toggleDispatchLogPanel(regionKey, btn) {
+    const panel = document.getElementById('dispatch-log-panel-' + regionKey);
+    const isOpen = panel.classList.contains('open');
+    
+    // 关闭所有其他面板
+    document.querySelectorAll('.json-panel.open').forEach(p => p.classList.remove('open'));
+    
+    if (isOpen) {
+        panel.classList.remove('open');
+        return;
+    }
+    
+    panel.classList.add('open');
+    loadDispatchLogs(regionKey);
+}
+
+// 下发记录缓存（用于详情查看）
+let dispatchLogsCache = {};
+
+function loadDispatchLogs(regionKey) {
+    const listEl = document.getElementById('dispatch-log-list-' + regionKey);
+    listEl.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm me-2"></div>加载下发记录...</div>';
+    
+    fetch('/api/dispatch/dispatch_log/' + regionKey)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                listEl.innerHTML = '<div class="text-center text-danger py-2">' + data.error + '</div>';
+                return;
+            }
+            if (!data.logs || data.logs.length === 0) {
+                listEl.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-inbox me-2"></i>暂无下发记录</div>';
+                return;
+            }
+            // 缓存日志数据
+            dispatchLogsCache[regionKey] = data.logs;
+            
+            listEl.innerHTML = data.logs.map((log, idx) => {
+                const time = new Date(log.time).toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+                const dirLabel = log.direction === 'in' ? '来区域' : (log.direction === 'out' ? '离开' : '');
+                const dirColor = log.direction === 'in' ? 'success' : 'danger';
+                const simBadge = log.simulated 
+                    ? '<span class="badge bg-warning">⚠️ 模拟</span>' 
+                    : '<span class="badge bg-success">✅ 真实</span>';
+                return '<div class="json-file-item">' +
+                    '<div class="file-info">' +
+                        '<span class="text-muted small">' + time + '</span>' +
+                        '<strong>' + log.template_name + '</strong>' +
+                        '<span class="badge bg-' + dirColor + '">' + dirLabel + '</span>' +
+                        simBadge +
+                        '<small class="text-muted">' + (log.deviceNum || '') + '</small>' +
+                    '</div>' +
+                    '<div class="file-actions">' +
+                        '<button class="btn btn-sm btn-outline-primary" onclick="viewDispatchLog(\'' + regionKey + '\',' + idx + ')"><i class="bi bi-eye"></i> 详细</button>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+        })
+        .catch(err => {
+            listEl.innerHTML = '<div class="text-center text-danger py-2">加载失败: ' + err.message + '</div>';
+        });
+}
+
+function viewDispatchLog(regionKey, idx) {
+    const logs = dispatchLogsCache[regionKey];
+    if (!logs || !logs[idx]) return;
+    
+    const log = logs[idx];
+    const viewer = document.getElementById('dispatch-log-viewer-' + regionKey);
+    const title = document.getElementById('dispatch-log-title-' + regionKey);
+    const content = document.getElementById('dispatch-log-content-' + regionKey);
+    
+    viewer.style.display = 'block';
+    title.textContent = '📤 ' + log.template_name + ' (' + (log.simulated ? '模拟' : '真实') + ')';
+    
+    const bodyStr = JSON.stringify(log.request_body, null, 2);
+    const respStr = log.response_body ? JSON.stringify(log.response_body, null, 2) : '(无响应)';
+    content.textContent = 
+        '时间: ' + new Date(log.time).toLocaleString('zh-CN') + '\n' +
+        '模板: ' + log.template_name + '\n' +
+        '方向: ' + (log.direction === 'in' ? '来区域' : '离开') + '\n' +
+        '设备: ' + (log.deviceNum || '-') + ' / ' + (log.deviceCode || '-') + '\n' +
+        '类型: ' + (log.simulated ? '模拟数据（区域已禁用）' : '真实下发') + '\n' +
+        '结果: ' + (log.result || '-') + '\n' +
+        '──────────────────────────────\n' +
+        '下发地址: ' + log.dispatch_url + '\n' +
+        '──────────────────────────────\n' +
+        '请求报文:\n' + bodyStr + '\n' +
+        '──────────────────────────────\n' +
+        '响应报文:\n' + respStr;
+}
+
+// ========== 手动发空车 ==========
+
+function manualDispatch(regionKey, direction, enabled) {
+    const dirLabel = direction === 'in' ? '来区域（调空车来）' : '离开（调空车回）';
+    const statusLabel = enabled === 'True' || enabled === true
+        ? '⚠️ 区域已启用，将发送真实POST请求到服务器'
+        : 'ℹ️ 区域已禁用，将走模拟下发逻辑';
+    const msg = `确认手动下发空车任务？\n\n方向：${dirLabel}\n${statusLabel}\n\n点击确定继续`;
+    if (!confirm(msg)) return;
+    
+    fetch(`/api/dispatch/manual_dispatch/${encodeURIComponent(regionKey)}?direction=${direction}`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showToast(data.message || '下发成功', 'success');
+                refreshData();
+            } else {
+                showToast(data.error || '下发失败', 'danger');
+            }
+        })
+        .catch(err => showToast('请求失败: ' + err.message, 'danger'));
+}
+
+// ========== 分时配置展开面板 ==========
+
+function toggleTimeSlotPanel(regionKey, btn) {
+    const panel = document.getElementById('time-slot-panel-' + regionKey);
+    const isOpen = panel.classList.contains('open');
+    
+    document.querySelectorAll('.json-panel.open').forEach(p => p.classList.remove('open'));
+    
+    if (isOpen) {
+        panel.classList.remove('open');
+        return;
+    }
+    
+    panel.classList.add('open');
+    loadTimeSlotConfig(regionKey);
+}
+
+function loadTimeSlotConfig(regionKey) {
+    const el = document.getElementById('time-slot-content-' + regionKey);
+    el.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm me-2"></div>加载分时配置...</div>';
+    
+    fetch('/api/dispatch/config')
+        .then(r => r.json())
+        .then(config => {
+            const region = config[regionKey];
+            if (!region) { el.innerHTML = '<div class="text-danger py-2">区域不存在</div>'; return; }
+            
+            const ts = region.time_slots || { enabled: false, slots: [] };
+            const slots = ts.slots || [];
+            
+            let html = '<div class="mb-3 d-flex align-items-center gap-3">';
+            html += '<div class="form-check form-switch">';
+            html += '<input class="form-check-input" type="checkbox" ' + (ts.enabled ? 'checked' : '') + ' onchange="toggleTimeSlotEnabled(\'' + regionKey + '\', this.checked)">';
+            html += '<label class="form-check-label">' + (ts.enabled ? '分时已启用' : '分时已禁用') + '</label>';
+            html += '</div>';
+            html += '<small class="text-muted">优先级低于手动开关</small>';
+            html += '</div>';
+            
+            if (slots.length > 0) {
+                html += '<div class="mb-2"><strong>时段列表：</strong></div>';
+                slots.forEach((s, idx) => {
+                    const xminLabel = s.xmin === -1 ? '禁用' : s.xmin;
+                    const xmaxLabel = s.xmax === -1 ? '禁用' : s.xmax;
+                    html += '<div class="json-file-item">';
+                    html += '<div class="file-info">';
+                    html += '<span class="badge bg-info">' + s.start + ' ~ ' + s.end + '</span>';
+                    html += '<span>xmin: <strong>' + xminLabel + '</strong></span>';
+                    html += '<span>xmax: <strong>' + xmaxLabel + '</strong></span>';
+                    html += '</div>';
+                    html += '<div class="file-actions">';
+                    html += '<button class="btn btn-sm btn-outline-primary" onclick="editTimeSlot(\'' + regionKey + '\',' + idx + ')"><i class="bi bi-pencil"></i></button>';
+                    html += '<button class="btn btn-sm btn-outline-danger" onclick="removeTimeSlot(\'' + regionKey + '\',' + idx + ')"><i class="bi bi-trash"></i></button>';
+                    html += '</div>';
+                    html += '</div>';
+                });
+            } else {
+                html += '<div class="text-muted py-2">暂无时段配置</div>';
+            }
+            
+            // 新增/编辑时段表单
+            html += '<div class="mt-3 p-3" style="background:var(--card-bg);border-radius:8px;border:1px solid var(--border-color);">';
+            html += '<div class="d-flex justify-content-between align-items-center mb-2">';
+            html += '<strong id="ts-mode-' + regionKey + '" style="color:var(--primary-color);"><i class="bi bi-plus-circle me-1"></i>新增时段</strong>';
+            html += '<button class="btn btn-sm btn-outline-secondary" id="ts-cancel-' + regionKey + '" onclick="resetTimeSlotForm(\'' + regionKey + '\')" style="display:none;"><i class="bi bi-x"></i> 取消编辑</button>';
+            html += '</div>';
+            html += '<div class="row g-2 align-items-end">';
+            html += '<div class="col-md-2"><label class="form-label small">开始</label><input type="time" class="form-control form-control-sm" id="ts-start-' + regionKey + '" value="08:00"></div>';
+            html += '<div class="col-md-2"><label class="form-label small">结束</label><input type="time" class="form-control form-control-sm" id="ts-end-' + regionKey + '" value="17:00"></div>';
+            html += '<div class="col-md-2"><label class="form-label small">xmin</label><input type="number" class="form-control form-control-sm" id="ts-xmin-' + regionKey + '" value="2"></div>';
+            html += '<div class="col-md-2"><label class="form-label small">xmax</label><input type="number" class="form-control form-control-sm" id="ts-xmax-' + regionKey + '" value="4"></div>';
+            html += '<div class="col-md-2"><button class="btn btn-sm btn-primary" id="ts-btn-' + regionKey + '" onclick="addTimeSlot(\'' + regionKey + '\')"><i class="bi bi-plus"></i> 添加</button></div>';
+            html += '</div>';
+            html += '<small class="text-muted mt-1 d-block">xmin=-1, xmax=-1 = 禁用真实任务；xmin=0, xmax=0 = 清空到0</small>';
+            html += '</div>';
+            
+            el.innerHTML = html;
+        })
+        .catch(err => { el.innerHTML = '<div class="text-danger py-2">加载失败: ' + err.message + '</div>'; });
+}
+
+function toggleTimeSlotEnabled(regionKey, enabled) {
+    fetch('/api/dispatch/config')
+        .then(r => r.json())
+        .then(config => {
+            if (!config[regionKey]) return;
+            if (!config[regionKey].time_slots) config[regionKey].time_slots = { enabled: false, slots: [] };
+            config[regionKey].time_slots.enabled = enabled;
+            return fetch('/api/dispatch/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+        })
+        .then(r => r && r.json())
+        .then(result => {
+            if (result && result.success) {
+                showToast('分时配置已' + (enabled ? '启用' : '禁用'), 'success');
+                loadTimeSlotConfig(regionKey);
+                refreshData();
+            }
+        })
+        .catch(err => showToast('操作失败: ' + err.message, 'danger'));
+}
+
+function addTimeSlot(regionKey) {
+    const start = document.getElementById('ts-start-' + regionKey).value;
+    const end = document.getElementById('ts-end-' + regionKey).value;
+    const xmin = parseInt(document.getElementById('ts-xmin-' + regionKey).value);
+    const xmax = parseInt(document.getElementById('ts-xmax-' + regionKey).value);
+    
+    if (!start || !end) { showToast('请填写开始和结束时间', 'warning'); return; }
+    if (isNaN(xmin) || isNaN(xmax)) { showToast('xmin 和 xmax 必须为数字', 'warning'); return; }
+    // 校验：xmax > xmin，允许特殊组合 (0,0)=清空到0, (-1,-1)=禁用
+    if (!(xmin === 0 && xmax === 0) && !(xmin === -1 && xmax === -1) && xmax <= xmin) {
+        showToast('xmax 必须大于 xmin（或设为 0,0 清空 / -1,-1 禁用）', 'warning');
+        return;
+    }
+    
+    fetch('/api/dispatch/config')
+        .then(r => r.json())
+        .then(config => {
+            if (!config[regionKey]) return;
+            if (!config[regionKey].time_slots) config[regionKey].time_slots = { enabled: false, slots: [] };
+            config[regionKey].time_slots.slots.push({ start, end, xmin, xmax });
+            return fetch('/api/dispatch/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+        })
+        .then(r => r && r.json())
+        .then(result => {
+            if (result && result.success) {
+                showToast('时段已添加', 'success');
+                loadTimeSlotConfig(regionKey);
+                refreshData();
+            }
+        })
+        .catch(err => showToast('添加失败: ' + err.message, 'danger'));
+}
+
+function editTimeSlot(regionKey, idx) {
+    fetch('/api/dispatch/config')
+        .then(r => r.json())
+        .then(config => {
+            const slots = config[regionKey]?.time_slots?.slots;
+            if (!slots || !slots[idx]) return;
+            const s = slots[idx];
+            
+            // 填充表单
+            document.getElementById('ts-start-' + regionKey).value = s.start;
+            document.getElementById('ts-end-' + regionKey).value = s.end;
+            document.getElementById('ts-xmin-' + regionKey).value = s.xmin;
+            document.getElementById('ts-xmax-' + regionKey).value = s.xmax;
+            
+            // 切换为编辑模式
+            const modeTitle = document.getElementById('ts-mode-' + regionKey);
+            modeTitle.innerHTML = '<i class="bi bi-pencil-square me-1"></i>编辑时段 (#' + (idx+1) + ')';
+            modeTitle.style.color = '#ffc107';
+            
+            const btn = document.getElementById('ts-btn-' + regionKey);
+            btn.className = 'btn btn-sm btn-warning';
+            btn.innerHTML = '<i class="bi bi-check-lg"></i> 更新';
+            btn.onclick = function() { updateTimeSlot(regionKey, idx); };
+            
+            document.getElementById('ts-cancel-' + regionKey).style.display = 'inline-block';
+        });
+}
+
+function resetTimeSlotForm(regionKey) {
+    // 重置为新增模式
+    document.getElementById('ts-start-' + regionKey).value = '08:00';
+    document.getElementById('ts-end-' + regionKey).value = '17:00';
+    document.getElementById('ts-xmin-' + regionKey).value = '2';
+    document.getElementById('ts-xmax-' + regionKey).value = '4';
+    
+    const modeTitle = document.getElementById('ts-mode-' + regionKey);
+    modeTitle.innerHTML = '<i class="bi bi-plus-circle me-1"></i>新增时段';
+    modeTitle.style.color = '';
+    
+    const btn = document.getElementById('ts-btn-' + regionKey);
+    btn.className = 'btn btn-sm btn-primary';
+    btn.innerHTML = '<i class="bi bi-plus"></i> 添加';
+    btn.onclick = function() { addTimeSlot(regionKey); };
+    
+    document.getElementById('ts-cancel-' + regionKey).style.display = 'none';
+}
+
+function updateTimeSlot(regionKey, idx) {
+    const start = document.getElementById('ts-start-' + regionKey).value;
+    const end = document.getElementById('ts-end-' + regionKey).value;
+    const xmin = parseInt(document.getElementById('ts-xmin-' + regionKey).value);
+    const xmax = parseInt(document.getElementById('ts-xmax-' + regionKey).value);
+    
+    if (!start || !end) { showToast('请填写开始和结束时间', 'warning'); return; }
+    if (isNaN(xmin) || isNaN(xmax)) { showToast('xmin 和 xmax 必须为数字', 'warning'); return; }
+    // 校验：xmax > xmin，允许特殊组合 (0,0)=清空到0, (-1,-1)=禁用
+    if (!(xmin === 0 && xmax === 0) && !(xmin === -1 && xmax === -1) && xmax <= xmin) {
+        showToast('xmax 必须大于 xmin（或设为 0,0 清空 / -1,-1 禁用）', 'warning');
+        return;
+    }
+    
+    fetch('/api/dispatch/config')
+        .then(r => r.json())
+        .then(config => {
+            // 确保 time_slots 和 slots 存在
+            if (!config[regionKey]) {
+                showToast('区域不存在', 'danger');
+                return;
+            }
+            if (!config[regionKey].time_slots) {
+                config[regionKey].time_slots = { enabled: false, slots: [] };
+            }
+            if (!config[regionKey].time_slots.slots) {
+                config[regionKey].time_slots.slots = [];
+            }
+            // 确保 slots 数组长度足够
+            while (config[regionKey].time_slots.slots.length <= idx) {
+                config[regionKey].time_slots.slots.push({ start: '00:00', end: '23:59', xmin: 2, xmax: 4 });
+            }
+            config[regionKey].time_slots.slots[idx] = { start, end, xmin, xmax };
+            return fetch('/api/dispatch/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+        })
+        .then(r => {
+            if (!r) return null;
+            return r.json();
+        })
+        .then(result => {
+            if (result && result.success) {
+                showToast('时段已更新', 'success');
+                // 更新成功后重置表单为新增模式
+                resetTimeSlotForm(regionKey);
+                loadTimeSlotConfig(regionKey);
+                refreshData();
+            } else {
+                showToast('更新失败: 服务器返回异常', 'danger');
+            }
+        })
+        .catch(err => showToast('更新失败: ' + err.message, 'danger'));
+}
+
+function removeTimeSlot(regionKey, idx) {
+    if (!confirm('确定删除该时段？')) return;
+    
+    fetch('/api/dispatch/config')
+        .then(r => r.json())
+        .then(config => {
+            if (!config[regionKey] || !config[regionKey].time_slots) return;
+            config[regionKey].time_slots.slots.splice(idx, 1);
+            return fetch('/api/dispatch/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+        })
+        .then(r => r && r.json())
+        .then(result => {
+            if (result && result.success) {
+                showToast('时段已删除', 'success');
+                loadTimeSlotConfig(regionKey);
+                refreshData();
+            }
+        })
+        .catch(err => showToast('删除失败: ' + err.message, 'danger'));
+}
+
+function showToast(message, type) {
+    const container = document.getElementById('toastContainer');
+    if (!container) {
+        // 如果没有 toastContainer，创建临时提示
+        alert(message);
+        return;
+    }
+    const t = document.createElement('div');
+    t.className = 'toast align-items-center text-bg-' + type + ' border-0 show';
+    t.innerHTML = '<div class="d-flex"><div class="toast-body">' + message + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>';
+    container.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+}
+
+// ========== 自恢复面板 ==========
+
+function toggleSelfHealPanel(regionKey, btn) {
+    const panel = document.getElementById('self-heal-panel-' + regionKey);
+    const isOpen = panel.classList.contains('open');
+    document.querySelectorAll('.json-panel.open').forEach(p => p.classList.remove('open'));
+    if (isOpen) { panel.classList.remove('open'); return; }
+    panel.classList.add('open');
+    loadSelfHealStatus(regionKey);
+}
+
+function loadSelfHealStatus(regionKey) {
+    const el = document.getElementById('self-heal-content-' + regionKey);
+    el.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm me-2"></div>加载自恢复状态...</div>';
+    fetch('/api/dispatch/self_heal/status')
+        .then(r => r.json())
+        .then(data => {
+            const st = data.status[regionKey];
+            if (!st) {
+                el.innerHTML = '<div class="text-muted py-2">暂无自恢复记录（需在配置中启用）</div>';
+                return;
+            }
+            const lastCheck = st.last_check ? new Date(st.last_check).toLocaleString('zh-CN') : '从未';
+            el.innerHTML = '<div class="small">' +
+                '<div><strong>上次检查：</strong>' + lastCheck + '</div>' +
+                '<div><strong>清理数量：</strong>' + (st.cleaned_count || 0) + '</div>' +
+                (st.errors && st.errors.length > 0 ? '<div class="text-danger"><strong>错误：</strong>' + st.errors.join(', ') + '</div>' : '') +
+                '<button class="btn btn-sm btn-outline-success mt-2" onclick="triggerSelfHeal(\'' + regionKey + '\')"><i class="bi bi-heart-pulse"></i> 手动触发检查</button>' +
+                '</div>';
+        })
+        .catch(err => { el.innerHTML = '<div class="text-danger py-2">加载失败: ' + err.message + '</div>'; });
+}
+
+function triggerSelfHeal(regionKey) {
+    const el = document.getElementById('self-heal-content-' + regionKey);
+    el.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm me-2"></div>正在检查...</div>';
+    fetch('/api/dispatch/self_heal/check?region_key=' + encodeURIComponent(regionKey), { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showToast('自恢复检查完成，清理 ' + (data.cleaned || 0) + ' 个异常任务', 'success');
+                loadSelfHealStatus(regionKey);
+                refreshData();
+            } else {
+                showToast(data.error || '检查失败', 'danger');
+                loadSelfHealStatus(regionKey);
+            }
+        })
+        .catch(err => { el.innerHTML = '<div class="text-danger py-2">检查失败: ' + err.message + '</div>'; });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,448 @@
+{% extends "base.html" %}
+
+{% block title %}模板详情 - {{ template.model_process_code }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2>
+            <i class="bi bi-diagram-3 text-primary"></i> 任务模板详情
+        </h2>
+        <p class="text-muted">
+            模板代码: <code>{{ template.model_process_code }}</code> | ID: {{ template.id }}
+        </p>
+    </div>
+    <div>
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-house"></i> 首页
+        </a>
+        <a href="{{ url_for('search') }}?search_term={{ template.model_process_code.split('_')[0] }}" 
+           class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-search"></i> 相关搜索
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <!-- 模板基本信息 -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-info-circle"></i> 模板基本信息
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>模板代码:</strong> <code>{{ template.model_process_code }}</code></p>
+                        <p><strong>模板名称:</strong> {{ template.model_process_name }}</p>
+                        <p><strong>状态:</strong> 
+                            {% if template.enable == 1 %}
+                                <span class="badge bg-success">启用</span>
+                            {% else %}
+                                <span class="badge bg-warning">禁用(跨环境任务)</span>
+                            {% endif %}
+                        </p>
+                        <p><strong>容量管控:</strong> 
+                            {% if template.capacity is none %}
+                                <span class="badge bg-secondary">未设置</span>
+                            {% elif template.capacity == -1 %}
+                                <span class="badge bg-secondary">不限制</span>
+                            {% else %}
+                                <span class="badge bg-primary">{{ template.capacity }}</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>区域ID:</strong> {{ template.area_id or '未设置' }}</p>
+                        <p><strong>目标点位:</strong> {{ template.target_points or '未设置' }}</p>
+                        <p><strong>目标服务器:</strong> <code class="small">{{ template.target_points_ip or '未设置' }}</code></p>
+                        <p><strong>空车回流等待:</strong> {{ template.back_wait_time or 0 }} 秒</p>
+                    </div>
+                </div>
+                
+                <div class="mt-3">
+                    <p><strong>回调URL:</strong></p>
+                    <div class="bg-light p-2 rounded">
+                        <code class="small">{{ template.request_url or '未设置' }}</code>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-md-4">
+                        <p><strong>货架回流模板:</strong> {{ template.backflow_template_code or '未设置' }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <p><strong>空车回流模板:</strong> {{ template.comeback_template_code or '未设置' }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <p><strong>换电出发模板:</strong> {{ template.change_charge_template_code or '未设置' }}</p>
+                    </div>
+                </div>
+                
+                <div class="row mt-2">
+                    <div class="col-md-6">
+                        <p><strong>换电触发电量:</strong> {{ template.min_power or 0 }}%</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>检查回流区域:</strong> {{ template.check_area_name or '未设置' }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 子任务列表 -->
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-list-task"></i> 子任务列表
+                    <span class="badge bg-light text-dark ms-2">{{ details|default([])|length }} 个子任务</span>
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if details %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>顺序</th>
+                                    <th>模板代码</th>
+                                    <th>模板名称</th>
+                                    <th>服务器地址</th>
+                                    <th>目标点</th>
+                                    <th>第三方触发</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for detail in details %}
+                                    <tr>
+                                        <td>{{ detail.id }}</td>
+                                        <td>
+                                            <span class="badge bg-secondary">#{{ detail.task_seq }}</span>
+                                        </td>
+                                        <td><code>{{ detail.template_code|default('未设置') }}</code></td>
+                                        <td>{{ detail.template_name|default('未设置') }}</td>
+                                        <td>
+                                            <code class="small">{{ detail.task_servicec|default('未设置') }}</code>
+                                        </td>
+                                        <td>
+                                            {% if detail.task_path and detail.task_path != '-' %}
+                                                {{ detail.task_path }}
+                                            {% else %}
+                                                <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if detail.need_third_trigger == 1 %}
+                                                <span class="badge bg-warning">是</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">否</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <button type="button" class="btn btn-sm btn-outline-warning"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#editDetailModal{{ detail.id }}">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-info"
+                                                    data-bs-toggle="collapse"
+                                                    data-bs-target="#detailInfo{{ detail.id }}">
+                                                <i class="bi bi-info"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <!-- 详细信息折叠 -->
+                                    <tr class="collapse" id="detailInfo{{ detail.id }}">
+                                        <td colspan="8" class="bg-light">
+                                            <div class="p-3">
+                                                <h6>子任务详细信息</h6>
+                                                <div class="row">
+                                                    <div class="col-md-6">
+                                                        <p><strong>ID:</strong> {{ detail.id }}</p>
+                                                        <p><strong>关联模板ID:</strong> {{ detail.model_process_id|default('未设置') }}</p>
+                                                        <p><strong>货架回流模板:</strong> {{ detail.backflow_template_code or '未设置' }}</p>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <p><strong>空车回流模板:</strong> {{ detail.comeback_template_code or '未设置' }}</p>
+                                                        <p><strong>回流等待时间:</strong> {{ detail.back_wait_time or 0 }} 秒</p>
+                                                        <p><strong>第三方触发:</strong>
+                                                            {% if detail.need_third_trigger == 1 %}
+                                                                <span class="badge bg-warning">是</span>
+                                                            {% else %}
+                                                                <span class="badge bg-secondary">否</span>
+                                                            {% endif %}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="alert alert-warning text-center py-4">
+                        <i class="bi bi-exclamation-triangle display-4 d-block mb-3"></i>
+                        <h5>该模板没有配置子任务</h5>
+                        <p class="mb-0">请在编辑页面添加子任务</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <!-- 操作面板 -->
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-gear"></i> 操作
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('edit_template', template_id=template.id) }}" 
+                       class="btn btn-warning">
+                        <i class="bi bi-pencil"></i> 编辑模板
+                    </a>
+                    <a href="{{ url_for('copy_template', template_id=template.id) }}" 
+                       class="btn btn-success">
+                        <i class="bi bi-copy"></i> 复制模板
+                    </a>
+                    <button type="button" class="btn btn-info" 
+                            data-bs-toggle="modal" 
+                            data-bs-target="#jsonModal">
+                        <i class="bi bi-code-slash"></i> 查看JSON数据
+                    </button>
+<a href="{{ url_for('search') }}?search_term={% if template.model_process_code %}{{ template.model_process_code.split('_')[0] }}{% endif %}"
+                       class="btn btn-outline-primary">
+                        <i class="bi bi-search"></i> 搜索相关模板
+                    </a>
+                </div>
+                
+                <hr>
+                
+                <div class="mt-3">
+                    <h6>模板状态</h6>
+                    <div class="alert {% if template.enable == 1 %}alert-success{% else %}alert-warning{% endif %}">
+                        {% if template.enable == 1 %}
+                            <i class="bi bi-check-circle"></i> 此模板已启用，为普通服务器内任务
+                        {% else %}
+                            <i class="bi bi-exclamation-triangle"></i> 此模板已禁用，为跨环境任务
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="mt-3">
+                    <h6>快速操作</h6>
+                    <div class="d-flex flex-wrap gap-1">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="copyToClipboard('{{ template.model_process_code }}')">
+                            <i class="bi bi-clipboard"></i> 复制代码
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="copyToClipboard('{{ template.id }}')">
+                            <i class="bi bi-clipboard-data"></i> 复制ID
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 模板信息摘要 -->
+        <div class="card">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-card-checklist"></i> 信息摘要
+                </h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>创建时间</span>
+                        <span class="text-muted">未知</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>最后修改</span>
+                        <span class="text-muted">未知</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>子任务数量</span>
+                        <span class="badge bg-primary rounded-pill">{{ details|default([])|length }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>容量管控值</span>
+                        <span class="badge {% if template.capacity == -1 %}bg-secondary{% else %}bg-primary{% endif %} rounded-pill">
+                            {% if template.capacity == -1 %}不限制{% else %}{{ template.capacity }}{% endif %}
+                        </span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>空车回流等待</span>
+                        <span class="badge bg-info rounded-pill">{{ template.back_wait_time or 0 }}秒</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JSON数据模态框 -->
+<div class="modal fade" id="jsonModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">模板JSON数据</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6>主模板数据:</h6>
+                <pre class="bg-light p-3 rounded">{{ template|tojson(indent=2) }}</pre>
+                
+                {% if details %}
+                    <h6 class="mt-3">子任务数据:</h6>
+                    <pre class="bg-light p-3 rounded">{{ details|default([])|tojson(indent=2) }}</pre>
+                {% endif %}
+                
+                <!-- 隐藏的JSON数据供JavaScript使用 -->
+                <div id="templateJsonData" style="display: none;">{{ template|tojson }}</div>
+                {% if details %}
+                    <div id="detailsJsonData" style="display: none;">{{ details|default([])|tojson }}</div>
+                {% endif %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" onclick="copyJsonToClipboard()">
+                    <i class="bi bi-clipboard"></i> 复制JSON
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑子任务模态框 -->
+{% for detail in details %}
+<div class="modal fade" id="editDetailModal{{ detail.id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">编辑子任务 #{{ detail.task_seq }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('edit_detail', detail_id=detail.id) }}" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">任务顺序</label>
+                        <input type="number" class="form-control" name="task_seq" 
+                               value="{{ detail.task_seq }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">模板代码</label>
+                        <input type="text" class="form-control" name="template_code" 
+                               value="{{ detail.template_code|default('') }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">模板名称</label>
+                        <input type="text" class="form-control" name="template_name" 
+                               value="{{ detail.template_name|default('') }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">服务器地址</label>
+                        <input type="text" class="form-control" name="task_servicec" 
+                               value="{{ detail.task_servicec|default('') }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">目标点标识</label>
+                        <input type="text" class="form-control" name="task_path" 
+                               value="{{ detail.task_path }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">货架回流模板</label>
+                        <input type="text" class="form-control" name="backflow_template_code" 
+                               value="{{ detail.backflow_template_code or '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">空车回流模板</label>
+                        <input type="text" class="form-control" name="comeback_template_code" 
+                               value="{{ detail.comeback_template_code or '' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">回流等待时间 (秒)</label>
+                        <input type="number" class="form-control" name="back_wait_time"
+                               value="{{ detail.back_wait_time or 0 }}" min="0">
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" name="need_third_trigger"
+                               value="1" id="edit_need_third_trigger_{{ detail.id }}"
+                               {% if detail.need_third_trigger == 1 %}checked{% endif %}>
+                        <label class="form-check-label" for="edit_need_third_trigger_{{ detail.id }}">
+                            第三方触发
+                        </label>
+                        <div class="form-text">勾选表示该子任务存在第三方触发</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存修改</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+{% block extra_js %}
+<script>
+    // 复制到剪贴板
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(function() {
+            alert('已复制到剪贴板: ' + text);
+        }, function(err) {
+            console.error('复制失败: ', err);
+        });
+    }
+    
+    // 复制JSON到剪贴板
+    function copyJsonToClipboard() {
+        // 直接从页面元素获取JSON数据
+        const templateJsonElement = document.querySelector('#templateJsonData');
+        const detailsJsonElement = document.querySelector('#detailsJsonData');
+        
+        let templateJson = {};
+        let detailsJson = [];
+        
+        if (templateJsonElement) {
+            try {
+                templateJson = JSON.parse(templateJsonElement.textContent);
+            } catch (e) {
+                console.error('解析模板JSON失败:', e);
+            }
+        }
+        
+        if (detailsJsonElement) {
+            try {
+                detailsJson = JSON.parse(detailsJsonElement.textContent);
+            } catch (e) {
+                console.error('解析子任务JSON失败:', e);
+            }
+        }
+        
+        const data = {
+            template: templateJson,
+            details: detailsJson
+        };
+        
+        const jsonStr = JSON.stringify(data, null, 2);
+        copyToClipboard(jsonStr);
+    }
+    
+    // 确认删除
+    function confirmDelete() {
+        return confirm('确定要删除这个模板吗？\n\n此操作将删除模板及其所有子任务，且不可恢复！');
+    }
+</script>
+{% endblock %}
+{% endblock %}

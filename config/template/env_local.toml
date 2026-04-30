@@ -1,0 +1,46 @@
+# 本地数据库配置（适用于无网络环境）
+# 使用本地MySQL数据库，避免远程连接
+
+[database]
+# 本地数据库配置
+host = "localhost"
+port = 3306
+user = "root"
+password = ""  # 修改为你的MySQL密码
+name = "agv_cross_env_local"  # 本地数据库名
+charset = "utf8mb4"
+
+# 或者使用SQLite数据库（无需MySQL服务）
+# 取消注释以下配置并使用SQLite
+# [database]
+# type = "sqlite"
+# path = "data/cross_env.db"
+
+[flask]
+secret_key = "cross_env_manager_secret_key_2026_local"
+debug = false
+host = "0.0.0.0"
+port = 5000
+
+# 应用配置
+[app]
+name = "跨环境任务模板管理系统（本地版）"
+log_level = "INFO"
+max_content_length = 16777216  # 16MB
+
+# 数据导入配置（可选）
+# 如果从远程数据库导入数据到本地
+[import]
+# 源数据库配置（远程）
+source_host = "47.98.244.173"
+source_port = 53308
+source_user = "root"
+source_password = "Qq13235202993"
+source_database = "ds"
+
+# 目标数据库配置（本地）
+target_host = "localhost"
+target_port = 3306
+target_user = "root"
+target_password = ""
+target_database = "agv_cross_env_local"

@@ -1,0 +1,856 @@
+{% extends "base.html" %}
+
+{% block title %}编辑模板 - {{ template.model_process_code }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2>
+            <i class="bi bi-pencil text-warning"></i> 编辑任务模板
+        </h2>
+        <p class="text-muted">
+            模板代码: <code>{{ template.model_process_code }}</code> | ID: {{ template.id }}
+        </p>
+    </div>
+    <div>
+        <a href="{{ url_for('view_template', template_id=template.id) }}" 
+           class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> 返回详情
+        </a>
+    </div>
+</div>
+
+<form action="{{ url_for('edit_template', template_id=template.id) }}" method="post">
+    <!-- 模板基本信息 -->
+    <div class="form-section">
+        <h4><i class="bi bi-info-circle"></i> 模板基本信息</h4>
+        
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <label class="form-label">ID</label>
+                <input type="text" class="form-control" value="{{ template.id }}" readonly>
+                <div class="form-text">主键ID</div>
+            </div>
+            <div class="col-md-5">
+                <label class="form-label">模板代码</label>
+                <input type="text" class="form-control" value="{{ template.model_process_code }}" readonly>
+                <div class="form-text">模板代码不可修改</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">模板名称</label>
+                <input type="text" class="form-control" name="model_process_name" 
+                       value="{{ template.model_process_name }}" required>
+                <div class="form-text">模板显示名称</div>
+            </div>
+        </div>
+        
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">是否启用</label>
+                <select class="form-select" name="enable">
+                    <option value="0" {% if template.enable == 0 %}selected{% endif %}>禁用 (跨环境任务)</option>
+                    <option value="1" {% if template.enable == 1 %}selected{% endif %}>启用 (普通任务)</option>
+                </select>
+                <div class="form-text">0=禁用任务, 1=启用任务</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 容量管控相关配置 -->
+    <div class="form-section">
+        <h4><i class="bi bi-speedometer2"></i> 容量管控相关配置</h4>
+        
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">回调URL</label>
+                <input type="url" class="form-control" name="request_url" 
+                       value="{{ template.request_url or '' }}" 
+                       placeholder="http://10.1.80.60:5000/Api/RCS/PushJobStatus">
+                <div class="form-text">容量管控定制使用</div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">容量管控值</label>
+                <input type="number" class="form-control" name="capacity" 
+                       value="{{ template.capacity or '' }}">
+                <div class="form-text">容量管控用最大容量，-1表示不限制</div>
+            </div>
+        </div>
+        
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">目标点位</label>
+                <input type="text" class="form-control" name="target_points" 
+                       value="{{ template.target_points or '' }}" 
+                       placeholder="CONVERT0000">
+                <div class="form-text">容量管控检测片区域点位</div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">区域ID</label>
+                <input type="number" class="form-control" name="area_id" 
+                       value="{{ template.area_id or '' }}">
+                <div class="form-text">容量管控检测用</div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">目标服务器IP</label>
+                <input type="text" class="form-control" name="target_points_ip" 
+                       value="{{ template.target_points_ip or '' }}" 
+                       placeholder="http://10.68.2.32:7000">
+                <div class="form-text">容量管控用检测服务器</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 其他配置 -->
+    <div class="form-section">
+        <h4><i class="bi bi-gear"></i> 其他配置</h4>
+        
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">货架回流模板</label>
+                <input type="text" class="form-control" name="backflow_template_code" 
+                       value="{{ template.backflow_template_code or '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">空车回流模板</label>
+                <input type="text" class="form-control" name="comeback_template_code" 
+                       value="{{ template.comeback_template_code or '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">换电出发模板</label>
+                <input type="text" class="form-control" name="change_charge_template_code" 
+                       value="{{ template.change_charge_template_code or '' }}">
+            </div>
+        </div>
+        
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">换电触发电量 (%)</label>
+                <input type="text" class="form-control" name="min_power" 
+                       value="{{ template.min_power or '' }}" >
+                <div class="form-text">触发换电的电量阈值</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">空车回流等待时间 (秒)</label>
+                <input type="text" class="form-control" name="back_wait_time" 
+                       value="{{ template.back_wait_time or '' }}" >
+                <div class="form-text">空车回流等待时间</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">检查回流区域</label>
+                <input type="text" class="form-control" name="check_area_name" 
+                       value="{{ template.check_area_name or '' }}">
+            </div>
+        </div>
+    </div>
+    
+    <!-- 子任务编辑 -->
+    <div class="form-section">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4><i class="bi bi-list-task"></i> 子任务管理</h4>
+            <div>
+                <button type="button" class="btn btn-success btn-sm" id="addDetailBtn">
+                    <i class="bi bi-plus-circle"></i> 新增子任务
+                </button>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="saveOrderBtn" style="display: none;">
+                    <i class="bi bi-check-circle"></i> 保存顺序
+                </button>
+            </div>
+        </div>
+        
+        {% if details %}
+            <div class="table-responsive">
+                <table class="table table-hover" id="detailTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;">拖拽</th>
+                            <th style="width: 50px;">#</th>
+                            <th style="width: 80px;">顺序</th>
+                            <th>模板代码</th>
+                            <th>模板名称</th>
+                            <th>服务器地址</th>
+                            <th>目标点</th>
+                            <th>第三方触发</th>
+                            <th style="width: 120px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detailTableBody">
+                        {% for detail in details %}
+                            <tr data-detail-id="{{ detail.id }}" data-task-seq="{{ detail.task_seq }}">
+                                <td class="drag-handle text-center" style="cursor: move;">
+                                    <i class="bi bi-grip-vertical text-muted"></i>
+                                </td>
+                                <td>{{ detail.id }}</td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm task-seq-input" 
+                                           name="detail_{{ detail.id }}_task_seq" 
+                                           value="{{ detail.task_seq }}" style="width: 70px;" readonly>
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control form-control-sm" 
+                                           name="detail_{{ detail.id }}_template_code" 
+                                           value="{{ detail.template_code|default('') }}">
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control form-control-sm" 
+                                           name="detail_{{ detail.id }}_template_name" 
+value="{{ detail.template_name|default('') }}">
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control form-control-sm" 
+                                           name="detail_{{ detail.id }}_task_servicec" 
+value="{{ detail.task_servicec|default('') }}">
+                                </td>
+                                <td>
+<input type="text" class="form-control form-control-sm"
+                                            name="detail_{{ detail.id }}_task_path"
+                                            value="{{ detail.task_path|default('') }}">
+                                </td>
+                                <td class="text-center">
+                                    <input type="checkbox" class="form-check-input"
+                                           name="detail_{{ detail.id }}_need_third_trigger"
+                                           value="1"
+                                           {% if detail.need_third_trigger == 1 %}checked{% endif %}>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <a href="#" class="btn btn-outline-warning"
+                                           data-bs-toggle="modal"
+                                           data-bs-target="#editDetailModal{{ detail.id }}">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <button type="button" class="btn btn-outline-danger delete-detail-btn"
+                                                data-detail-id="{{ detail.id }}">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> 
+                提示：拖拽行可以重新排序子任务，点击保存顺序按钮保存新的顺序。
+            </div>
+        {% else %}
+            <div class="alert alert-warning text-center py-4" id="noDetailsAlert">
+                <i class="bi bi-exclamation-triangle display-4 d-block mb-3"></i>
+                <h5>该模板没有配置子任务</h5>
+                <p class="mb-3">点击"新增子任务"按钮开始添加子任务</p>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- 操作按钮 -->
+    <div class="form-section">
+        <div class="d-flex justify-content-between">
+            <div>
+                <button type="button" class="btn btn-outline-secondary" onclick="history.back()">
+                    <i class="bi bi-x-circle"></i> 取消
+                </button>
+            </div>
+            <div>
+                <button type="button" class="btn btn-warning" onclick="confirmSave()">
+                    <i class="bi bi-check-circle"></i> 保存修改
+                </button>
+                <button type="submit" class="btn btn-primary" id="submitBtn" style="display: none;">
+                    确认保存
+                </button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<!-- 编辑子任务模态框 -->
+{% for detail in details %}
+<div class="modal fade" id="editDetailModal{{ detail.id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">编辑子任务 #{{ detail.task_seq }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('edit_detail', detail_id=detail.id) }}" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">任务顺序</label>
+                        <input type="number" class="form-control" name="task_seq" 
+                               value="{{ detail.task_seq }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">模板代码</label>
+<input type="text" class="form-control" name="template_code" 
+                                value="{{ detail.template_code|default('') }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">模板名称</label>
+<input type="text" class="form-control" name="template_name" 
+                                value="{{ detail.template_name|default('') }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">服务器地址</label>
+<input type="text" class="form-control" name="task_servicec" 
+                                value="{{ detail.task_servicec|default('') }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">目标点标识</label>
+<input type="text" class="form-control" name="task_path" 
+                                value="{{ detail.task_path|default('') }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">货架回流模板</label>
+                        <input type="text" class="form-control" name="backflow_template_code" 
+                               value="{{ detail.backflow_template_code or '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">空车回流模板</label>
+                        <input type="text" class="form-control" name="comeback_template_code" 
+                               value="{{ detail.comeback_template_code or '' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">回流等待时间 (秒)</label>
+                        <input type="number" class="form-control" name="back_wait_time"
+                               value="{{ detail.back_wait_time or 0 }}" min="0">
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" name="need_third_trigger"
+                               value="1" id="edit_need_third_trigger_{{ detail.id }}"
+                               {% if detail.need_third_trigger == 1 %}checked{% endif %}>
+                        <label class="form-check-label" for="edit_need_third_trigger_{{ detail.id }}">
+                            第三方触发
+                        </label>
+                        <div class="form-text">勾选表示该子任务存在第三方触发</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存修改</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<!-- 新增子任务模态框 -->
+<div class="modal fade" id="addDetailModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">新增子任务</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addDetailForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">模板代码 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="new_template_code" 
+                               name="template_code" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">模板名称</label>
+                        <input type="text" class="form-control" id="new_template_name" 
+                               name="template_name">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">服务器地址</label>
+                        <input type="text" class="form-control" id="new_task_servicec" 
+                               name="task_servicec">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">目标点标识</label>
+                        <input type="text" class="form-control" id="new_task_path" 
+                               name="task_path">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">货架回流模板</label>
+                        <input type="text" class="form-control" id="new_backflow_template_code" 
+                               name="backflow_template_code">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">空车回流模板</label>
+                        <input type="text" class="form-control" id="new_comeback_template_code" 
+                               name="comeback_template_code">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">回流等待时间 (秒)</label>
+                        <input type="text" class="form-control" id="new_back_wait_time"
+                               name="back_wait_time" value="0">
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" name="need_third_trigger"
+                               value="1" id="new_need_third_trigger">
+                        <label class="form-check-label" for="new_need_third_trigger">
+                            第三方触发
+                        </label>
+                        <div class="form-text">勾选表示该子任务存在第三方触发</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">添加子任务</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 警告信息 -->
+<div class="alert alert-warning mt-4">
+    <h5><i class="bi bi-exclamation-triangle"></i> 重要提示</h5>
+    <ul class="mb-0">
+        <li>修改模板信息将直接更新数据库，请谨慎操作</li>
+        <li>跨环境任务模板的 <code>enable</code> 字段应设置为 0 (禁用)</li>
+        <li>修改完成后，相关AGV任务将使用新的配置</li>
+        <li>建议在修改前备份当前配置</li>
+    </ul>
+</div>
+
+{% block extra_js %}
+<script src="/static/vendor/sortablejs/Sortable.min.js"></script>
+<script>
+    // 确认保存
+    function confirmSave() {
+        if (confirm('确定要保存对模板的修改吗？\n\n此操作将直接更新数据库。')) {
+            // 显示确认按钮并点击
+            document.getElementById('submitBtn').style.display = 'inline-block';
+            document.getElementById('submitBtn').click();
+        }
+    }
+    
+    // 表单验证
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.querySelector('form');
+        
+        form.addEventListener('submit', function(event) {
+            // 可以在这里添加额外的表单验证
+            console.log('表单提交中...');
+        });
+        
+        // 初始化子任务管理功能
+        initDetailManagement();
+    });
+    
+    // 子任务管理功能
+    function initDetailManagement() {
+        const templateId = {{ template.id }};
+        let sortable = null;
+        
+        // 防止重复初始化
+        if (window.detailManagementInitialized) {
+            return;
+        }
+        window.detailManagementInitialized = true;
+        
+        // 初始化拖拽排序
+        const detailTableBody = document.getElementById('detailTableBody');
+        if (detailTableBody) {
+            sortable = Sortable.create(detailTableBody, {
+                handle: '.drag-handle',
+                animation: 150,
+                ghostClass: 'bg-light',
+                onUpdate: function() {
+                    // 显示保存顺序按钮
+                    document.getElementById('saveOrderBtn').style.display = 'inline-block';
+                    // 更新顺序号
+                    updateSequenceNumbers();
+                }
+            });
+        }
+        
+        // 更新顺序号
+        function updateSequenceNumbers() {
+            const rows = document.querySelectorAll('#detailTableBody tr');
+            rows.forEach((row, index) => {
+                const seqInput = row.querySelector('.task-seq-input');
+                if (seqInput) {
+                    seqInput.value = index + 1;
+                    // 更新data属性
+                    row.setAttribute('data-task-seq', index + 1);
+                }
+            });
+        }
+        
+        // 新增子任务按钮点击事件 - 使用一次性绑定
+        const addDetailBtn = document.getElementById('addDetailBtn');
+        if (addDetailBtn && !addDetailBtn.hasListener) {
+            addDetailBtn.addEventListener('click', function() {
+                const modal = new bootstrap.Modal(document.getElementById('addDetailModal'));
+                modal.show();
+            });
+            addDetailBtn.hasListener = true;
+        }
+        
+        // 新增子任务表单提交 - 使用一次性绑定
+        const addDetailForm = document.getElementById('addDetailForm');
+        if (addDetailForm && !addDetailForm.hasListener) {
+            addDetailForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // 防止重复提交
+                const submitBtn = this.querySelector('button[type="submit"]');
+                if (submitBtn.disabled) {
+                    return;
+                }
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 添加中...';
+                
+                const formData = {
+                    template_code: document.getElementById('new_template_code').value,
+                    template_name: document.getElementById('new_template_name').value,
+                    task_servicec: document.getElementById('new_task_servicec').value,
+                    task_path: document.getElementById('new_task_path').value,
+                    backflow_template_code: document.getElementById('new_backflow_template_code').value,
+                    comeback_template_code: document.getElementById('new_comeback_template_code').value,
+                    back_wait_time: document.getElementById('new_back_wait_time').value,
+                    need_third_trigger: document.getElementById('new_need_third_trigger').checked ? 1 : 0
+                };
+                
+                // 验证必填字段
+                if (!formData.template_code.trim()) {
+                    alert('模板代码不能为空');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '添加子任务';
+                    return;
+                }
+                
+                try {
+                    const response = await fetch(`/api/template/${templateId}/details/add`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(formData)
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        // 关闭模态框
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('addDetailModal'));
+                        if (modal) {
+                            modal.hide();
+                        }
+                        
+                        // 清空表单
+                        document.getElementById('addDetailForm').reset();
+                        
+                        // 添加新行到表格
+                        addDetailRow(result.detail);
+                        
+                        // 隐藏"没有子任务"的提示
+                        const noDetailsAlert = document.getElementById('noDetailsAlert');
+                        if (noDetailsAlert) {
+                            noDetailsAlert.style.display = 'none';
+                        }
+                        
+                        // 显示表格（如果之前隐藏）
+                        const detailTable = document.getElementById('detailTable');
+                        if (detailTable) {
+                            detailTable.style.display = 'table';
+                        }
+                        
+                        // 显示成功消息
+                        showAlert('子任务添加成功', 'success');
+                    } else {
+                        showAlert(`添加失败: ${result.message}`, 'danger');
+                    }
+                } catch (error) {
+                    showAlert(`请求失败: ${error.message}`, 'danger');
+                } finally {
+                    // 恢复按钮状态
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '添加子任务';
+                }
+            });
+            addDetailForm.hasListener = true;
+        }
+        
+        // 删除子任务按钮点击事件 - 使用事件委托，但确保只绑定一次
+        if (!window.deleteDetailHandlerBound) {
+            document.addEventListener('click', function(e) {
+                if (e.target.closest('.delete-detail-btn')) {
+                    const button = e.target.closest('.delete-detail-btn');
+                    const detailId = button.getAttribute('data-detail-id');
+                    
+                    if (confirm('确定要删除这个子任务吗？此操作不可恢复。')) {
+                        deleteDetail(detailId);
+                    }
+                }
+            });
+            window.deleteDetailHandlerBound = true;
+        }
+        
+        // 保存顺序按钮点击事件 - 使用一次性绑定
+        const saveOrderBtn = document.getElementById('saveOrderBtn');
+        if (saveOrderBtn && !saveOrderBtn.hasListener) {
+            saveOrderBtn.addEventListener('click', async function() {
+                await saveDetailOrder();
+            });
+            saveOrderBtn.hasListener = true;
+        }
+        
+        // 添加子任务行到表格
+        function addDetailRow(detail) {
+            const tbody = document.getElementById('detailTableBody');
+            if (!tbody) {
+                // 如果tbody不存在，创建表格结构
+                createDetailTable();
+                return addDetailRow(detail); // 递归调用
+            }
+            
+            const rowCount = tbody.querySelectorAll('tr').length;
+            const newSeq = rowCount + 1;
+            
+            const row = document.createElement('tr');
+            row.setAttribute('data-detail-id', detail.id);
+            row.setAttribute('data-task-seq', newSeq);
+            row.innerHTML = `
+                <td class="drag-handle text-center" style="cursor: move;">
+                    <i class="bi bi-grip-vertical text-muted"></i>
+                </td>
+                <td>${detail.id}</td>
+                <td>
+                    <input type="number" class="form-control form-control-sm task-seq-input" 
+                           name="detail_${detail.id}_task_seq" 
+                           value="${newSeq}" style="width: 70px;" readonly>
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm" 
+                           name="detail_${detail.id}_template_code" 
+                           value="${detail.template_code || ''}">
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm" 
+                           name="detail_${detail.id}_template_name" 
+                           value="${detail.template_name || ''}">
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm" 
+                           name="detail_${detail.id}_task_servicec" 
+                           value="${detail.task_servicec || ''}">
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm"
+                           name="detail_${detail.id}_task_path"
+                           value="${detail.task_path || ''}">
+                </td>
+                <td class="text-center">
+                    <input type="checkbox" class="form-check-input"
+                           name="detail_${detail.id}_need_third_trigger"
+                           value="1"
+                           ${detail.need_third_trigger == 1 ? 'checked' : ''}>
+                </td>
+                <td>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <a href="#" class="btn btn-outline-warning"
+                           data-bs-toggle="modal"
+                           data-bs-target="#editDetailModal${detail.id}">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <button type="button" class="btn btn-outline-danger delete-detail-btn" 
+                                data-detail-id="${detail.id}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+            
+            tbody.appendChild(row);
+            
+            // 重新初始化拖拽排序
+            if (sortable) {
+                sortable.destroy();
+            }
+            sortable = Sortable.create(tbody, {
+                handle: '.drag-handle',
+                animation: 150,
+                ghostClass: 'bg-light',
+                onUpdate: function() {
+                    document.getElementById('saveOrderBtn').style.display = 'inline-block';
+                    updateSequenceNumbers();
+                }
+            });
+        }
+        
+        // 创建表格结构（当没有子任务时）
+        function createDetailTable() {
+            const formSection = document.querySelector('.form-section');
+            const noDetailsAlert = document.getElementById('noDetailsAlert');
+            
+            if (noDetailsAlert) {
+                noDetailsAlert.style.display = 'none';
+            }
+            
+            // 创建表格HTML
+            const tableHTML = `
+                <div class="table-responsive">
+                    <table class="table table-hover" id="detailTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;">拖拽</th>
+                                <th style="width: 50px;">#</th>
+                                <th style="width: 80px;">顺序</th>
+                                <th>模板代码</th>
+                                <th>模板名称</th>
+                                <th>服务器地址</th>
+                                <th>目标点</th>
+                                <th>第三方触发</th>
+                                <th style="width: 120px;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detailTableBody">
+                        </tbody>
+                    </table>
+                </div>
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> 
+                    提示：拖拽行可以重新排序子任务，点击保存顺序按钮保存新的顺序。
+                </div>
+            `;
+            
+            // 插入到表单区域
+            const addDetailBtn = document.getElementById('addDetailBtn');
+            addDetailBtn.insertAdjacentHTML('afterend', tableHTML);
+        }
+        
+        // 删除子任务
+        async function deleteDetail(detailId) {
+            try {
+                const response = await fetch(`/api/template/${templateId}/details/${detailId}/delete`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // 从表格中移除行
+                    const row = document.querySelector(`tr[data-detail-id="${detailId}"]`);
+                    if (row) {
+                        row.remove();
+                        
+                        // 更新剩余行的顺序号
+                        updateSequenceNumbers();
+                        
+                        // 显示保存顺序按钮
+                        document.getElementById('saveOrderBtn').style.display = 'inline-block';
+                        
+                        // 如果没有子任务了，显示提示
+                        const tbody = document.getElementById('detailTableBody');
+                        if (tbody && tbody.querySelectorAll('tr').length === 0) {
+                            showNoDetailsAlert();
+                        }
+                    }
+                    
+                    showAlert('子任务删除成功', 'success');
+                } else {
+                    showAlert(`删除失败: ${result.message}`, 'danger');
+                }
+            } catch (error) {
+                showAlert(`请求失败: ${error.message}`, 'danger');
+            }
+        }
+        
+        // 保存子任务顺序
+        async function saveDetailOrder() {
+            const rows = document.querySelectorAll('#detailTableBody tr');
+            const order = [];
+            
+            rows.forEach((row, index) => {
+                const detailId = row.getAttribute('data-detail-id');
+                const taskSeq = index + 1;
+                order.push({
+                    id: parseInt(detailId),
+                    task_seq: taskSeq
+                });
+            });
+            
+            try {
+                const response = await fetch(`/api/template/${templateId}/details/reorder`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ order })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // 隐藏保存顺序按钮
+                    document.getElementById('saveOrderBtn').style.display = 'none';
+                    showAlert('子任务顺序保存成功', 'success');
+                } else {
+                    showAlert(`保存失败: ${result.message}`, 'danger');
+                }
+            } catch (error) {
+                showAlert(`请求失败: ${error.message}`, 'danger');
+            }
+        }
+        
+        // 显示"没有子任务"提示
+        function showNoDetailsAlert() {
+            const table = document.getElementById('detailTable');
+            const alertDiv = document.getElementById('noDetailsAlert');
+            
+            if (table) {
+                table.style.display = 'none';
+            }
+            
+            if (alertDiv) {
+                alertDiv.style.display = 'block';
+            } else {
+                // 创建提示
+                const formSection = document.querySelector('.form-section');
+                const alertHTML = `
+                    <div class="alert alert-warning text-center py-4" id="noDetailsAlert">
+                        <i class="bi bi-exclamation-triangle display-4 d-block mb-3"></i>
+                        <h5>该模板没有配置子任务</h5>
+                        <p class="mb-3">点击"新增子任务"按钮开始添加子任务</p>
+                    </div>
+                `;
+                formSection.insertAdjacentHTML('beforeend', alertHTML);
+            }
+        }
+        
+        // 显示提示消息
+        function showAlert(message, type = 'info') {
+            // 创建或获取alert容器
+            let alertContainer = document.querySelector('.alert-container');
+            if (!alertContainer) {
+                // 创建alert容器
+                alertContainer = document.createElement('div');
+                alertContainer.className = 'alert-container position-fixed top-0 end-0 p-3';
+                alertContainer.style.zIndex = '1055';
+                document.body.appendChild(alertContainer);
+            }
+            
+            const alertId = 'alert-' + Date.now();
+            
+            const alertHTML = `
+                <div id="${alertId}" class="alert alert-${type} alert-dismissible fade show animate__animated animate__fadeInRight" role="alert">
+                    <i class="bi bi-${type === 'success' ? 'check-circle' : type === 'danger' ? 'exclamation-triangle' : 'info-circle'} me-2"></i>
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            `;
+            
+            alertContainer.insertAdjacentHTML('beforeend', alertHTML);
+            
+            // 5秒后自动关闭
+            setTimeout(() => {
+                const alert = document.getElementById(alertId);
+                if (alert) {
+                    alert.remove();
+                }
+            }, 5000);
+        }
+    }
+</script>
+{% endblock %}
+{% endblock %}

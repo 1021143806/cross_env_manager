@@ -1,0 +1,136 @@
+{# 按钮组件 #}
+{% macro primary_button(text, url=None, icon=None, size='', class='', onclick=None) %}
+    {% if url %}
+        <a href="{{ url }}" class="btn btn-primary {{ size }} {{ class }}"
+           {% if onclick %}onclick="{{ onclick }}"{% endif %}>
+            {% if icon %}<i class="bi {{ icon }} me-2"></i>{% endif %}
+            {{ text }}
+        </a>
+    {% else %}
+        <button type="button" class="btn btn-primary {{ size }} {{ class }}"
+                {% if onclick %}onclick="{{ onclick }}"{% endif %}>
+            {% if icon %}<i class="bi {{ icon }} me-2"></i>{% endif %}
+            {{ text }}
+        </button>
+    {% endif %}
+{% endmacro %}
+
+{% macro secondary_button(text, url=None, icon=None, size='', class='', onclick=None) %}
+    {% if url %}
+        <a href="{{ url }}" class="btn btn-secondary {{ size }} {{ class }}"
+           {% if onclick %}onclick="{{ onclick }}"{% endif %}>
+            {% if icon %}<i class="bi {{ icon }} me-2"></i>{% endif %}
+            {{ text }}
+        </a>
+    {% else %}
+        <button type="button" class="btn btn-secondary {{ size }} {{ class }}"
+                {% if onclick %}onclick="{{ onclick }}"{% endif %}>
+            {% if icon %}<i class="bi {{ icon }} me-2"></i>{% endif %}
+            {{ text }}
+        </button>
+    {% endif %}
+{% endmacro %}
+
+{% macro success_button(text, url=None, icon=None, size='', class='', onclick=None) %}
+    {% if url %}
+        <a href="{{ url }}" class="btn btn-success {{ size }} {{ class }}"
+           {% if onclick %}onclick="{{ onclick }}"{% endif %}>
+            {% if icon %}<i class="bi {{ icon }} me-2"></i>{% endif %}
+            {{ text }}
+        </a>
+    {% else %}
+        <button type="button" class="btn btn-success {{ size }} {{ class }}"
+                {% if onclick %}onclick="{{ onclick }}"{% endif %}>
+            {% if icon %}<i class="bi {{ icon }} me-2"></i>{% endif %}
+            {{ text }}
+        </button>
+    {% endif %}
+{% endmacro %}
+
+{% macro warning_button(text, url=None, icon=None, size='', class='', onclick=None) %}
+    {% if url %}
+        <a href="{{ url }}" class="btn btn-warning {{ size }} {{ class }}"
+           {% if onclick %}onclick="{{ onclick }}"{% endif %}>
+            {% if icon %}<i class="bi {{ icon }} me-2"></i>{% endif %}
+            {{ text }}
+        </a>
+    {% else %}
+        <button type="button" class="btn btn-warning {{ size }} {{ class }}"
+                {% if onclick %}onclick="{{ onclick }}"{% endif %}>
+            {% if icon %}<i class="bi {{ icon }} me-2"></i>{% endif %}
+            {{ text }}
+        </button>
+    {% endif %}
+{% endmacro %}
+
+{% macro danger_button(text, url=None, icon=None, size='', class='', onclick=None) %}
+    {% if url %}
+        <a href="{{ url }}" class="btn btn-danger {{ size }} {{ class }}"
+           {% if onclick %}onclick="{{ onclick }}"{% endif %}>
+            {% if icon %}<i class="bi {{ icon }} me-2"></i>{% endif %}
+            {{ text }}
+        </a>
+    {% else %}
+        <button type="button" class="btn btn-danger {{ size }} {{ class }}"
+                {% if onclick %}onclick="{{ onclick }}"{% endif %}>
+            {% if icon %}<i class="bi {{ icon }} me-2"></i>{% endif %}
+            {{ text }}
+        </button>
+    {% endif %}
+{% endmacro %}
+
+{% macro outline_button(text, url=None, color='secondary', icon=None, size='', class='', onclick=None) %}
+    {% if url %}
+        <a href="{{ url }}" class="btn btn-outline-{{ color }} {{ size }} {{ class }}"
+           {% if onclick %}onclick="{{ onclick }}"{% endif %}>
+            {% if icon %}<i class="bi {{ icon }} me-2"></i>{% endif %}
+            {{ text }}
+        </a>
+    {% else %}
+        <button type="button" class="btn btn-outline-{{ color }} {{ size }} {{ class }}"
+                {% if onclick %}onclick="{{ onclick }}"{% endif %}>
+            {% if icon %}<i class="bi {{ icon }} me-2"></i>{% endif %}
+            {{ text }}
+        </button>
+    {% endif %}
+{% endmacro %}
+
+{% macro button_group(buttons, size='', class='') %}
+    <div class="btn-group {{ size }} {{ class }}" role="group">
+        {% for button in buttons %}
+            {% if button.type == 'primary' %}
+                {{ primary_button(button.text, button.url, button.icon, button.size, button.class, button.onclick) }}
+            {% elif button.type == 'secondary' %}
+                {{ secondary_button(button.text, button.url, button.icon, button.size, button.class, button.onclick) }}
+            {% elif button.type == 'success' %}
+                {{ success_button(button.text, button.url, button.icon, button.size, button.class, button.onclick) }}
+            {% elif button.type == 'warning' %}
+                {{ warning_button(button.text, button.url, button.icon, button.size, button.class, button.onclick) }}
+            {% elif button.type == 'danger' %}
+                {{ danger_button(button.text, button.url, button.icon, button.size, button.class, button.onclick) }}
+            {% elif button.type == 'outline' %}
+                {{ outline_button(button.text, button.url, button.color, button.icon, button.size, button.class, button.onclick) }}
+            {% endif %}
+        {% endfor %}
+    </div>
+{% endmacro %}
+
+<style>
+    .btn-action {
+        margin-right: 8px;
+        margin-bottom: 8px;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+    }
+    
+    .btn-lg {
+        padding: 0.75rem 2rem;
+        font-size: 1.1rem;
+    }
+    
+    .btn-sm {
+        padding: 0.25rem 0.75rem;
+        font-size: 0.875rem;
+    }
+</style>

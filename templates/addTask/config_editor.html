@@ -1,0 +1,1878 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AGV任务配置管理 - 可视化编辑器</title>
+    <link href="/static/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/vendor/bootstrap-icons/bootstrap-icons.min.css">
+    <script src="/static/vendor/d3/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="/static/css/config_editor.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 页头 -->
+        {% include 'components/config_editor_header.html' %}
+        
+        <!-- 导航 -->
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="d-flex gap-2">
+                <a href="/addtask" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-left me-2"></i>返回任务下发
+                </a>
+                <a href="/" class="btn btn-outline-secondary">
+                    <i class="bi bi-house me-2"></i>返回主页
+                </a>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-info" id="refresh-btn">
+                    <i class="bi bi-arrow-clockwise me-2"></i>重置演示数据
+                </button>
+                <button class="btn btn-outline-secondary" id="themeToggle">
+                    <i class="bi bi-moon-stars me-2"></i>暗黑模式
+                </button>
+            </div>
+        </div>
+        
+        <!-- 编辑器容器 -->
+        <div class="editor-container">
+            <!-- 编辑模式切换 -->
+            <div class="editor-tabs">
+                <button class="tab-btn active" data-tab="visual">
+                    <i class="bi bi-layout-text-sidebar me-2"></i>可视化编辑
+                </button>
+                <button class="tab-btn" data-tab="source">
+                    <i class="bi bi-code-slash me-2"></i>源文件编辑
+                </button>
+            </div>
+            
+            <!-- 可视化编辑器 -->
+            <div class="editor-content active" id="visual-editor">
+                {% include 'components/config_editor_visual.html' %}
+            </div>
+            
+            <!-- 源文件编辑器 -->
+            <div class="editor-content" id="source-editor">
+                {% include 'components/config_editor_source.html' %}
+            </div>
+        </div>
+        
+        <!-- 备份管理 -->
+        <div class="editor-container">
+            {% include 'components/config_editor_backup.html' %}
+        </div>
+        
+        <!-- 状态信息 -->
+        <div class="alert alert-info" id="status-message" style="display: none;">
+            <i class="bi bi-info-circle me-2"></i>
+            <span id="status-text"></span>
+        </div>
+    </div>
+
+    <!-- 模态框：新增/重命名区域 -->
+    <div class="modal fade" id="area-modal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="area-modal-title">新增区域</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label">区域名称</label>
+                    <input type="text" class="form-control" id="area-name-input" placeholder="例如：A1-1 PCBA">
+                    <input type="hidden" id="area-old-name">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="area-modal-confirm">确定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：查看备份内容 -->
+    <div class="modal fade" id="view-backup-modal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">备份内容</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <pre id="backup-content-view" style="max-height: 500px; overflow: auto; background: var(--bg-color); padding: 1rem; border-radius: 8px;"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：创建备份时输入提交消息 -->
+    <div class="modal fade" id="commit-message-modal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-chat-left-text me-2"></i>备份提交消息</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">为本次备份添加一条描述消息（可选），类似 Git 提交记录。</p>
+                    <div class="form-group">
+                        <label class="form-label">提交消息</label>
+                        <textarea class="form-control" id="commit-message-input" rows="3" placeholder="例如：修复任务路径选项配置"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="commit-message-confirm">创建备份</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：保存配置时输入提交消息 -->
+    <div class="modal fade" id="save-commit-message-modal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-save me-2"></i>保存配置提交消息</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">为本次配置保存添加一条描述消息（可选），类似 Git 提交记录。</p>
+                    <div class="form-group">
+                        <label class="form-label">提交消息</label>
+                        <textarea class="form-control" id="save-commit-message-input" rows="3" placeholder="例如：新增A1-1 PCBA区域任务"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="save-commit-message-confirm">保存配置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增：修改成功弹窗模态框 -->
+    <div class="modal fade" id="success-modal" tabindex="-1">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white border-0">
+                    <h5 class="modal-title"><i class="bi bi-check-circle-fill me-2"></i>操作成功</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-center py-4">
+                    <i class="bi bi-check-circle-fill text-success" style="font-size: 3rem;"></i>
+                    <p class="mt-3 mb-0 fs-5" id="success-message-text">修改成功！</p>
+                </div>
+                <div class="modal-footer justify-content-center">
+                    <button type="button" class="btn btn-success px-4" data-bs-dismiss="modal">确定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+    <!-- 统一的主题管理器 -->
+    <script src="/static/js/theme-manager.js"></script>
+    <!-- gitgraph.js for Git-style backup visualization (放在底部避免影响其他功能) -->
+    <script src="/static/vendor/gitgraph/gitgraph.js"></script>
+    <script>
+        (function(){
+            "use strict";
+
+            // ---------- 配置数据加载函数 ----------
+            async function loadConfigFromFile() {
+                try {
+                    // 尝试从本地文件加载配置
+                    const response = await fetch('/static/js/config.js');
+                    if (!response.ok) {
+                        throw new Error('无法加载配置文件');
+                    }
+                    const configText = await response.text();
+                    
+                    // 从JavaScript文件中提取config对象
+                    const match = configText.match(/const config = ([\s\S]*?);/);
+                    if (!match) {
+                        throw new Error('配置文件格式错误，找不到config对象');
+                    }
+                    
+                    const configObj = JSON.parse(match[1]);
+                    // 确保有_version字段（向后兼容）
+                    if (configObj._version === undefined) {
+                        configObj._version = 0;
+                    }
+                    return configObj;
+                } catch (error) {
+                    console.warn('加载本地配置文件失败，使用默认配置:', error);
+                    // 如果加载失败，使用默认配置
+                    return {
+                        "_version": 0,
+                        "general": {
+                            "title": "AGV 跨环境任务下发系统 v1.5.1.4",
+                            "footer_text": "任务下发系统 © 2025 | 运营 AGV 组提供技术支持"
+                        },
+                        "areas": {
+                            "A1-1 PCBA": {
+                                "tasks": {
+                                    "送满A1pcba1F去A2华昱欣3F": {
+                                        "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+                                        "code": "HJBY_31A1DZ1F_to_19A2HYX3F_go",
+                                        "requires_shelf": true,
+                                        "requires_task_path": false,
+                                        "task_path_options": []
+                                    },
+                                    "回空A1pcba1F去A2华昱欣3F": {
+                                        "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+                                        "code": "HJBY_31A1DZ1F_to_19A2HYX3F_back",
+                                        "requires_shelf": true,
+                                        "requires_task_path": false,
+                                        "task_path_options": []
+                                    }
+                                }
+                            },
+                            "A1-2 电装工厂": {
+                                "tasks": {
+                                    "314空车A1电装2F去A2华消1F": {
+                                        "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+                                        "code": "K_31A1DZ1F_to_19A2HX1F_go",
+                                        "requires_shelf": false,
+                                        "requires_task_path": false,
+                                        "task_path_options": []
+                                    }
+                                }
+                            },
+                            "A2-2 存储备料": {
+                                "tasks": {
+                                    "上架任务": {
+                                        "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+                                        "code": "shangjiafangxia",
+                                        "requires_shelf": true,
+                                        "requires_task_path": true,
+                                        "task_path_options": [
+                                            { "value": "33254836", "label": "（33254836）" },
+                                            { "value": "33254835", "label": "（33254835）" }
+                                        ],
+                                        "capacity": 10
+                                    }
+                                }
+                            }
+                        }
+                    };
+                }
+            }
+
+            // 当前工作配置对象
+            let configData = {};
+
+            // UI状态
+            let currentAreaName = null;
+            let currentTaskName = null;
+            let areaModalMode = 'add';
+            let areaModal = null;
+            let viewBackupModal = null;
+            let commitMessageModal = null;   // 提交消息模态框
+            let successModal = null;   // 新增成功弹窗实例
+
+            // 备份数据（从后端获取）
+            let backups = [];
+
+            // DOM元素
+            const areaTreeEl = document.getElementById('area-tree');
+            const taskListEl = document.getElementById('task-list');
+            const currentAreaTitle = document.getElementById('current-area-title');
+            const addTaskBtn = document.getElementById('add-task-btn');
+            const taskFormContainer = document.getElementById('task-form-container');
+            const taskForm = document.getElementById('task-form');
+            const taskNameInput = document.getElementById('task-name');
+            const taskBaseUrlInput = document.getElementById('task-base-url');
+            const taskCodeInput = document.getElementById('task-code');
+            const taskRequiresShelf = document.getElementById('task-requires-shelf');
+            const taskRequiresPath = document.getElementById('task-requires-path');
+            const enableCapacityCheck = document.getElementById('enable-capacity');
+            const capacityInputWrapper = document.getElementById('capacity-input-wrapper');
+            const taskCapacity = document.getElementById('task-capacity');
+            const pathOptionsBody = document.getElementById('path-options-body');
+            const pathOptionsSection = document.getElementById('path-options-section');
+            const taskOriginalName = document.getElementById('task-original-name');
+            const deleteTaskBtn = document.getElementById('delete-task-btn');
+            const cancelTaskBtn = document.getElementById('cancel-task-btn');
+            const configContent = document.getElementById('config-content');
+            const jsonError = document.getElementById('json-error');
+            const urlError = document.getElementById('url-error');
+            const statusMessage = document.getElementById('status-message');
+            const statusText = document.getElementById('status-text');
+            const backupListEl = document.getElementById('backup-list');
+            const refreshBtn = document.getElementById('refresh-btn');
+
+             // 模态框
+             const areaModalEl = document.getElementById('area-modal');
+             const areaModalTitle = document.getElementById('area-modal-title');
+             const areaNameInput = document.getElementById('area-name-input');
+             const areaOldName = document.getElementById('area-old-name');
+             const areaModalConfirm = document.getElementById('area-modal-confirm');
+             
+             if (areaModalEl) areaModal = new bootstrap.Modal(areaModalEl);
+             const viewBackupModalEl = document.getElementById('view-backup-modal');
+             if (viewBackupModalEl) viewBackupModal = new bootstrap.Modal(viewBackupModalEl);
+             const commitMessageModalEl = document.getElementById('commit-message-modal');
+             if (commitMessageModalEl) commitMessageModal = new bootstrap.Modal(commitMessageModalEl);
+             const saveCommitMessageModalEl = document.getElementById('save-commit-message-modal');
+             let saveCommitMessageModal = null;
+             if (saveCommitMessageModalEl) saveCommitMessageModal = new bootstrap.Modal(saveCommitMessageModalEl);
+             
+             // 成功弹窗实例
+             const successModalEl = document.getElementById('success-modal');
+             if (successModalEl) successModal = new bootstrap.Modal(successModalEl);
+             const successMessageText = document.getElementById('success-message-text');
+
+            // 显示成功弹窗 (统一入口)
+            function showSuccessModal(message = '修改成功！') {
+                if (successMessageText) successMessageText.textContent = message;
+                if (successModal) successModal.show();
+            }
+
+            // 页面初始化
+            async function initPage() {
+                try {
+                    showStatus('正在加载配置文件...', 'info');
+                    configData = await loadConfigFromFile();
+                    renderAreaTree();
+                    updateRightPanel();
+                    syncConfigToTextarea();
+                    updateVersionBadge();
+                    showStatus('配置文件加载完成', 'success');
+                } catch (error) {
+                    showStatus('初始化失败: ' + error.message, 'error');
+                }
+            }
+
+            // ---------- 辅助函数 ----------
+            function showStatus(msg, type = 'info') {
+                statusText.textContent = msg;
+                statusMessage.className = `alert alert-${type === 'error' ? 'danger' : (type === 'success' ? 'success' : 'info')}`;
+                statusMessage.style.display = 'block';
+                setTimeout(() => { statusMessage.style.display = 'none'; }, 4000);
+            }
+
+            // 持久化配置到文件（自动保存）
+            async function persistConfig() {
+                try {
+                    // 准备要保存的配置数据（深拷贝）
+                    const configToSave = JSON.parse(JSON.stringify(configData));
+                    const clientVersion = configToSave._version || 0;
+                    delete configToSave._version;
+                    configToSave._client_version = clientVersion;
+                    
+                    const response = await fetch('/addtask/config', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(configToSave)
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (response.ok && result.success) {
+                        // 更新本地版本号
+                        configData._version = result.new_version || (clientVersion + 1);
+                        // 同步到文本域
+                        syncConfigToTextarea();
+                        // 更新版本徽章
+                        updateVersionBadge();
+                        return { success: true, backup_name: result.backup_name };
+                    } else if (response.status === 409) {
+                        // 版本冲突
+                        const currentVersion = result.current_version;
+                        const clientVersion = result.client_version;
+                        return { 
+                            success: false, 
+                            error: '版本冲突', 
+                            message: `当前配置版本为 ${currentVersion}，您提交的版本为 ${clientVersion}`,
+                            current_version: currentVersion,
+                            client_version: clientVersion
+                        };
+                    } else {
+                        return { success: false, error: result.error || '未知错误' };
+                    }
+                } catch (error) {
+                    return { success: false, error: error.message };
+                }
+            }
+
+            function clearUrlError() { urlError.textContent = ''; }
+            function showUrlError(msg) { urlError.textContent = msg; }
+            function clearJsonError() { jsonError.textContent = ''; }
+            function showJsonError(msg) { jsonError.textContent = msg; }
+
+            // 更新版本徽章
+            function updateVersionBadge() {
+                const versionBadge = document.getElementById('version-badge');
+                if (versionBadge) {
+                    const version = configData._version || 0;
+                    versionBadge.textContent = `版本: ${version}`;
+                    versionBadge.title = `当前配置版本号: ${version}`;
+                }
+            }
+
+            // URL 校验函数
+            function isValidUrl(url) {
+                try {
+                    const parsed = new URL(url);
+                    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+                } catch {
+                    return false;
+                }
+            }
+
+            // 同步配置对象到源文件文本域
+            function syncConfigToTextarea() {
+                const configStr = `// config.js - AGV跨环境任务下发系统配置文件
+// 所有区域、任务模板、URL、路径选项等均在此定义
+const config = ${JSON.stringify(configData, null, 4)};`;
+                configContent.value = configStr;
+            }
+
+            // 确保配置兼容性（自动补全缺失字段）
+            function ensureConfigCompatibility(config) {
+                // 深拷贝配置
+                const compatibleConfig = JSON.parse(JSON.stringify(config));
+                
+                // 1. 确保有 _version 字段（版本管理）
+                if (compatibleConfig._version === undefined) {
+                    compatibleConfig._version = 0;
+                    console.log('自动添加 _version 字段: 0');
+                }
+                
+                // 2. 确保有 general 字段
+                if (!compatibleConfig.general || typeof compatibleConfig.general !== 'object') {
+                    compatibleConfig.general = {
+                        title: "AGV 跨环境任务下发系统",
+                        footer_text: "任务下发系统 © 2025 | 运营 AGV 组提供技术支持"
+                    };
+                }
+                
+                // 3. 确保 general 有必要的字段
+                if (!compatibleConfig.general.title) {
+                    compatibleConfig.general.title = "AGV 跨环境任务下发系统";
+                }
+                if (!compatibleConfig.general.footer_text) {
+                    compatibleConfig.general.footer_text = "任务下发系统 © 2025 | 运营 AGV 组提供技术支持";
+                }
+                
+                // 4. 确保 areas 字段存在且是对象
+                if (!compatibleConfig.areas || typeof compatibleConfig.areas !== 'object') {
+                    compatibleConfig.areas = {};
+                }
+                
+                // 5. 遍历所有区域，确保每个区域有 tasks 字段
+                for (const areaName in compatibleConfig.areas) {
+                    const area = compatibleConfig.areas[areaName];
+                    if (!area.tasks || typeof area.tasks !== 'object') {
+                        area.tasks = {};
+                    }
+                    
+                    // 6. 遍历区域内的所有任务，确保任务有必要的字段
+                    for (const taskName in area.tasks) {
+                        const task = area.tasks[taskName];
+                        
+                        // 确保有 base_url 字段
+                        if (!task.base_url) {
+                            task.base_url = '';
+                        }
+                        
+                        // 确保有 code 字段
+                        if (!task.code) {
+                            task.code = '';
+                        }
+                        
+                        // 确保有 requires_shelf 字段
+                        if (task.requires_shelf === undefined) {
+                            task.requires_shelf = false;
+                        }
+                        
+                        // 确保有 requires_task_path 字段
+                        if (task.requires_task_path === undefined) {
+                            task.requires_task_path = false;
+                        }
+                        
+                        // 确保有 task_path_options 字段（如果是数组）
+                        if (!Array.isArray(task.task_path_options)) {
+                            task.task_path_options = [];
+                        }
+                        
+                        // 确保 task_path_options 中的每个选项都有 value 和 label
+                        task.task_path_options = task.task_path_options.map(option => {
+                            if (typeof option === 'object' && option !== null) {
+                                return {
+                                    value: option.value || '',
+                                    label: option.label || ''
+                                };
+                            }
+                            return { value: '', label: '' };
+                        });
+                    }
+                }
+                
+                return compatibleConfig;
+            }
+            
+            // 测试配置兼容性函数（开发调试用）
+            function testConfigCompatibility() {
+                // 模拟用户提供的配置文件（缺少 _version 字段）
+                const testConfig = {
+                    "general": {
+                        "title": "AGV 跨环境任务下发系统 v1.5.1.4",
+                        "footer_text": "任务下发系统 © 2025 | 运营 AGV 组提供技术支持"
+                    },
+                    "areas": {
+                        "A1-1 PCBA": {
+                            "tasks": {
+                                "送满A1pcba1F去A2华昱欣3F": {
+                                    "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+                                    "code": "HJBY_31A1DZ1F_to_19A2HYX3F_go",
+                                    "requires_shelf": true,
+                                    "requires_task_path": false,
+                                    "task_path_options": []
+                                }
+                            }
+                        }
+                    }
+                };
+                
+                console.log('测试配置兼容性...');
+                console.log('原始配置:', testConfig);
+                console.log('是否有 _version 字段?', testConfig._version !== undefined);
+                
+                const compatibleConfig = ensureConfigCompatibility(testConfig);
+                console.log('兼容性处理后配置:', compatibleConfig);
+                console.log('处理后是否有 _version 字段?', compatibleConfig._version !== undefined);
+                console.log('_version 值:', compatibleConfig._version);
+                
+                // 验证配置结构
+                const isValid = (
+                    compatibleConfig._version !== undefined &&
+                    compatibleConfig.general &&
+                    compatibleConfig.general.title &&
+                    compatibleConfig.general.footer_text &&
+                    compatibleConfig.areas &&
+                    typeof compatibleConfig.areas === 'object'
+                );
+                
+                console.log('配置验证结果:', isValid ? '通过' : '失败');
+                return isValid;
+            }
+
+            // 从文本域解析配置
+            function parseConfigFromTextarea() {
+                try {
+                    const text = configContent.value;
+                    const match = text.match(/const config = ([\s\S]*?);/);
+                    if (!match) throw new Error('找不到 config 对象');
+                    const parsed = JSON.parse(match[1]);
+                    if (!parsed.areas || typeof parsed.areas !== 'object') throw new Error('缺少 areas 字段');
+                    
+                    // 自动补全缺失的字段（向后兼容）
+                    configData = ensureConfigCompatibility(parsed);
+                    
+                    renderAreaTree();
+                    if (currentAreaName && !configData.areas[currentAreaName]) {
+                        currentAreaName = null;
+                        currentTaskName = null;
+                    }
+                    updateRightPanel();
+                    showStatus('配置已从源文件加载', 'success');
+                    clearJsonError();
+                } catch (e) {
+                    showJsonError('解析失败: ' + e.message);
+                }
+            }
+
+            // ---------- 渲染左侧区域树 ----------
+            function renderAreaTree() {
+                const areas = configData.areas || {};
+                const areaNames = Object.keys(areas).sort();
+                let html = '';
+                areaNames.forEach(name => {
+                    const activeClass = (name === currentAreaName) ? 'active' : '';
+                    html += `
+                        <div class="area-item ${activeClass}" data-area-name="${name}">
+                            <span class="area-name-text" style="flex:1; cursor:pointer;">${name}</span>
+                            <div class="area-actions">
+                                <button class="btn btn-sm btn-outline-secondary border-0 btn-icon rename-area-btn" data-area="${name}" title="重命名">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger border-0 btn-icon delete-area-btn" data-area="${name}" title="删除">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                areaTreeEl.innerHTML = html || '<div class="text-muted text-center py-3">暂无区域，请新增</div>';
+                
+                document.querySelectorAll('.area-item .area-name-text').forEach(el => {
+                    el.addEventListener('click', (e) => {
+                        const areaDiv = e.target.closest('.area-item');
+                        selectArea(areaDiv.dataset.areaName);
+                    });
+                });
+                document.querySelectorAll('.rename-area-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        openAreaModal('rename', btn.dataset.area);
+                    });
+                });
+                document.querySelectorAll('.delete-area-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        deleteArea(btn.dataset.area);
+                    });
+                });
+            }
+
+            function selectArea(areaName) {
+                currentAreaName = areaName;
+                currentTaskName = null;
+                updateRightPanel();
+                renderAreaTree();
+            }
+
+            function updateRightPanel() {
+                if (!currentAreaName || !configData.areas[currentAreaName]) {
+                    currentAreaTitle.textContent = '请选择一个区域';
+                    addTaskBtn.disabled = true;
+                    taskListEl.innerHTML = '<div class="text-center py-3 text-muted"><i class="bi bi-arrow-left me-2"></i>请先选择左侧区域</div>';
+                    taskFormContainer.style.display = 'none';
+                    return;
+                }
+                currentAreaTitle.textContent = `当前区域：${currentAreaName}`;
+                addTaskBtn.disabled = false;
+                
+                const tasks = configData.areas[currentAreaName].tasks || {};
+                const taskNames = Object.keys(tasks).sort();
+                let tasksHtml = '';
+                taskNames.forEach(taskName => {
+                    const activeClass = (taskName === currentTaskName) ? 'active' : '';
+                    tasksHtml += `
+                        <div class="task-item ${activeClass}" data-task-name="${taskName}">
+                            <span class="task-name-text" style="flex:1;">${taskName}</span>
+                            <span class="text-muted small me-2">${tasks[taskName].requires_shelf ? '📦' : ''}</span>
+                        </div>
+                    `;
+                });
+                taskListEl.innerHTML = tasksHtml || '<div class="text-center py-3 text-muted">暂无任务，请新增</div>';
+                
+                document.querySelectorAll('.task-item .task-name-text').forEach(el => {
+                    el.addEventListener('click', (e) => {
+                        const taskDiv = e.target.closest('.task-item');
+                        selectTask(taskDiv.dataset.taskName);
+                    });
+                });
+                
+                if (currentTaskName && !tasks[currentTaskName]) {
+                    currentTaskName = null;
+                    taskFormContainer.style.display = 'none';
+                } else if (currentTaskName) {
+                    loadTaskToForm(currentTaskName);
+                } else {
+                    taskFormContainer.style.display = 'none';
+                }
+            }
+
+            function selectTask(taskName) {
+                currentTaskName = taskName;
+                loadTaskToForm(taskName);
+                updateRightPanel();
+            }
+
+            function loadTaskToForm(taskName) {
+                if (!currentAreaName) return;
+                const task = configData.areas[currentAreaName].tasks[taskName];
+                if (!task) return;
+                
+                taskOriginalName.value = taskName;
+                taskNameInput.value = taskName;
+                taskBaseUrlInput.value = task.base_url || '';
+                taskCodeInput.value = task.code || '';
+                taskRequiresShelf.checked = task.requires_shelf || false;
+                taskRequiresPath.checked = task.requires_task_path || false;
+                
+                // 容量字段动态显示优化
+                const hasCapacity = task.hasOwnProperty('capacity');
+                enableCapacityCheck.checked = hasCapacity;
+                capacityInputWrapper.style.display = hasCapacity ? 'block' : 'none';
+                if (hasCapacity) {
+                    taskCapacity.value = task.capacity;
+                } else {
+                    taskCapacity.value = '';
+                }
+                
+                pathOptionsSection.style.display = task.requires_task_path ? 'block' : 'none';
+                renderPathOptions(task.task_path_options || []);
+                taskFormContainer.style.display = 'block';
+                clearUrlError();
+            }
+
+            function renderPathOptions(options) {
+                let html = '';
+                options.forEach((opt, index) => {
+                    html += `
+                        <tr>
+                            <td><input type="text" class="form-control form-control-sm path-value" value="${opt.value || ''}" data-index="${index}"></td>
+                            <td><input type="text" class="form-control form-control-sm path-label" value="${opt.label || ''}" data-index="${index}"></td>
+                            <td><button type="button" class="btn btn-sm btn-outline-danger remove-path-btn" data-index="${index}"><i class="bi bi-trash"></i></button></td>
+                        </tr>
+                    `;
+                });
+                pathOptionsBody.innerHTML = html || '<tr><td colspan="3" class="text-muted text-center">暂无路径选项</td></tr>';
+                
+                document.querySelectorAll('.remove-path-btn').forEach(btn => {
+                    btn.addEventListener('click', () => removePathOption(btn.dataset.index));
+                });
+            }
+
+            function getPathOptionsFromForm() {
+                const rows = pathOptionsBody.querySelectorAll('tr');
+                const options = [];
+                rows.forEach(row => {
+                    const valueInput = row.querySelector('.path-value');
+                    const labelInput = row.querySelector('.path-label');
+                    if (valueInput && labelInput) {
+                        options.push({ value: valueInput.value, label: labelInput.value });
+                    }
+                });
+                return options;
+            }
+
+            function addPathOption() {
+                if (!currentTaskName) return;
+                const options = getPathOptionsFromForm();
+                options.push({ value: '', label: '' });
+                renderPathOptions(options);
+            }
+
+            function removePathOption(index) {
+                if (!currentTaskName) return;
+                const options = getPathOptionsFromForm();
+                options.splice(index, 1);
+                renderPathOptions(options);
+            }
+
+            // 保存任务（带URL校验）—— 自动持久化
+            async function saveTaskForm() {
+                if (!currentAreaName) return;
+                
+                // URL校验
+                const url = taskBaseUrlInput.value.trim();
+                if (!isValidUrl(url)) {
+                    showUrlError('请输入有效的 HTTP/HTTPS URL');
+                    return;
+                }
+                clearUrlError();
+                
+                const newTaskName = taskNameInput.value.trim();
+                if (!newTaskName) {
+                    alert('任务名称不能为空');
+                    return;
+                }
+                
+                const area = configData.areas[currentAreaName];
+                const oldName = taskOriginalName.value;
+                
+                const taskData = {
+                    base_url: url,
+                    code: taskCodeInput.value.trim(),
+                    requires_shelf: taskRequiresShelf.checked,
+                    requires_task_path: taskRequiresPath.checked,
+                    task_path_options: taskRequiresPath.checked ? getPathOptionsFromForm() : []
+                };
+                
+                // 处理容量字段
+                if (enableCapacityCheck.checked) {
+                    const cap = parseFloat(taskCapacity.value);
+                    if (!isNaN(cap)) taskData.capacity = cap;
+                    else taskData.capacity = 0;
+                }
+                
+                if (oldName && oldName !== newTaskName) {
+                    delete area.tasks[oldName];
+                }
+                area.tasks[newTaskName] = taskData;
+                
+                currentTaskName = newTaskName;
+                updateRightPanel();
+                
+                // 自动持久化到文件
+                const persistResult = await persistConfig();
+                if (persistResult.success) {
+                    showStatus('任务已保存并持久化到文件', 'success');
+                    showSuccessModal('任务修改成功并已保存到文件！');
+                    } else {
+                        if (persistResult.error === '版本冲突') {
+                            showStatus(`保存失败：${persistResult.message}`, 'error');
+                            
+                            const userChoice = confirm(
+                                `检测到版本冲突！\n\n` +
+                                `服务器版本: ${persistResult.current_version}\n` +
+                                `您的版本: ${persistResult.client_version}\n\n` +
+                                `点击"确定"刷新页面获取最新配置（您的更改将丢失）。\n` +
+                                `点击"取消"保留您的更改在内存中，稍后重试。`
+                            );
+                            
+                            if (userChoice) {
+                                await resetDemoData();
+                            }
+                        } else {
+                            showStatus(`任务已保存到内存，但持久化失败: ${persistResult.error}`, 'error');
+                        }
+                }
+            }
+
+            async function deleteCurrentTask() {
+                if (!currentAreaName || !currentTaskName) return;
+                if (!confirm(`确定删除任务 "${currentTaskName}" 吗？`)) return;
+                delete configData.areas[currentAreaName].tasks[currentTaskName];
+                currentTaskName = null;
+                updateRightPanel();
+                showStatus('任务已删除', 'success');
+                
+                // 自动持久化到文件
+                const persistResult = await persistConfig();
+                if (!persistResult.success) {
+                    if (persistResult.error === '版本冲突') {
+                        showStatus(`任务删除已保存到内存，但持久化失败：${persistResult.message}`, 'error');
+                        
+                        const userChoice = confirm(
+                            `检测到版本冲突！\n\n` +
+                            `服务器版本: ${persistResult.current_version}\n` +
+                            `您的版本: ${persistResult.client_version}\n\n` +
+                            `点击"确定"刷新页面获取最新配置（您的更改将丢失）。\n` +
+                            `点击"取消"保留您的更改在内存中，稍后重试。`
+                        );
+                        
+                        if (userChoice) {
+                            await resetDemoData();
+                        }
+                    } else {
+                        showStatus(`任务删除已保存到内存，但持久化失败: ${persistResult.error}`, 'error');
+                    }
+                }
+            }
+
+            async function createNewTask() {
+                if (!currentAreaName) return;
+                const baseName = '新任务';
+                let newName = baseName;
+                let counter = 1;
+                const tasks = configData.areas[currentAreaName].tasks;
+                while (tasks.hasOwnProperty(newName)) {
+                    newName = `${baseName}${counter}`;
+                    counter++;
+                }
+                tasks[newName] = {
+                    base_url: 'http://10.68.2.32:7000/ics/taskOrder/addTask',
+                    code: '',
+                    requires_shelf: false,
+                    requires_task_path: false,
+                    task_path_options: []
+                };
+                currentTaskName = newName;
+                updateRightPanel();
+                showStatus(`已创建任务 "${newName}"`, 'success');
+                showSuccessModal('新任务已创建！');
+                
+                // 自动持久化到文件
+                const persistResult = await persistConfig();
+                if (!persistResult.success) {
+                    if (persistResult.error === '版本冲突') {
+                        showStatus(`任务创建已保存到内存，但持久化失败：${persistResult.message}`, 'error');
+                        
+                        const userChoice = confirm(
+                            `检测到版本冲突！\n\n` +
+                            `服务器版本: ${persistResult.current_version}\n` +
+                            `您的版本: ${persistResult.client_version}\n\n` +
+                            `点击"确定"刷新页面获取最新配置（您的更改将丢失）。\n` +
+                            `点击"取消"保留您的更改在内存中，稍后重试。`
+                        );
+                        
+                        if (userChoice) {
+                            await resetDemoData();
+                        }
+                    } else {
+                        showStatus(`任务创建已保存到内存，但持久化失败: ${persistResult.error}`, 'error');
+                    }
+                }
+            }
+
+            function openAreaModal(mode, areaName = '') {
+                areaModalMode = mode;
+                if (mode === 'add') {
+                    areaModalTitle.textContent = '新增区域';
+                    areaNameInput.value = '';
+                    areaOldName.value = '';
+                } else {
+                    areaModalTitle.textContent = '重命名区域';
+                    areaNameInput.value = areaName;
+                    areaOldName.value = areaName;
+                }
+                areaModal.show();
+            }
+
+            async function confirmAreaModal() {
+                const newName = areaNameInput.value.trim();
+                if (!newName) { alert('区域名称不能为空'); return; }
+                if (areaModalMode === 'add') {
+                    if (configData.areas[newName]) { alert('区域名称已存在'); return; }
+                    configData.areas[newName] = { tasks: {} };
+                    showStatus(`区域 "${newName}" 已添加`, 'success');
+                    showSuccessModal(`区域 "${newName}" 添加成功！`);
+                } else {
+                    const oldName = areaOldName.value;
+                    if (oldName === newName) { areaModal.hide(); return; }
+                    if (configData.areas[newName]) { alert('区域名称已存在'); return; }
+                    configData.areas[newName] = configData.areas[oldName];
+                    delete configData.areas[oldName];
+                    if (currentAreaName === oldName) currentAreaName = newName;
+                    showStatus(`区域已重命名为 "${newName}"`, 'success');
+                    showSuccessModal(`区域重命名成功！`);
+                }
+                areaModal.hide();
+                renderAreaTree();
+                updateRightPanel();
+                
+                // 自动持久化到文件
+                const persistResult = await persistConfig();
+                if (!persistResult.success) {
+                    if (persistResult.error === '版本冲突') {
+                        showStatus(`区域修改已保存到内存，但持久化失败：${persistResult.message}`, 'error');
+                        
+                        const userChoice = confirm(
+                            `检测到版本冲突！\n\n` +
+                            `服务器版本: ${persistResult.current_version}\n` +
+                            `您的版本: ${persistResult.client_version}\n\n` +
+                            `点击"确定"刷新页面获取最新配置（您的更改将丢失）。\n` +
+                            `点击"取消"保留您的更改在内存中，稍后重试。`
+                        );
+                        
+                        if (userChoice) {
+                            await resetDemoData();
+                        }
+                    } else {
+                        showStatus(`区域修改已保存到内存，但持久化失败: ${persistResult.error}`, 'error');
+                    }
+                }
+            }
+
+            async function deleteArea(areaName) {
+                if (!confirm(`确定删除区域 "${areaName}" 及其所有任务吗？`)) return;
+                delete configData.areas[areaName];
+                if (currentAreaName === areaName) { currentAreaName = null; currentTaskName = null; }
+                renderAreaTree();
+                updateRightPanel();
+                showStatus(`区域 "${areaName}" 已删除`, 'success');
+                
+                // 自动持久化到文件
+                const persistResult = await persistConfig();
+                if (!persistResult.success) {
+                    if (persistResult.error === '版本冲突') {
+                        showStatus(`区域删除已保存到内存，但持久化失败：${persistResult.message}`, 'error');
+                        
+                        const userChoice = confirm(
+                            `检测到版本冲突！\n\n` +
+                            `服务器版本: ${persistResult.current_version}\n` +
+                            `您的版本: ${persistResult.client_version}\n\n` +
+                            `点击"确定"刷新页面获取最新配置（您的更改将丢失）。\n` +
+                            `点击"取消"保留您的更改在内存中，稍后重试。`
+                        );
+                        
+                        if (userChoice) {
+                            await resetDemoData();
+                        }
+                    } else {
+                        showStatus(`区域删除已保存到内存，但持久化失败: ${persistResult.error}`, 'error');
+                    }
+                }
+            }
+
+            // 保存配置到源文件 (成功后弹窗)
+            async function saveConfigToSource(message = '') {
+                try {
+                    showStatus('正在保存配置到文件...', 'info');
+                    
+                    // 准备要保存的配置数据（深拷贝）
+                    const configToSave = JSON.parse(JSON.stringify(configData));
+                    // 提取当前版本号
+                    const clientVersion = configToSave._version || 0;
+                    // 删除内部的_version字段（后端会自动添加）
+                    delete configToSave._version;
+                    // 添加客户端版本号供后端校验
+                    configToSave._client_version = clientVersion;
+                    // 添加提交消息（如果提供）
+                    if (message) {
+                        configToSave._commit_message = message;
+                    }
+                    
+                    // 调用后端API保存配置
+                    const response = await fetch('/addtask/config', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(configToSave)
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (response.ok && result.success) {
+                        showStatus(`配置已保存到文件，已创建备份: ${result.backup_name}`, 'success');
+                        // 更新本地版本号
+                        configData._version = result.new_version || (clientVersion + 1);
+                        // 同步到文本域
+                        syncConfigToTextarea();
+                        // 更新版本徽章
+                        updateVersionBadge();
+                        // 刷新备份列表和树状图
+                        await loadBackups();
+                        // ★ 弹窗提示
+                        showSuccessModal('配置已成功保存到源文件！');
+                        return { success: true, backup_name: result.backup_name };
+                    } else if (response.status === 409) {
+                        // 版本冲突
+                        const currentVersion = result.current_version;
+                        const clientVersion = result.client_version;
+                        showStatus(`版本冲突：当前配置版本为 ${currentVersion}，您提交的版本为 ${clientVersion}。`, 'error');
+                        
+                        // 提供更多选项给用户
+                        const userChoice = confirm(
+                            `检测到版本冲突！\n\n` +
+                            `服务器版本: ${currentVersion}\n` +
+                            `您的版本: ${clientVersion}\n\n` +
+                            `点击"确定"刷新页面获取最新配置（您的更改将丢失）。\n` +
+                            `点击"取消"保留您的更改在编辑器中，稍后重试。`
+                        );
+                        
+                        if (userChoice) {
+                            // 用户选择刷新页面
+                            await resetDemoData();
+                        } else {
+                            // 用户选择保留更改，不刷新页面
+                            showStatus('您的更改已保留在编辑器中，请稍后重试保存。', 'info');
+                        }
+                        return { success: false, error: '版本冲突', message: result.message };
+                    } else {
+                        showStatus(`保存失败: ${result.error || '未知错误'}`, 'error');
+                        return { success: false, error: result.error || '未知错误' };
+                    }
+                } catch (error) {
+                    showStatus(`保存失败: ${error.message}`, 'error');
+                    return { success: false, error: error.message };
+                }
+            }
+
+            function exportConfigFile() {
+                syncConfigToTextarea();
+                const blob = new Blob([configContent.value], { type: 'application/javascript' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'config.js';
+                a.click();
+                URL.revokeObjectURL(url);
+                showStatus('配置文件已导出', 'success');
+                showSuccessModal('配置文件已导出！');
+            }
+
+            // ---------- 备份管理 ----------
+            async function loadBackups() {
+                try {
+                    const response = await fetch('/addtask/config/backups');
+                    if (!response.ok) throw new Error('无法加载备份列表');
+                    backups = await response.json();
+                    renderBackupList();
+                    // 如果当前是Git图形视图，也渲染Git图形
+                    const treeViewContainer = document.getElementById('tree-view-container');
+                    // 检查树状图视图是否可见（display不为none即视为可见）
+                    if (treeViewContainer && treeViewContainer.style.display !== 'none') {
+                        renderGitGraph();
+                    }
+                } catch (error) {
+                    showStatus(`加载备份列表失败: ${error.message}`, 'error');
+                    backupListEl.innerHTML = '<div class="text-center py-3 text-muted"><i class="bi bi-exclamation-triangle me-2"></i>无法加载备份列表</div>';
+                }
+            }
+
+            function renderBackupList() {
+                if (backups.length === 0) {
+                    backupListEl.innerHTML = '<div class="text-center py-3 text-muted"><i class="bi bi-inbox me-2"></i>暂无备份文件</div>';
+                    return;
+                }
+                let html = '';
+                backups.sort((a,b) => b.timestamp - a.timestamp).forEach(backup => {
+                    html += `
+                        <div class="backup-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div style="flex: 1;">
+                                    <strong>${backup.name}</strong>
+                                    <span class="badge bg-secondary version-badge ms-2">${backup.version || 'v1'}</span>
+                                    <div class="text-muted small">${new Date(backup.timestamp).toLocaleString()}</div>
+                                    <div class="text-muted small">${(backup.size / 1024).toFixed(2)} KB</div>
+                                    ${backup.message ? `<div class="text-info small mt-1"><i class="bi bi-chat-left me-1"></i>${backup.message}</div>` : '<div class="text-muted small mt-1"><i class="bi bi-chat-left me-1"></i>无描述</div>'}
+                                </div>
+                                <div class="d-flex gap-1">
+                                    <button class="btn btn-sm btn-outline-primary restore-backup-btn" data-name="${backup.name}">
+                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-info view-backup-btn" data-name="${backup.name}">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger delete-backup-btn" data-name="${backup.name}">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                backupListEl.innerHTML = html;
+                
+                document.querySelectorAll('.restore-backup-btn').forEach(btn => {
+                    btn.addEventListener('click', () => restoreBackup(btn.dataset.name));
+                });
+                document.querySelectorAll('.view-backup-btn').forEach(btn => {
+                    btn.addEventListener('click', () => viewBackup(btn.dataset.name));
+                });
+                document.querySelectorAll('.delete-backup-btn').forEach(btn => {
+                    btn.addEventListener('click', () => deleteBackup(btn.dataset.name));
+                });
+            }
+
+            async function createBackup(manual = true, message = '') {
+                try {
+                    showStatus('正在创建备份...', 'info');
+                    const response = await fetch('/addtask/config/backup', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ 
+                            type: manual ? 'manual' : 'auto',
+                            message: message.trim()
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    if (response.ok && result.success) {
+                        showStatus(`备份 "${result.backup_name}" 创建成功`, 'success');
+                        showSuccessModal(`备份 "${result.backup_name}" 创建成功！`);
+                        // 重新加载备份列表
+                        await loadBackups();
+                    } else {
+                        showStatus(`创建备份失败: ${result.error || '未知错误'}`, 'error');
+                    }
+                } catch (error) {
+                    showStatus(`创建备份失败: ${error.message}`, 'error');
+                }
+            }
+
+            function openCommitMessageModal() {
+                // 清空输入框
+                document.getElementById('commit-message-input').value = '';
+                // 显示模态框
+                if (commitMessageModal) commitMessageModal.show();
+            }
+
+            function openSaveCommitMessageModal() {
+                // 清空输入框
+                document.getElementById('save-commit-message-input').value = '';
+                // 显示模态框
+                if (saveCommitMessageModal) saveCommitMessageModal.show();
+            }
+
+        // 渲染Git风格的备份历史图
+        function renderGitGraph() {
+            const container = document.getElementById('backup-tree-container');
+            if (!container) return;
+            
+            // 清除容器中的默认加载提示（模板中的"加载备份树状图..."）
+            // 但保留已创建的 controls、graphContainer、legend 结构
+            const existingControls = container.querySelector('.gitgraph-controls');
+            const existingGraph = document.getElementById('gitgraph-container');
+            const existingLegend = container.querySelector('.gitgraph-legend');
+            
+            // 如果没有任何子结构，说明是首次加载，清除默认内容
+            if (!existingControls && !existingGraph && !existingLegend) {
+                container.innerHTML = '';
+            }
+            
+            // 没有备份数据时，只更新图形容器内的提示
+            if (backups.length === 0) {
+                let graphContainer = document.getElementById('gitgraph-container');
+                if (!graphContainer) {
+                    graphContainer = document.createElement('div');
+                    graphContainer.id = 'gitgraph-container';
+                    graphContainer.style.cssText = 'width:100%;height:auto;overflow:auto;border:1px solid var(--border-color);border-radius:8px;padding:20px;background-color:var(--bg-color);';
+                    container.appendChild(graphContainer);
+                }
+                graphContainer.innerHTML = '<div class="text-center py-5 text-muted"><i class="bi bi-inbox me-2"></i>暂无备份数据</div>';
+                return;
+            }
+
+            // 获取或创建控制按钮（只创建一次）
+            let controls = container.querySelector('.gitgraph-controls');
+            if (!controls) {
+                controls = document.createElement('div');
+                controls.className = 'gitgraph-controls';
+                controls.innerHTML = `
+                    <button class="btn btn-sm btn-outline-secondary" id="gitgraph-refresh-btn" title="刷新图形">
+                        <i class="bi bi-arrow-clockwise"></i> 刷新
+                    </button>
+                    <button class="btn btn-sm btn-outline-info" id="gitgraph-export-btn" title="导出为图片">
+                        <i class="bi bi-download"></i> 导出
+                    </button>
+                    <div class="form-check form-switch d-inline-block ms-2">
+                        <input class="form-check-input" type="checkbox" id="gitgraph-show-details" checked>
+                        <label class="form-check-label small" for="gitgraph-show-details">显示详情</label>
+                    </div>
+                `;
+                container.appendChild(controls);
+                
+                // 绑定控制按钮事件（只绑定一次）
+                document.getElementById('gitgraph-refresh-btn')?.addEventListener('click', () => {
+                    renderGitGraph();
+                    showStatus('Git图形已刷新', 'success');
+                });
+                
+                document.getElementById('gitgraph-export-btn')?.addEventListener('click', () => {
+                    showSuccessModal('导出功能开发中...');
+                });
+                
+                document.getElementById('gitgraph-show-details')?.addEventListener('change', (e) => {
+                    renderGitGraph();
+                    showStatus(e.target.checked ? '已显示详细信息' : '已隐藏详细信息', 'info');
+                });
+            }
+            
+            // 获取或创建Git图形容器（只创建一次）
+            let graphContainer = document.getElementById('gitgraph-container');
+            if (!graphContainer) {
+                graphContainer = document.createElement('div');
+                graphContainer.id = 'gitgraph-container';
+                graphContainer.style.width = '100%';
+                graphContainer.style.height = 'auto';
+                graphContainer.style.overflow = 'auto';
+                graphContainer.style.border = '1px solid var(--border-color)';
+                graphContainer.style.borderRadius = '8px';
+                graphContainer.style.padding = '20px';
+                graphContainer.style.backgroundColor = 'var(--bg-color)';
+                container.appendChild(graphContainer);
+            } else {
+                // 只清空图形内容，保留容器本身
+                graphContainer.innerHTML = '';
+            }
+            
+            // 获取或创建图例容器（只创建一次）
+            let legend = container.querySelector('.gitgraph-legend');
+            if (!legend) {
+                legend = document.createElement('div');
+                legend.className = 'gitgraph-legend';
+                legend.style.marginTop = '20px';
+                legend.style.padding = '10px';
+                legend.style.backgroundColor = 'var(--bg-secondary)';
+                legend.style.borderRadius = '4px';
+                legend.style.fontSize = '12px';
+                legend.innerHTML = `
+                    <div class="d-flex flex-wrap gap-3">
+                        <div class="d-flex align-items-center">
+                            <div style="width: 12px; height: 12px; background-color: #28a745; border-radius: 50%; margin-right: 8px;"></div>
+                            <span>当前配置</span>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <div style="width: 10px; height: 10px; background-color: #0366d6; border-radius: 50%; margin-right: 8px;"></div>
+                            <span>手动备份</span>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <div style="width: 10px; height: 10px; background-color: #6f42c1; border-radius: 50%; margin-right: 8px;"></div>
+                            <span>自动备份</span>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <div style="width: 10px; height: 10px; background-color: #2cbe4e; border-radius: 50%; margin-right: 8px;"></div>
+                            <span>其他备份</span>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-muted small">
+                        <i class="bi bi-info-circle me-1"></i>点击备份节点可恢复历史版本
+                    </div>
+                `;
+                container.appendChild(legend);
+            }
+            
+            // 准备Git图形数据
+            const gitData = prepareGitGraphData();
+            
+            // 创建Git图形
+            try {
+                if (typeof GitGraph === 'undefined') {
+                    throw new Error('gitgraph.js库未加载，请检查路径');
+                }
+                
+                // 获取显示详情开关状态
+                const showDetails = document.getElementById('gitgraph-show-details')?.checked ?? true;
+
+                // 创建Git图形实例
+                const gitgraph = new GitGraph({
+                    element: graphContainer,
+                    template: 'metro',
+                    orientation: 'vertical',
+                    mode: 'compact',
+                    author: 'AGV配置系统',
+                    initCommitOffsetX: 50,
+                    initCommitOffsetY: 50,
+                    commitMessage: {
+                        display: true,
+                        displayAuthor: showDetails,
+                        displayHash: showDetails,
+                        displayBranch: true
+                    }
+                });
+                
+                const master = gitgraph.branch('master');
+                
+                master.commit({
+                    color: '#28a745',
+                    subject: `当前配置 (v${configData._version || 0})`,
+                    author: '当前版本',
+                    timestamp: new Date().toISOString(),
+                    hash: 'HEAD',
+                    style: {
+                        dot: { size: 12, strokeWidth: 3, strokeColor: '#28a745' },
+                        message: { color: 'var(--success-color)', font: 'bold 12px Arial, sans-serif' }
+                    },
+                    onClick: function() {
+                        showSuccessModal('这是当前配置版本，无法恢复');
+                    }
+                });
+                
+                gitData.commits.forEach((commit) => {
+                    let commitColor = '#2cbe4e';
+                    if (commit.type === 'manual') commitColor = '#0366d6';
+                    else if (commit.type === 'auto') commitColor = '#6f42c1';
+                    
+                    master.commit({
+                        color: commitColor,
+                        subject: commit.subject,
+                        author: commit.author,
+                        timestamp: commit.timestamp,
+                        hash: commit.hash,
+                        style: {
+                            dot: { size: 10, strokeWidth: 2, strokeColor: commitColor },
+                            message: { color: 'var(--text-color)', font: '12px Arial, sans-serif' },
+                            branch: { lineWidth: 3, spacingX: 60, color: commitColor }
+                        },
+                        actions: [
+                            { icon: '👁', onClick: () => viewBackup(commit.backupName) },
+                            { icon: '🗑', onClick: () => deleteBackup(commit.backupName) }
+                        ],
+                        onClick: function() {
+                            if (confirm(`确定恢复备份 ${commit.backupName} 吗？当前未保存的更改将丢失。`)) {
+                                restoreBackup(commit.backupName);
+                            }
+                        },
+                        onMouseOver: function() {
+                            const tooltip = document.createElement('div');
+                            tooltip.id = 'gitgraph-tooltip';
+                            tooltip.style.cssText = 'position:absolute;background:var(--bg-color);border:1px solid var(--border-color);border-radius:4px;padding:10px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:1000;max-width:300px;';
+                            tooltip.innerHTML = `
+                                <div style="border-left:4px solid ${commitColor};padding-left:8px;">
+                                    <strong>${commit.backupName}</strong><br>
+                                    <span style="color:${commitColor};font-size:11px;">${commit.type === 'manual' ? '手动备份' : '自动备份'}</span><br>
+                                    <small>时间: ${new Date(commit.timestamp).toLocaleString()}</small><br>
+                                    <small>版本: ${commit.version || 'v1'}</small><br>
+                                    <small>描述: ${commit.message || '无描述'}</small><br>
+                                    <small>大小: ${(commit.size / 1024).toFixed(2)} KB</small>
+                                </div>`;
+                            document.body.appendChild(tooltip);
+                            const rect = this.element.getBoundingClientRect();
+                            tooltip.style.left = (rect.right + 10) + 'px';
+                            tooltip.style.top = (rect.top - 10) + 'px';
+                        },
+                        onMouseOut: function() {
+                            const tooltip = document.getElementById('gitgraph-tooltip');
+                            if (tooltip) tooltip.remove();
+                        }
+                    });
+                });
+                
+            } catch (error) {
+                console.error('渲染Git图形失败:', error);
+                graphContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Git图形渲染失败: ${error.message}
+                        <div class="mt-2">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="renderGitGraph()">重试</button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+            // 准备Git图形数据
+            function prepareGitGraphData() {
+                // 按时间排序（从新到旧）- 最新的备份在前
+                const sortedBackups = [...backups].sort((a, b) => b.timestamp - a.timestamp);
+                
+                // 转换为Git提交格式
+                const commits = sortedBackups.map(backup => {
+                    // 确定备份类型
+                    let type = 'other';
+                    if (backup.name.includes('manual')) type = 'manual';
+                    else if (backup.name.includes('auto') || backup.name.includes('backup')) type = 'auto';
+                    
+                    // 生成友好的提交主题
+                    let subject = backup.name;
+                    subject = subject.replace('config_manual_', '手动备份: ');
+                    subject = subject.replace('config_auto_', '自动备份: ');
+                    subject = subject.replace('config_backup_', '自动备份: ');
+                    subject = subject.replace('.js', '');
+                    
+                    // 提取时间戳部分
+                    const timestampMatch = subject.match(/(\d{8}_\d{6})$/);
+                    if (timestampMatch) {
+                        const timestamp = timestampMatch[1];
+                        const dateStr = timestamp.substring(0, 8);
+                        const timeStr = timestamp.substring(9);
+                        subject = subject.replace(timestamp, `${dateStr} ${timeStr}`);
+                    }
+                    
+                    // 限制长度
+                    if (subject.length > 30) {
+                        subject = subject.substring(0, 30) + '...';
+                    }
+                    
+                    return {
+                        backupName: backup.name,
+                        subject: subject,
+                        author: type === 'manual' ? '手动备份' : '自动备份',
+                        timestamp: backup.timestamp,
+                        hash: `v${backup.version || '1'}`,
+                        type: type,
+                        version: backup.version,
+                        message: backup.message,
+                        size: backup.size
+                    };
+                });
+                
+                return {
+                    commits: commits,
+                    total: commits.length,
+                    latestTimestamp: commits.length > 0 ? commits[0].timestamp : null  // 第一个是最新的
+                };
+            }
+
+            // 准备树状图数据（保留原函数，但不再使用）
+            function prepareTreeData() {
+                // 按时间排序
+                const sortedBackups = [...backups].sort((a, b) => a.timestamp - b.timestamp);
+                
+                // 构建树结构：当前配置为根节点，所有备份为子节点
+                const tree = {
+                    name: 'root',
+                    children: sortedBackups.map(backup => ({
+                        name: backup.name,
+                        timestamp: backup.timestamp,
+                        message: backup.message,
+                        version: backup.version,
+                        size: backup.size
+                    }))
+                };
+                
+                return tree;
+            }
+
+            // 切换树状图视图
+            function toggleTreeView() {
+                const listViewContainer = document.getElementById('list-view-container');
+                const treeViewContainer = document.getElementById('tree-view-container');
+                const viewListBtn = document.getElementById('view-list-btn');
+                const viewTreeBtn = document.getElementById('view-tree-btn');
+                
+                if (treeViewContainer.style.display === 'none') {
+                    // 切换到Git图形视图
+                    listViewContainer.style.display = 'none';
+                    treeViewContainer.style.display = 'block';
+                    viewListBtn.classList.remove('active');
+                    viewTreeBtn.classList.add('active');
+                    renderGitGraph();
+                } else {
+                    // 切换到列表视图
+                    listViewContainer.style.display = 'block';
+                    treeViewContainer.style.display = 'none';
+                    viewListBtn.classList.add('active');
+                    viewTreeBtn.classList.remove('active');
+                }
+            }
+
+            async function restoreBackup(name) {
+                if (!confirm(`确定恢复备份 ${name} 吗？当前未保存的更改将丢失。`)) return;
+                
+                try {
+                    showStatus('正在恢复备份...', 'info');
+                    const response = await fetch(`/addtask/config/backup/${name}/restore`, {
+                        method: 'POST'
+                    });
+                    
+                    const result = await response.json();
+                    if (response.ok && result.success) {
+                        showStatus(`已恢复到备份 ${name}`, 'success');
+                        showSuccessModal(`已成功恢复到备份 ${name}`);
+                        // 重新加载配置
+                        configData = await loadConfigFromFile();
+                        currentAreaName = null; currentTaskName = null;
+                        renderAreaTree();
+                        updateRightPanel();
+                        syncConfigToTextarea();
+                    } else {
+                        showStatus(`恢复备份失败: ${result.error || '未知错误'}`, 'error');
+                    }
+                } catch (error) {
+                    showStatus(`恢复备份失败: ${error.message}`, 'error');
+                }
+            }
+
+            async function viewBackup(name) {
+                try {
+                    const response = await fetch(`/addtask/config/backup/${name}`);
+                    if (!response.ok) throw new Error('无法加载备份内容');
+                    const content = await response.text();
+                    document.getElementById('backup-content-view').textContent = content;
+                    viewBackupModal.show();
+                } catch (error) {
+                    showStatus(`查看备份失败: ${error.message}`, 'error');
+                }
+            }
+
+            async function deleteBackup(name) {
+                if (!confirm(`确定删除备份 ${name} 吗？`)) return;
+                
+                try {
+                    const response = await fetch(`/addtask/config/backup/${name}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    const result = await response.json();
+                    if (response.ok) {
+                        showStatus(`备份 ${name} 已删除`, 'success');
+                        // 重新加载备份列表
+                        await loadBackups();
+                    } else {
+                        showStatus(`删除备份失败: ${result.error || '未知错误'}`, 'error');
+                    }
+                } catch (error) {
+                    showStatus(`删除备份失败: ${error.message}`, 'error');
+                }
+            }
+
+            async function importConfigFromFile(file) {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const content = e.target.result;
+                        let parsed;
+                        if (file.name.endsWith('.json')) {
+                            parsed = JSON.parse(content);
+                        } else {
+                            const match = content.match(/const config = ([\s\S]*?);/);
+                            if (!match) throw new Error('无效的配置文件格式');
+                            parsed = JSON.parse(match[1]);
+                        }
+                        if (!parsed.areas) throw new Error('缺少 areas 字段');
+                        
+                        // 自动补全缺失的字段（向后兼容）
+                        configData = ensureConfigCompatibility(parsed);
+                        
+                        currentAreaName = null; currentTaskName = null;
+                        renderAreaTree();
+                        updateRightPanel();
+                        syncConfigToTextarea();
+                        
+                        // 询问用户是否保存到文件
+                        const shouldSave = confirm(`配置文件 "${file.name}" 导入成功！\n\n是否要保存到当前配置文件？\n点击"确定"将覆盖当前配置，点击"取消"仅预览。`);
+                        
+                        if (shouldSave) {
+                            showStatus('正在保存导入的配置到文件...', 'info');
+                            try {
+                                // 导入时强制设置版本号为0，避免版本冲突
+                                const importedConfig = JSON.parse(JSON.stringify(configData));
+                                importedConfig._version = 0;
+                                importedConfig._client_version = 0;
+                                importedConfig._commit_message = `导入配置文件: ${file.name}`;
+                                
+                                // 添加导入标志，告诉后端跳过版本检查
+                                importedConfig._is_import = true;
+                                
+                                // 调用后端API保存，使用_is_import标志跳过版本检查
+                                const response = await fetch('/addtask/config', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify(importedConfig)
+                                });
+                                
+                                const result = await response.json();
+                                console.log('导入保存结果:', result);
+                                
+                                if (response.ok && result.success) {
+                                    // 更新本地配置数据
+                                    configData = importedConfig;
+                                    configData._version = result.new_version || 1;
+                                    
+                                    // 刷新界面
+                                    syncConfigToTextarea();
+                                    updateVersionBadge();
+                                    await loadBackups();
+                                    
+                                    showStatus('配置文件已导入并保存到文件', 'success');
+                                    showSuccessModal('配置文件已导入并保存到文件！');
+                                } else if (response.status === 409) {
+                                    // 版本冲突 - 询问用户是否强制覆盖
+                                    const forceOverwrite = confirm(
+                                        `检测到版本冲突！\n\n` +
+                                        `当前配置文件版本: ${result.current_version}\n` +
+                                        `导入文件版本: ${result.client_version}\n\n` +
+                                        `点击"确定"强制覆盖当前配置（创建备份）。\n` +
+                                        `点击"取消"保留当前配置，仅预览导入内容。`
+                                    );
+                                    
+                                    if (forceOverwrite) {
+                                        // 强制覆盖：删除_version字段，让后端生成新版本
+                                        delete importedConfig._version;
+                                        delete importedConfig._client_version;
+                                        importedConfig._is_import = true;
+                                        importedConfig._force_overwrite = true;
+                                        
+                                        const forceResponse = await fetch('/addtask/config', {
+                                            method: 'POST',
+                                            headers: {
+                                                'Content-Type': 'application/json',
+                                            },
+                                            body: JSON.stringify(importedConfig)
+                                        });
+                                        
+                                        const forceResult = await forceResponse.json();
+                                        if (forceResponse.ok && forceResult.success) {
+                                            configData = importedConfig;
+                                            configData._version = forceResult.new_version || 1;
+                                            syncConfigToTextarea();
+                                            updateVersionBadge();
+                                            await loadBackups();
+                                            showStatus('配置文件已强制覆盖并保存到文件', 'success');
+                                            showSuccessModal('配置文件已强制覆盖并保存到文件！');
+                                        } else {
+                                            showStatus(`强制覆盖失败: ${forceResult.error || '未知错误'}`, 'error');
+                                            alert(`强制覆盖失败: ${forceResult.error || '未知错误'}\n\n配置已导入到编辑器，请手动点击"保存配置"按钮。`);
+                                        }
+                                    } else {
+                                        showStatus('配置文件导入成功（仅预览模式）', 'success');
+                                        showSuccessModal('配置文件导入成功！当前为预览模式，请手动点击"保存配置"按钮以应用到文件。');
+                                    }
+                                } else {
+                                    const errorMsg = result ? (result.error || result.message || '未知错误') : '保存失败';
+                                    showStatus(`配置文件导入成功，但保存到文件失败: ${errorMsg}`, 'error');
+                                    alert(`保存失败: ${errorMsg}\n\n配置已导入到编辑器，请手动点击"保存配置"按钮。`);
+                                }
+                            } catch (saveError) {
+                                console.error('保存配置时出错:', saveError);
+                                showStatus(`保存配置时出错: ${saveError.message}`, 'error');
+                                alert(`保存配置时出错: ${saveError.message}\n\n配置已导入到编辑器，请手动点击"保存配置"按钮。`);
+                            }
+                        } else {
+                            showStatus('配置文件导入成功（仅预览模式）', 'success');
+                            showSuccessModal('配置文件导入成功！当前为预览模式，请手动保存以应用到文件。');
+                        }
+                    } catch (err) {
+                        showStatus('导入失败: ' + err.message, 'error');
+                    }
+                };
+                reader.readAsText(file);
+            }
+
+            // 标签页切换
+            function switchTab(tabId) {
+                document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+                document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+                document.querySelectorAll('.editor-content').forEach(c => c.classList.remove('active'));
+                document.getElementById(`${tabId}-editor`).classList.add('active');
+                if (tabId === 'source') syncConfigToTextarea();
+            }
+
+            // 重置演示数据（重新加载配置文件）
+            async function resetDemoData() {
+                try {
+                    showStatus('正在重新加载配置文件...', 'info');
+                    configData = await loadConfigFromFile();
+                    currentAreaName = null;
+                    currentTaskName = null;
+                    renderAreaTree();
+                    updateRightPanel();
+                    syncConfigToTextarea();
+                    showStatus('配置文件已重置', 'success');
+                    showSuccessModal('配置文件已重置为默认数据');
+                } catch (error) {
+                    showStatus('重置失败: ' + error.message, 'error');
+                }
+            }
+
+            function formatSource() {
+                try {
+                    const text = configContent.value;
+                    const match = text.match(/const config = ([\s\S]*?);/);
+                    if (!match) throw new Error('找不到 config 对象');
+                    const parsed = JSON.parse(match[1]);
+                    const formatted = JSON.stringify(parsed, null, 4);
+                    configContent.value = `// config.js - AGV跨环境任务下发系统配置文件
+// 所有区域、任务模板、URL、路径选项等均在此定义
+const config = ${formatted};`;
+                    showStatus('格式化完成', 'success');
+                    clearJsonError();
+                } catch (e) {
+                    showJsonError('格式化失败: ' + e.message);
+                }
+            }
+
+            function copySource() {
+                configContent.select();
+                document.execCommand('copy');
+                showStatus('已复制到剪贴板', 'success');
+            }
+
+            // ---------- 事件绑定 ----------
+            function bindEvents() {
+                document.getElementById('add-area-btn').addEventListener('click', () => openAreaModal('add'));
+                document.getElementById('add-task-btn').addEventListener('click', createNewTask);
+                document.getElementById('add-path-option').addEventListener('click', addPathOption);
+                
+                taskRequiresPath.addEventListener('change', (e) => {
+                    pathOptionsSection.style.display = e.target.checked ? 'block' : 'none';
+                });
+                
+                enableCapacityCheck.addEventListener('change', (e) => {
+                    capacityInputWrapper.style.display = e.target.checked ? 'block' : 'none';
+                });
+                
+                taskBaseUrlInput.addEventListener('blur', () => {
+                    const url = taskBaseUrlInput.value.trim();
+                    if (url && !isValidUrl(url)) {
+                        showUrlError('URL 格式不正确，应以 http:// 或 https:// 开头');
+                    } else {
+                        clearUrlError();
+                    }
+                });
+                
+                taskForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    saveTaskForm();
+                });
+                
+                deleteTaskBtn.addEventListener('click', deleteCurrentTask);
+                cancelTaskBtn.addEventListener('click', () => {
+                    if (currentTaskName) loadTaskToForm(currentTaskName);
+                    else taskFormContainer.style.display = 'none';
+                });
+                
+                areaModalConfirm.addEventListener('click', confirmAreaModal);
+                
+                document.querySelectorAll('.tab-btn').forEach(btn => {
+                    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+                });
+                
+                document.getElementById('save-config-btn').addEventListener('click', openSaveCommitMessageModal);
+                document.getElementById('export-config-btn').addEventListener('click', exportConfigFile);
+                document.getElementById('apply-source-btn').addEventListener('click', () => {
+                    parseConfigFromTextarea();
+                    renderAreaTree();
+                    updateRightPanel();
+                });
+                document.getElementById('format-source-btn').addEventListener('click', formatSource);
+                document.getElementById('copy-code-btn').addEventListener('click', copySource);
+                // 主题切换由统一的主题管理器处理
+                document.getElementById('refresh-btn').addEventListener('click', () => {
+                    if (confirm('确定重新加载配置文件吗？未保存的更改将丢失。')) {
+                        resetDemoData();
+                    }
+                });
+                
+                // 备份管理事件
+                document.getElementById('create-backup-btn').addEventListener('click', openCommitMessageModal);
+                document.getElementById('commit-message-confirm').addEventListener('click', () => {
+                    const message = document.getElementById('commit-message-input').value.trim();
+                    if (commitMessageModal) commitMessageModal.hide();
+                    createBackup(true, message);
+                });
+                document.getElementById('export-config-backup-btn').addEventListener('click', exportConfigFile);
+                document.getElementById('import-config-backup-btn').addEventListener('click', () => {
+                    document.getElementById('backup-file-input').click();
+                });
+                document.getElementById('backup-file-input').addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (file) importConfigFromFile(file);
+                    e.target.value = '';
+                });
+                
+                // 保存配置提交消息模态框确认按钮
+                document.getElementById('save-commit-message-confirm').addEventListener('click', () => {
+                    const message = document.getElementById('save-commit-message-input').value.trim();
+                    if (saveCommitMessageModal) saveCommitMessageModal.hide();
+                    saveConfigToSource(message);
+                });
+                
+                // 视图切换按钮
+                document.getElementById('view-list-btn').addEventListener('click', toggleTreeView);
+                document.getElementById('view-tree-btn').addEventListener('click', toggleTreeView);
+                document.getElementById('refresh-tree-btn').addEventListener('click', () => {
+                    renderGitGraph();
+                    showStatus('Git图形已刷新', 'success');
+                });
+            }
+
+            async function init() {
+                bindEvents();
+                
+                // 异步加载配置文件
+                try {
+                    showStatus('正在加载配置文件...', 'info');
+                    configData = await loadConfigFromFile();
+                    renderAreaTree();
+                    updateRightPanel();
+                    syncConfigToTextarea();
+                    
+                    // 加载备份列表
+                    await loadBackups();
+                    
+                    // 确保树状图视图正确显示
+                    // 检查树状图视图按钮是否激活，如果是则确保树状图被渲染
+                    const viewTreeBtn = document.getElementById('view-tree-btn');
+                    const treeViewContainer = document.getElementById('tree-view-container');
+                    if (viewTreeBtn && viewTreeBtn.classList.contains('active') && treeViewContainer) {
+                        // 确保树状图容器可见
+                        treeViewContainer.style.display = 'block';
+                        // 确保列表视图隐藏
+                        const listViewContainer = document.getElementById('list-view-container');
+                        if (listViewContainer) {
+                            listViewContainer.style.display = 'none';
+                        }
+                        // 渲染Git图形
+                        renderGitGraph();
+                    }
+                    
+                    showStatus('配置文件加载完成', 'success');
+                } catch (error) {
+                    showStatus('初始化失败: ' + error.message, 'error');
+                }
+            }
+
+            init();
+        })();
+    </script>
+</body>
+</html>

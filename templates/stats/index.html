@@ -1,0 +1,1141 @@
+{% extends "base.html" %}
+
+{% block title %}跨环境任务模板管理系统 - 统计仪表盘{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-card {
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        background: var(--card-bg);
+        box-shadow: var(--card-shadow);
+        transition: all 0.3s;
+        height: 100%;
+    }
+    
+    .stats-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--card-shadow-hover);
+    }
+    
+    .stats-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+        margin-bottom: 1rem;
+    }
+    
+    .stats-value {
+        font-size: 2.2rem;
+        font-weight: 700;
+        line-height: 1;
+        margin-bottom: 0.5rem;
+    }
+    
+    .stats-label {
+        font-size: 0.9rem;
+        color: var(--text-color);
+        opacity: 0.8;
+        margin-bottom: 0.25rem;
+    }
+    
+    .stats-change {
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    
+    .stats-change.positive {
+        color: #28a745;
+    }
+    
+    .stats-change.negative {
+        color: #dc3545;
+    }
+    
+    .chart-container {
+        background: var(--card-bg);
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        padding: 1.5rem;
+        box-shadow: var(--card-shadow);
+        margin-bottom: 1.5rem;
+        /* 移除 height: 100% 避免布局问题 */
+        min-height: 300px;
+        position: relative;
+    }
+    
+    .chart-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 2px solid var(--border-color);
+    }
+    
+    .distribution-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+        transition: background-color 0.2s;
+    }
+    
+    .distribution-item:hover {
+        background-color: var(--detail-card-bg);
+    }
+    
+    .distribution-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .distribution-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+    }
+    
+    .distribution-value {
+        font-weight: 600;
+    }
+    
+    .distribution-percentage {
+        font-size: 0.85rem;
+        opacity: 0.7;
+    }
+    
+    .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        z-index: 10;
+        /* 确保不会与其他元素重叠 */
+        pointer-events: none;
+    }
+    
+    .loading-overlay > * {
+        pointer-events: auto;
+    }
+    
+    .refresh-btn {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        z-index: 5;
+        /* 确保在小屏幕上不会与其他元素重叠 */
+        @media (max-width: 768px) {
+            position: relative;
+            top: auto;
+            right: auto;
+            margin-top: 1rem;
+        }
+    }
+    
+    .time-filter {
+        background: var(--detail-card-bg);
+        border-radius: 8px;
+        padding: 0.5rem;
+        display: inline-flex;
+        gap: 0.25rem;
+    }
+    
+    .time-filter-btn {
+        padding: 0.25rem 0.75rem;
+        border-radius: 6px;
+        border: none;
+        background: transparent;
+        color: var(--text-color);
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .time-filter-btn.active {
+        background: var(--primary-gradient);
+        color: white;
+    }
+    
+    .time-filter-btn:hover:not(.active) {
+        background: var(--detail-card-bg);
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    @media (max-width: 768px) {
+        .stats-grid {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
+        
+        .stats-value {
+            font-size: 1.8rem;
+        }
+        
+        .chart-container {
+            padding: 1rem;
+            min-height: 250px;
+        }
+        
+        .distribution-item {
+            padding: 0.5rem;
+        }
+        
+        .distribution-label span {
+            max-width: 100px;
+        }
+        
+        /* 修复小屏幕上的布局 */
+        .row > .col-lg-8, .row > .col-lg-4 {
+            padding-left: 0;
+            padding-right: 0;
+        }
+        
+        /* 修复按钮组在小屏幕上的显示 */
+        .d-flex.justify-content-center.gap-2 {
+            flex-wrap: wrap;
+        }
+        
+        .d-flex.justify-content-center.gap-2 .btn {
+            margin-bottom: 0.5rem;
+        }
+        
+        /* 修复时间筛选器在小屏幕上的显示 */
+        .time-filter {
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+        
+        .time-filter-btn {
+            flex: 1;
+            min-width: 60px;
+            text-align: center;
+        }
+    }
+    
+    @media (max-width: 576px) {
+        .header {
+            padding: 1.5rem;
+        }
+        
+        .header h1 {
+            font-size: 1.8rem;
+        }
+        
+        .header .lead {
+            font-size: 1rem;
+        }
+        
+        .stats-value {
+            font-size: 1.5rem;
+        }
+        
+        .stats-icon {
+            width: 50px;
+            height: 50px;
+            font-size: 1.5rem;
+        }
+        
+        /* 修复图表在小屏幕上的显示 */
+        canvas {
+            max-height: 200px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12">
+        <div class="header text-center animate__animated animate__fadeInDown">
+            <div class="position-relative">
+                <h1 class="display-4 fw-bold mb-3"><i class="bi bi-graph-up-arrow me-2"></i> 统计仪表盘</h1>
+                <p class="lead mb-4 opacity-75">实时监控 · 数据分析 · 智能洞察跨环境任务模板使用情况</p>
+                <div class="d-flex flex-wrap justify-content-center gap-2">
+                    <a href="{{ url_for('index') }}" class="btn btn-light btn-lg px-4">
+                        <i class="bi bi-house me-2"></i> 返回首页
+                    </a>
+                    <button id="refreshStats" class="btn btn-outline-light btn-lg px-4">
+                        <i class="bi bi-arrow-clockwise me-2"></i> 刷新数据
+                    </button>
+                    <button id="exportStats" class="btn btn-outline-light btn-lg px-4">
+                        <i class="bi bi-download me-2"></i> 导出数据
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 时间筛选 -->
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
+            <div class="mb-3 mb-md-0">
+                <h4 class="mb-0"><i class="bi bi-calendar-week me-2"></i> 系统统计概览</h4>
+                <p class="text-muted mb-0">最后更新: <span id="lastUpdateTime">正在加载...</span></p>
+            </div>
+            <div class="time-filter">
+                <button class="time-filter-btn active" data-period="all">全部</button>
+                <button class="time-filter-btn" data-period="today">今日</button>
+                <button class="time-filter-btn" data-period="week">本周</button>
+                <button class="time-filter-btn" data-period="month">本月</button>
+            </div>
+        </div>
+        
+        <!-- 统计卡片 -->
+        <div class="stats-grid" id="statsCards">
+            <!-- 卡片将通过JavaScript动态加载 -->
+            <div class="text-center py-5">
+                <div class="loading-spinner mb-3"></div>
+                <p>加载统计信息中...</p>
+            </div>
+        </div>
+        
+        <div class="row">
+            <!-- 左侧列：分布图表 -->
+            <div class="col-lg-8">
+                <div class="row">
+                    <!-- 启用状态分布 -->
+                    <div class="col-md-6 mb-4">
+                        <div class="chart-container">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="chart-title mb-0"><i class="bi bi-toggle-on me-2"></i> 启用状态分布</h5>
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                        <i class="bi bi-three-dots"></i>
+                                    </button>
+                                    <ul class="dropdown-menu">
+                                        <li><a class="dropdown-item" href="#" onclick="toggleChartType('enableChart', 'pie')">饼图</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="toggleChartType('enableChart', 'bar')">柱状图</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="toggleChartType('enableChart', 'doughnut')">环形图</a></li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="position-relative">
+                                <canvas id="enableChart" height="250"></canvas>
+                                <div class="loading-overlay" id="enableChartLoading">
+                                    <div class="text-center">
+                                        <div class="loading-spinner mb-2"></div>
+                                        <p class="text-white mb-0">加载中...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 容量分布 -->
+                    <div class="col-md-6 mb-4">
+                        <div class="chart-container">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="chart-title mb-0"><i class="bi bi-speedometer2 me-2"></i> 容量分布</h5>
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                        <i class="bi bi-three-dots"></i>
+                                    </button>
+                                    <ul class="dropdown-menu">
+                                        <li><a class="dropdown-item" href="#" onclick="toggleChartType('capacityChart', 'bar')">柱状图</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="toggleChartType('capacityChart', 'line')">折线图</a></li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="position-relative">
+                                <canvas id="capacityChart" height="250"></canvas>
+                                <div class="loading-overlay" id="capacityChartLoading">
+                                    <div class="text-center">
+                                        <div class="loading-spinner mb-2"></div>
+                                        <p class="text-white mb-0">加载中...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 服务器分布 -->
+                    <div class="col-12 mb-4">
+                        <div class="chart-container">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="chart-title mb-0"><i class="bi bi-server me-2"></i> 服务器分布</h5>
+                                <button class="btn btn-sm btn-outline-primary" onclick="showServerDetails()">
+                                    <i class="bi bi-list-ul me-1"></i> 查看详情
+                                </button>
+                            </div>
+                            <div class="position-relative">
+                                <canvas id="serverChart" height="150"></canvas>
+                                <div class="loading-overlay" id="serverChartLoading">
+                                    <div class="text-center">
+                                        <div class="loading-spinner mb-2"></div>
+                                        <p class="text-white mb-0">加载中...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右侧列：详细分布列表 -->
+            <div class="col-lg-4">
+                <!-- 模板增长趋势 -->
+                <div class="chart-container mb-4">
+                    <h5 class="chart-title"><i class="bi bi-graph-up me-2"></i> 模板增长趋势</h5>
+                    <div class="position-relative">
+                        <canvas id="growthChart" height="200"></canvas>
+                        <div class="loading-overlay" id="growthChartLoading">
+                            <div class="text-center">
+                                <div class="loading-spinner mb-2"></div>
+                                <p class="text-white mb-0">加载中...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 详细分布列表 -->
+                <div class="chart-container">
+                    <h5 class="chart-title"><i class="bi bi-list-check me-2"></i> 详细分布</h5>
+                    <div id="distributionList">
+                        <!-- 分布列表将通过JavaScript动态加载 -->
+                        <div class="text-center py-3">
+                            <div class="loading-spinner mb-2"></div>
+                            <p class="small">加载分布数据中...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 系统健康状态 -->
+                <div class="chart-container mt-4">
+                    <h5 class="chart-title"><i class="bi bi-heart-pulse me-2"></i> 系统健康状态</h5>
+                    <div id="healthStatus">
+                        <!-- 健康状态将通过JavaScript动态加载 -->
+                        <div class="text-center py-3">
+                            <div class="loading-spinner mb-2"></div>
+                            <p class="small">评估系统健康中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 服务器详情模态框 -->
+        <div class="modal fade" id="serverDetailsModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-server me-2"></i> 服务器详情</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="serverDetailsContent">
+                            <!-- 服务器详情将通过JavaScript动态加载 -->
+                            <div class="text-center py-4">
+                                <div class="loading-spinner mb-3"></div>
+                                <p>加载服务器详情中...</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 数据说明 -->
+        <div class="card mt-4">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-info-circle me-2"></i> 数据说明</h5>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>统计指标说明：</h6>
+                        <ul class="small">
+                            <li><strong>启用状态</strong>：模板是否启用（1=启用，0=禁用）</li>
+                            <li><strong>容量管控</strong>：模板的容量限制值，-1表示不限制</li>
+                            <li><strong>服务器分布</strong>：模板分配到的目标服务器IP</li>
+                            <li><strong>区域分布</strong>：模板所属的区域ID</li>
+                            <li><strong>子任务数</strong>：每个模板包含的子任务数量</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>更新频率：</h6>
+                        <ul class="small">
+                            <li><strong>实时数据</strong>：基础统计指标实时更新</li>
+                            <li><strong>定时刷新</strong>：图表数据每5分钟自动刷新</li>
+                            <li><strong>手动刷新</strong>：点击刷新按钮立即更新</li>
+                            <li><strong>数据缓存</strong>：复杂查询结果缓存1分钟</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="alert alert-info mt-3 mb-0">
+                    <i class="bi bi-lightbulb me-2"></i>
+                    <strong>提示：</strong> 统计数据基于当前数据库实时计算，反映了跨环境任务模板的实际使用情况。数据更新可能会有轻微延迟。
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/vendor/chart.js/chart.min.js"></script>
+<script>
+    // 全局变量
+    let charts = {};
+    let lastUpdateTime = null;
+    
+    // 初始化页面
+    $(document).ready(function() {
+        // 加载所有统计数据
+        loadAllStats();
+        
+        // 设置自动刷新（每5分钟）
+        setInterval(loadAllStats, 5 * 60 * 1000);
+        
+        // 刷新按钮点击事件
+        $('#refreshStats').click(function() {
+            loadAllStats();
+            showToast('正在刷新统计数据...', 'info');
+        });
+        
+        // 导出按钮点击事件
+        $('#exportStats').click(function() {
+            exportStatsData();
+        });
+        
+        // 时间筛选按钮点击事件
+        $('.time-filter-btn').click(function() {
+            $('.time-filter-btn').removeClass('active');
+            $(this).addClass('active');
+            const period = $(this).data('period');
+            filterByTimePeriod(period);
+        });
+    });
+    
+    // 加载所有统计数据
+    function loadAllStats() {
+        // 更新最后更新时间
+        lastUpdateTime = new Date();
+        $('#lastUpdateTime').text(formatDateTime(lastUpdateTime));
+        
+        // 并行加载所有数据
+        Promise.all([
+            loadOverviewStats(),
+            loadDistributionStats(),
+            loadTemplateGrowth(),
+            loadDetailedAnalysis()
+        ]).then(() => {
+            console.log('所有统计数据加载完成');
+        }).catch(error => {
+            console.error('加载统计数据失败:', error);
+            showToast('加载统计数据失败，请重试', 'error');
+        });
+    }
+    
+    // 加载概览统计
+    function loadOverviewStats() {
+        return fetch('/api/stats/overview')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    renderStatsCards(data.data);
+                } else {
+                    throw new Error(data.message);
+                }
+            });
+    }
+    
+    // 加载分布统计
+    function loadDistributionStats() {
+        return fetch('/api/stats/distribution')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    renderDistributionCharts(data.data);
+                    renderDistributionList(data.data);
+                } else {
+                    throw new Error(data.message);
+                }
+            });
+    }
+    
+    // 加载模板增长趋势
+    function loadTemplateGrowth() {
+        return fetch('/api/stats/template_growth')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    renderGrowthChart(data.data);
+                } else {
+                    throw new Error(data.message);
+                }
+            });
+    }
+    
+    // 加载详细分析
+    function loadDetailedAnalysis() {
+        return fetch('/api/stats/detailed_analysis')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    renderHealthStatus(data.data);
+                } else {
+                    throw new Error(data.message);
+                }
+            });
+    }
+    
+    // 渲染统计卡片
+    function renderStatsCards(data) {
+        const { template_stats, detail_stats, recent_templates } = data;
+        
+        const cards = [
+            {
+                title: '总模板数',
+                value: template_stats.total_templates,
+                icon: 'bi-files',
+                color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                change: '+2',
+                changeType: 'positive',
+                description: '跨环境任务模板总数'
+            },
+            {
+                title: '启用模板',
+                value: template_stats.enabled_templates,
+                icon: 'bi-toggle-on',
+                color: 'linear-gradient(135deg, #28a745 0%, #20c997 100%)',
+                change: `启用率 ${Math.round(template_stats.enabled_templates / template_stats.total_templates * 100)}%`,
+                changeType: 'positive',
+                description: '当前启用的模板数量'
+            },
+            {
+                title: '子任务总数',
+                value: detail_stats.total_subtasks,
+                icon: 'bi-list-task',
+                color: 'linear-gradient(135deg, #fd7e14 0%, #ffc107 100%)',
+                change: `平均 ${Math.round(detail_stats.total_subtasks / template_stats.total_templates * 10) / 10} 个/模板`,
+                changeType: 'neutral',
+                description: '所有模板的子任务总数'
+            },
+            {
+                title: '服务器数量',
+                value: template_stats.distinct_servers,
+                icon: 'bi-server',
+                color: 'linear-gradient(135deg, #17a2b8 0%, #20c997 100%)',
+                change: `${template_stats.distinct_areas} 个区域`,
+                changeType: 'neutral',
+                description: '目标服务器IP数量'
+            },
+            {
+                title: '平均容量',
+                value: Math.round(template_stats.avg_capacity * 10) / 10,
+                icon: 'bi-speedometer2',
+                color: 'linear-gradient(135deg, #dc3545 0%, #fd7e14 100%)',
+                change: `范围 ${template_stats.min_capacity}-${template_stats.max_capacity}`,
+                changeType: 'neutral',
+                description: '模板平均容量管控值'
+            },
+            {
+                title: '最近更新',
+                value: recent_templates.length,
+                icon: 'bi-clock-history',
+                color: 'linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%)',
+                change: '最近5个模板',
+                changeType: 'neutral',
+                description: '最近创建/更新的模板'
+            }
+        ];
+        
+        let cardsHTML = '';
+        cards.forEach(card => {
+            cardsHTML += `
+                <div class="stats-card">
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="stats-label">${card.title}</div>
+                                <div class="stats-value">${card.value}</div>
+                                <div class="stats-change ${card.changeType}">${card.change}</div>
+                                <div class="stats-label mt-2">${card.description}</div>
+                            </div>
+                            <div class="stats-icon" style="background: ${card.color}; color: white;">
+                                <i class="bi ${card.icon}"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        $('#statsCards').html(cardsHTML);
+    }
+    
+    // 渲染分布图表
+    function renderDistributionCharts(data) {
+        // 启用状态分布图表
+        renderEnableChart(data.enable_distribution);
+        
+        // 容量分布图表
+        renderCapacityChart(data.capacity_distribution);
+        
+        // 服务器分布图表
+        renderServerChart(data.server_distribution);
+    }
+    
+    // 渲染启用状态图表
+    function renderEnableChart(distribution) {
+        const ctx = document.getElementById('enableChart').getContext('2d');
+        
+        // 如果图表已存在，销毁它
+        if (charts.enableChart) {
+            charts.enableChart.destroy();
+        }
+        
+        const labels = distribution.map(item => item.status === 1 ? '启用' : '禁用');
+        const data = distribution.map(item => item.count);
+        const colors = ['#28a745', '#dc3545'];
+        
+        charts.enableChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: colors,
+                    borderColor: 'var(--card-bg)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: 'var(--text-color)',
+                            padding: 20,
+                            font: {
+                                size: 12
+                            }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const item = distribution[context.dataIndex];
+                                return `${context.label}: ${item.count} (${item.percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // 隐藏加载动画
+        $('#enableChartLoading').hide();
+    }
+    
+    // 渲染容量分布图表
+    function renderCapacityChart(distribution) {
+        const ctx = document.getElementById('capacityChart').getContext('2d');
+        
+        // 如果图表已存在，销毁它
+        if (charts.capacityChart) {
+            charts.capacityChart.destroy();
+        }
+        
+        const labels = distribution.map(item => `容量 ${item.capacity}`);
+        const data = distribution.map(item => item.count);
+        
+        charts.capacityChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '模板数量',
+                    data: data,
+                    backgroundColor: 'rgba(13, 110, 253, 0.7)',
+                    borderColor: 'rgba(13, 110, 253, 1)',
+                    borderWidth: 1,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'var(--border-color)'
+                        },
+                        ticks: {
+                            color: 'var(--text-color)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            color: 'var(--text-color)'
+                        }
+                    }
+                }
+            }
+        });
+        
+        // 隐藏加载动画
+        $('#capacityChartLoading').hide();
+    }
+    
+    // 渲染服务器分布图表
+    function renderServerChart(distribution) {
+        const ctx = document.getElementById('serverChart').getContext('2d');
+        
+        // 如果图表已存在，销毁它
+        if (charts.serverChart) {
+            charts.serverChart.destroy();
+        }
+        
+        const labels = distribution.map(item => item.server || '未设置');
+        const data = distribution.map(item => item.count);
+        
+        charts.serverChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: [
+                        'rgba(102, 126, 234, 0.8)',
+                        'rgba(118, 75, 162, 0.8)',
+                        'rgba(40, 167, 69, 0.8)',
+                        'rgba(253, 126, 20, 0.8)',
+                        'rgba(23, 162, 184, 0.8)'
+                    ],
+                    borderColor: 'var(--card-bg)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            color: 'var(--text-color)',
+                            font: {
+                                size: 11
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // 隐藏加载动画
+        $('#serverChartLoading').hide();
+    }
+    
+    // 渲染增长趋势图表
+    function renderGrowthChart(data) {
+        const ctx = document.getElementById('growthChart').getContext('2d');
+        
+        // 如果图表已存在，销毁它
+        if (charts.growthChart) {
+            charts.growthChart.destroy();
+        }
+        
+        const labels = data.map(item => `${item.range_start}-${item.range_end}`);
+        const counts = data.map(item => item.count);
+        
+        charts.growthChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '模板数量',
+                    data: counts,
+                    borderColor: 'rgba(102, 126, 234, 1)',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'var(--border-color)'
+                        },
+                        ticks: {
+                            color: 'var(--text-color)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: 'var(--border-color)'
+                        },
+                        ticks: {
+                            color: 'var(--text-color)',
+                            maxRotation: 0
+                        }
+                    }
+                }
+            }
+        });
+        
+        // 隐藏加载动画
+        $('#growthChartLoading').hide();
+    }
+    
+    // 渲染分布列表
+    function renderDistributionList(data) {
+        let listHTML = '';
+        
+        // 启用状态分布
+        if (data.enable_distribution && data.enable_distribution.length > 0) {
+            listHTML += '<div class="mb-3"><strong class="small">启用状态:</strong></div>';
+            data.enable_distribution.forEach(item => {
+                const status = item.status === 1 ? '启用' : '禁用';
+                const color = item.status === 1 ? '#28a745' : '#dc3545';
+                listHTML += `
+                    <div class="distribution-item">
+                        <div class="distribution-label">
+                            <div class="distribution-color" style="background-color: ${color};"></div>
+                            <span>${status}</span>
+                        </div>
+                        <div class="distribution-value">
+                            ${item.count} <span class="distribution-percentage">(${item.percentage}%)</span>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        // 服务器分布
+        if (data.server_distribution && data.server_distribution.length > 0) {
+            listHTML += '<div class="mb-3 mt-4"><strong class="small">服务器分布:</strong></div>';
+            data.server_distribution.forEach((item, index) => {
+                const colors = ['#667eea', '#764ba2', '#28a745', '#fd7e14', '#17a2b8'];
+                const color = colors[index % colors.length];
+                listHTML += `
+                    <div class="distribution-item">
+                        <div class="distribution-label">
+                            <div class="distribution-color" style="background-color: ${color};"></div>
+                            <span class="text-truncate" style="max-width: 150px;">${item.server || '未设置'}</span>
+                        </div>
+                        <div class="distribution-value">
+                            ${item.count} <span class="distribution-percentage">(${item.percentage}%)</span>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        $('#distributionList').html(listHTML);
+    }
+    
+    // 渲染健康状态
+    function renderHealthStatus(data) {
+        const { template_analysis, subtask_analysis } = data;
+        
+        // 合并分析数据
+        const allAnalysis = [...(template_analysis || []), ...(subtask_analysis || [])];
+        
+        let healthHTML = '<div class="row">';
+        
+        // 关键指标
+        const keyMetrics = [
+            { metric: 'enabled_templates', label: '启用模板', good: true },
+            { metric: 'disabled_templates', label: '禁用模板', good: false },
+            { metric: 'templates_with_capacity', label: '有容量限制', good: true },
+            { metric: 'avg_subtasks_per_template', label: '平均子任务数', good: true }
+        ];
+        
+        keyMetrics.forEach(metric => {
+            const item = allAnalysis.find(a => a.metric === metric.metric);
+            if (item) {
+                const value = item.value;
+                const icon = metric.good ? 'bi-check-circle text-success' : 'bi-exclamation-circle text-warning';
+                
+                healthHTML += `
+                    <div class="col-6 mb-3">
+                        <div class="d-flex align-items-center">
+                            <i class="bi ${icon} me-2"></i>
+                            <div>
+                                <div class="small">${metric.label}</div>
+                                <div class="fw-bold">${value}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        });
+        
+        healthHTML += '</div>';
+        
+        // 健康评估
+        const enabledTemplates = parseInt(allAnalysis.find(a => a.metric === 'enabled_templates')?.value || 0);
+        const totalTemplates = parseInt(allAnalysis.find(a => a.metric === 'total_templates')?.value || 1);
+        const enabledRate = (enabledTemplates / totalTemplates) * 100;
+        
+        let healthStatus = '良好';
+        let healthColor = 'success';
+        let healthIcon = 'bi-check-circle';
+        
+        if (enabledRate < 30) {
+            healthStatus = '需关注';
+            healthColor = 'warning';
+            healthIcon = 'bi-exclamation-triangle';
+        } else if (enabledRate < 10) {
+            healthStatus = '异常';
+            healthColor = 'danger';
+            healthIcon = 'bi-x-circle';
+        }
+        
+        healthHTML += `
+            <div class="alert alert-${healthColor} mt-3">
+                <div class="d-flex align-items-center">
+                    <i class="bi ${healthIcon} me-2 fs-4"></i>
+                    <div>
+                        <strong>系统健康状态: ${healthStatus}</strong>
+                        <div class="small">启用率: ${enabledRate.toFixed(1)}% (${enabledTemplates}/${totalTemplates})</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        $('#healthStatus').html(healthHTML);
+    }
+    
+    // 切换图表类型
+    function toggleChartType(chartId, newType) {
+        if (charts[chartId]) {
+            charts[chartId].config.type = newType;
+            charts[chartId].update();
+        }
+    }
+    
+    // 显示服务器详情
+    function showServerDetails() {
+        fetch('/api/stats/templates_by_server')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    let detailsHTML = '';
+                    
+                    if (data.data && data.data.length > 0) {
+                        data.data.forEach(server => {
+                            detailsHTML += `
+                                <div class="card mb-3">
+                                    <div class="card-body">
+                                        <h6 class="card-title">
+                                            <i class="bi bi-server me-2"></i> ${server.server || '未设置服务器'}
+                                            <span class="badge bg-primary float-end">${server.template_count} 个模板</span>
+                                        </h6>
+                                        <div class="row mt-3">
+                                            <div class="col-6">
+                                                <div class="small text-muted">启用模板</div>
+                                                <div class="fw-bold text-success">${server.enabled_count}</div>
+                                            </div>
+                                            <div class="col-6">
+                                                <div class="small text-muted">禁用模板</div>
+                                                <div class="fw-bold text-danger">${server.disabled_count}</div>
+                                            </div>
+                                        </div>
+                                        <div class="mt-3">
+                                            <div class="small text-muted mb-1">包含模板:</div>
+                                            <div class="small">${server.template_codes || '无'}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        detailsHTML = '<div class="text-center py-4"><p class="text-muted">暂无服务器数据</p></div>';
+                    }
+                    
+                    $('#serverDetailsContent').html(detailsHTML);
+                    new bootstrap.Modal(document.getElementById('serverDetailsModal')).show();
+                } else {
+                    showToast('加载服务器详情失败', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('加载服务器详情失败:', error);
+                showToast('加载服务器详情失败', 'error');
+            });
+    }
+    
+    // 按时间周期筛选
+    function filterByTimePeriod(period) {
+        // 这里可以实现按时间筛选的逻辑
+        // 目前只是演示，实际需要后端支持时间筛选
+        showToast(`已切换到 ${period} 数据视图`, 'info');
+    }
+    
+    // 导出统计数据
+    function exportStatsData() {
+        // 这里可以实现导出功能
+        // 目前只是演示
+        showToast('导出功能开发中...', 'info');
+    }
+    
+    // 显示Toast消息
+    function showToast(message, type = 'info') {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show animate__animated animate__fadeInRight`;
+        alertDiv.innerHTML = `
+            <i class="bi bi-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-triangle' : 'info-circle'} me-2"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.querySelector('.alert-container').appendChild(alertDiv);
+        
+        setTimeout(() => {
+            alertDiv.remove();
+        }, 3000);
+    }
+    
+    // 格式化日期时间
+    function formatDateTime(date) {
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+</script>
+{% endblock %}

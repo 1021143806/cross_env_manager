@@ -1,0 +1,48 @@
+<!-- 任务下发表单 -->
+<div class="card h-100 animate__animated animate__fadeInLeft">
+    <div class="card-header-custom">
+        <h4 class="mb-0"><i class="bi bi-send-fill me-2"></i>任务下发</h4>
+    </div>
+    <div class="card-body-custom">
+        <div class="mb-3">
+            <label class="form-label fw-semibold">选择区域</label>
+            <select id="area-select" class="form-select">
+                <option value="">请选择区域</option>
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label fw-semibold">任务模板</label>
+            <div class="task-select-wrapper">
+                <div id="recent-tasks-container"></div>
+                <select id="task-select" class="form-select">
+                    <option value="">请先选择区域</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="mb-3" id="shelf-group" style="display: none;">
+            <label class="form-label fw-semibold">货架号</label>
+            <input type="text" id="shelf-input" class="form-control" placeholder="请输入货架号">
+            <div class="error-message" id="shelf-error" style="display: none;">请输入货架号</div>
+            <div class="shelf-lock-warning" id="shelf-lock" style="display: none;"><i class="bi bi-exclamation-triangle me-1"></i>此货架在5分钟内已下发过任务，请勿重复下发</div>
+        </div>
+
+        <div class="mb-4" id="task-path-group" style="display: none;">
+            <label class="form-label fw-semibold">任务路径</label>
+            <select id="task-path-select" class="form-select">
+                <option value="">请选择任务路径</option>
+            </select>
+            <div class="error-message" id="task-path-error" style="display: none;">请选择任务路径</div>
+        </div>
+
+        <button class="btn btn-primary btn-lg w-100 mb-3" id="submit-btn">
+            <i class="bi bi-send me-2"></i>下发任务
+        </button>
+
+        <button class="btn btn-outline-secondary w-100" id="debug-toggle">
+            <i class="bi bi-code-slash me-2"></i>查看发送的报文
+        </button>
+        <div class="debug-info" id="debug-info" style="display: none;"></div>
+    </div>
+</div>

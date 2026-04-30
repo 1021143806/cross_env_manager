@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}跨环境任务模板管理系统 - 首页{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="search-box">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h3 class="card-title mb-4">
+                        <i class="bi bi-search"></i> 搜索任务模板
+                    </h3>
+                    <p class="card-text mb-4">
+                        输入任务模板代码或名称进行搜索，例如：<code>HJBY_back_32A3DJ2F_to_31A3QD4B3F</code>
+                    </p>
+                    
+                    <form action="{{ url_for('search') }}" method="post" class="mb-3">
+                        <div class="input-group input-group-lg">
+                            <input type="text" 
+                                   class="form-control" 
+                                   name="search_term" 
+                                   placeholder="输入任务模板代码或名称..." 
+                                   required
+                                   autofocus>
+                            <button class="btn btn-primary" type="submit">
+                                <i class="bi bi-search"></i> 搜索
+                            </button>
+                        </div>
+                        <div class="form-text mt-2">
+                            支持模糊搜索，可以输入部分关键词
+                        </div>
+                    </form>
+                    
+                    <div class="mt-4">
+                        <h5>搜索示例：</h5>
+                        <div class="d-flex flex-wrap justify-content-center gap-2">
+                            <a href="{{ url_for('search') }}?search_term=HJBY" class="btn btn-outline-secondary btn-sm">
+                                HJBY
+                            </a>
+                            <a href="{{ url_for('search') }}?search_term=back" class="btn btn-outline-secondary btn-sm">
+                                back
+                            </a>
+                            <a href="{{ url_for('search') }}?search_term=test" class="btn btn-outline-secondary btn-sm">
+                                test
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <!-- 查询功能入口 -->
+                    <div class="mt-4 pt-3 border-top">
+                        <h5 class="mb-3">
+                            <i class="bi bi-search-heart text-primary"></i> AGV查询功能
+                        </h5>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <a href="/query/task" class="btn btn-outline-info w-100 mb-2">
+                                    <i class="bi bi-list-task"></i> 任务查询
+                                </a>
+                            </div>
+                            <div class="col-6">
+                                <a href="/query/device" class="btn btn-outline-info w-100 mb-2">
+                                    <i class="bi bi-phone"></i> 设备验证
+                                </a>
+                            </div>
+                            <div class="col-6">
+                                <a href="/query/agv_status" class="btn btn-outline-info w-100 mb-2">
+                                    <i class="bi bi-robot"></i> AGV状态
+                                </a>
+                            </div>
+                            <div class="col-6">
+                                <a href="/query" class="btn btn-outline-primary w-100 mb-2">
+                                    <i class="bi bi-grid-3x3-gap"></i> 所有功能
+                                </a>
+                            </div>
+                            <div class="col-6">
+                                <a href="/query/join_point" class="btn btn-outline-secondary w-100 mb-2">
+                                    <i class="bi bi-signpost"></i> 交接点
+                                </a>
+                            </div>
+                            <div class="col-6">
+                                <a href="/query/shelf_model" class="btn btn-outline-secondary w-100 mb-2">
+                                    <i class="bi bi-box"></i> 货架模型
+                                </a>
+                            </div>
+                            <div class="col-6">
+                                <a href="{{ url_for('task_query_home') }}" class="btn btn-outline-warning w-100 mb-2">
+                                    <i class="bi bi-search"></i> 任务查询系统
+                                </a>
+                            </div>
+                            <div class="col-6">
+                                <a href="{{ url_for('query_index') }}" class="btn btn-primary w-100 mb-2">
+                                    <i class="bi bi-grid-3x3-gap"></i> 所有查询功能
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="bi bi-lightbulb text-info"></i> 使用帮助
+                </h5>
+                <div id="indexHelpContent">
+                    <div class="text-center text-muted py-3">
+                        <div class="spinner-border spinner-border-sm me-2"></div>加载中...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+    // 加载使用帮助
+    document.addEventListener('DOMContentLoaded', async () => {
+        const helpContainer = document.getElementById('indexHelpContent');
+        if (!helpContainer) return;
+        try {
+            const res = await fetch('/help');
+            const html = await res.text();
+            helpContainer.innerHTML = html;
+        } catch (e) {
+            helpContainer.innerHTML = '<div class="text-danger">加载帮助文档失败: ' + e.message + '</div>';
+        }
+    });
+</script>
+{% endblock %}
+{% endblock %}

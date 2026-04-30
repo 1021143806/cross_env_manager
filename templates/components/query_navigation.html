@@ -1,0 +1,96 @@
+{# 查询导航组件 #}
+<div class="query-navigation {{ nav_class|default('') }}" 
+     style="{{ nav_style|default('') }}"
+     {% if nav_id %}id="{{ nav_id }}"{% endif %}>
+    
+    <div class="d-flex flex-wrap justify-content-{{ align|default('center') }} gap-2">
+        {% for item in items %}
+            {% if item.type == 'link' %}
+                <a href="{{ item.url }}" 
+                   class="btn {{ item.class|default('btn-outline-secondary') }}"
+                   {% if item.target %}target="{{ item.target }}"{% endif %}>
+                    {% if item.icon %}
+                        <i class="bi {{ item.icon }} me-2"></i>
+                    {% endif %}
+                    {{ item.text }}
+                </a>
+            {% elif item.type == 'button' %}
+                <button type="button" 
+                        class="btn {{ item.class|default('btn-primary') }}"
+                        {% if item.onclick %}onclick="{{ item.onclick }}"{% endif %}>
+                    {% if item.icon %}
+                        <i class="bi {{ item.icon }} me-2"></i>
+                    {% endif %}
+                    {{ item.text }}
+                </button>
+            {% elif item.type == 'dropdown' %}
+                <div class="dropdown">
+                    <button class="btn {{ item.class|default('btn-outline-secondary') }} dropdown-toggle" 
+                            type="button" 
+                            data-bs-toggle="dropdown">
+                        {% if item.icon %}
+                            <i class="bi {{ item.icon }} me-2"></i>
+                        {% endif %}
+                        {{ item.text }}
+                    </button>
+                    <ul class="dropdown-menu">
+                        {% for subitem in item.items %}
+                            <li>
+                                <a class="dropdown-item" 
+                                   href="{{ subitem.url }}"
+                                   {% if subitem.onclick %}onclick="{{ subitem.onclick }}"{% endif %}>
+                                    {% if subitem.icon %}
+                                        <i class="bi {{ subitem.icon }} me-2"></i>
+                                    {% endif %}
+                                    {{ subitem.text }}
+                                </a>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% elif item.type == 'divider' %}
+                <div class="vr"></div>
+            {% elif item.type == 'text' %}
+                <span class="align-self-center {{ item.class|default('text-muted') }}">
+                    {% if item.icon %}
+                        <i class="bi {{ item.icon }} me-2"></i>
+                    {% endif %}
+                    {{ item.text }}
+                </span>
+            {% endif %}
+        {% endfor %}
+    </div>
+    
+    {% if description %}
+        <div class="mt-3 text-center">
+            <p class="text-muted small">{{ description }}</p>
+        </div>
+    {% endif %}
+</div>
+
+<style>
+    .query-navigation {
+        margin: 2rem 0;
+        padding: 1.5rem;
+        background-color: var(--card-bg);
+        border-radius: 12px;
+        box-shadow: var(--card-shadow);
+        border: 1px solid var(--border-color);
+    }
+    
+    @media (max-width: 768px) {
+        .query-navigation .d-flex {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        
+        .query-navigation .btn {
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+        
+        .query-navigation .vr {
+            display: none;
+        }
+    }
+</style>

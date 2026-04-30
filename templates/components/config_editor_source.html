@@ -1,0 +1,20 @@
+<!-- 源文件编辑器内容 -->
+<div class="mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <label class="form-label fw-bold mb-0">配置文件内容 (config.js)</label>
+        <button class="btn btn-sm btn-outline-info" id="copy-code-btn">
+            <i class="bi bi-clipboard me-1"></i>复制
+        </button>
+    </div>
+    <textarea class="form-control config-textarea" id="config-content" rows="20" 
+              placeholder="请输入配置文件内容..." style="font-family: monospace;"></textarea>
+    <div class="json-error" id="json-error"></div>
+</div>
+<div class="d-flex gap-2">
+    <button class="btn btn-primary" id="apply-source-btn">
+        <i class="bi bi-arrow-repeat me-2"></i>应用到可视化编辑器
+    </button>
+    <button class="btn btn-outline-secondary" id="format-source-btn">
+        <i class="bi bi-arrow-clockwise me-2"></i>格式化
+    </button>
+</div>

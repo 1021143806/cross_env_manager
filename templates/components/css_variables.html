@@ -1,0 +1,46 @@
+{# CSS变量定义 - 用于统一样式 #}
+<style>
+    :root {
+        --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --primary-gradient-dark: linear-gradient(135deg, #4c63b6 0%, #5d3a8c 100%);
+        --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+        --card-shadow-hover: 0 15px 40px rgba(0, 0, 0, 0.12);
+        --transition-speed: 0.3s;
+    }
+
+    [data-bs-theme="light"] {
+        --bg-color: #f8f9fa;
+        --card-bg: #ffffff;
+        --text-color: #212529;
+        --border-color: #dee2e6;
+        --header-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --detail-card-bg: #f8f9fa;
+        --form-section-bg: #ffffff;
+        --copy-box-bg: #e7f3ff;
+        --copy-box-border: #007bff;
+    }
+
+    [data-bs-theme="dark"] {
+        --bg-color: #121212;
+        --card-bg: #1e1e1e;
+        --text-color: #e9ecef;
+        --border-color: #495057;
+        --header-bg: linear-gradient(135deg, #4c63b6 0%, #5d3a8c 100%);
+        --detail-card-bg: #2d2d2d;
+        --form-section-bg: #2d2d2d;
+        --copy-box-bg: #1a3a5f;
+        --copy-box-border: #0d6efd;
+    }
+
+    body {
+        background-color: var(--bg-color);
+        color: var(--text-color);
+        padding-top: 20px;
+        transition: background-color var(--transition-speed), color var(--transition-speed);
+        min-height: 100vh;
+    }
+
+    .container {
+        max-width: 1400px;
+    }
+</style>

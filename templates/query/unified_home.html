@@ -1,0 +1,1375 @@
+{% extends "base.html" %}
+
+{% block title %}跨环境任务分析 · 深度查询{% endblock %}
+
+{% block extra_css %}
+<style>
+    .query-container {
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+    
+    .query-header {
+        background: var(--header-bg);
+        color: white;
+        padding: 2rem;
+        border-radius: 16px;
+        margin-bottom: 2rem;
+        box-shadow: var(--card-shadow);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .query-header::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23ffffff' fill-opacity='0.05' fill-rule='evenodd'/%3E%3C/svg%3E");
+        opacity: 0.3;
+    }
+    
+    .query-card {
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        background: var(--card-bg);
+        box-shadow: var(--card-shadow);
+        transition: all var(--transition-speed);
+        overflow: hidden;
+    }
+    
+    .query-card:hover {
+        transform: translateY(-3px);
+        box-shadow: var(--card-shadow-hover);
+    }
+    
+    .query-card-header {
+        background-color: var(--detail-card-bg);
+        padding: 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .query-card-body {
+        padding: 1.75rem;
+    }
+    
+    .result-card {
+        border-left: 4px solid #0d6efd;
+        margin-bottom: 1rem;
+        background-color: var(--detail-card-bg);
+        border-radius: 8px;
+        transition: transform 0.2s;
+    }
+    
+    .result-card:hover {
+        transform: translateX(5px);
+    }
+    
+    .subtask-card {
+        border-left: 4px solid #198754;
+        margin-bottom: 0.75rem;
+        background-color: var(--detail-card-bg);
+        border-radius: 8px;
+    }
+    
+    .info-btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+    }
+    
+    .status-badge {
+        font-size: 0.85rem;
+        padding: 0.35rem 0.75rem;
+        border-radius: 20px;
+        font-weight: 500;
+    }
+    
+    .history-badge {
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .history-badge:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.7);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container query-container">
+    <!-- 页面标题 -->
+
+
+    <!-- 主内容区：两列布局 -->
+    <div class="row g-4">
+        <!-- 左侧：查询面板 -->
+        <div class="col-lg-4">
+            <div class="query-card animate__animated animate__fadeInLeft">
+                <div class="query-card-header">
+                    <h5 class="mb-0"><i class="bi bi-search me-2"></i>查询条件</h5>
+                </div>
+                <div class="query-card-body">
+                    <!-- 选项卡导航 -->
+                    <div class="mb-4">
+                        <div class="nav-wrapper glass-effect rounded-pill px-3 py-2">
+                            <ul class="nav nav-pills justify-content-center">
+                                <li class="nav-item">
+                                    <a class="nav-link active" id="navTaskLink" data-bs-toggle="pill" href="#tabTaskContent">
+                                        <i class="bi bi-upc-scan me-1"></i> 任务单号查询
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" id="navShelfLink" data-bs-toggle="pill" href="#tabShelfContent">
+                                        <i class="bi bi-box-seam me-1"></i> 货架号查询
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="tab-content">
+                        <!-- 任务单号查询面板 -->
+                        <div class="tab-pane fade show active" id="tabTaskContent">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">任务单号 (OrderId)</label>
+                                <input type="text" class="form-control" id="orderIdInput" placeholder="例如: pad_html2026-04-20 14:30:00">
+                                <div class="form-text">对应数据库中的 order_id 字段</div>
+                            </div>
+                        </div>
+                        <!-- 货架号查询面板 -->
+                        <div class="tab-pane fade" id="tabShelfContent">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">货架号</label>
+                                <input type="text" class="form-control" id="shelfInput" placeholder="例如: A01-123">
+                            </div>
+                            <div class="alert alert-info small">
+                                <i class="bi bi-info-circle"></i> 
+                                查询逻辑：优先查找执行中 → 失败/异常 → 已完成。若无进行中任务，则返回最近一条已完成。
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 隐藏的单选按钮，用于JavaScript逻辑 -->
+                    <input type="radio" class="d-none" name="queryType" id="typeTask" value="task" checked>
+                    <input type="radio" class="d-none" name="queryType" id="typeShelf" value="shelf">
+
+                    <!-- 服务器IP配置（共用） -->
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">
+                            目标服务器 IP
+                            <span class="badge bg-secondary ms-1" id="ipHint">10.68.2.32</span>
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text">http://</span>
+                            <input type="text" class="form-control" id="serverIpInput" 
+                                   placeholder="10.68.2.32 或直接输入 32" value="10.68.2.32">
+                            <span class="input-group-text">:8315</span>
+                        </div>
+                        <div class="form-text">
+                            <i class="bi bi-lightbulb"></i> 支持简写：输入 <code>32</code> 自动补全为 <code>10.68.2.32</code>
+                        </div>
+                    </div>
+
+                    <!-- 查询按钮与加载状态 -->
+                    <button class="btn btn-primary w-100 mb-3" id="queryBtn">
+                        <i class="bi bi-search"></i> 开始查询
+                    </button>
+                    
+                    <!-- 高级选项折叠 -->
+                    <div class="accordion" id="advOptions">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseAdv">
+                                    <i class="bi bi-sliders me-2"></i>高级选项
+                                </button>
+                            </h2>
+                            <div id="collapseAdv" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="fetchLocalDb" checked>
+                                        <label class="form-check-label" for="fetchLocalDb">
+                                            查询本地数据库 (task_group / task_group_detail)
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="fetchTemplateInfo" checked>
+                                        <label class="form-check-label" for="fetchTemplateInfo">
+                                            获取模板关联信息
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="fetchOtherTasks" checked>
+                                        <label class="form-check-label" for="fetchOtherTasks">
+                                            查询同模板其他执行中任务
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 操作按钮 -->
+                    <div class="d-flex flex-wrap gap-2 mb-4">
+                        <button class="btn btn-outline-primary flex-grow-1" id="helpToggle">
+                            <i class="bi bi-question-circle me-2"></i> 使用帮助
+                        </button>
+                        <button class="btn btn-outline-secondary flex-grow-1" onclick="window.location.reload()">
+                            <i class="bi bi-arrow-clockwise me-2"></i> 刷新页面
+                        </button>
+                    </div>
+
+                    <!-- 查询历史快捷入口 -->
+                    <div class="mt-4 small">
+                        <span class="text-secondary">最近查询：</span>
+                        <div id="historyTags" class="mt-2">
+                            <!-- 动态生成历史标签 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 本地数据库信息卡片 -->
+            <div class="query-card mt-3 animate__animated animate__fadeInUp">
+                <div class="query-card-header">
+                    <h6 class="mb-0"><i class="bi bi-database me-2"></i>本地数据库</h6>
+                </div>
+                <div class="query-card-body small">
+                    <p class="mb-2">涉及表：</p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <span class="badge bg-secondary">task_group</span>
+                        <span class="badge bg-secondary">task_group_detail</span>
+                        <span class="badge bg-secondary">fy_cross_model_process</span>
+                        <span class="badge bg-secondary">fy_cross_model_process_detail</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 大模板状态分布图表 -->
+            <div class="query-card mt-3 animate__animated animate__fadeInUp" id="statusChartCard">
+                <div class="query-card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-pie-chart me-2"></i>今日任务状态概览</h6>
+                    <button class="btn btn-sm btn-outline-secondary" id="refreshChartBtn" title="刷新图表">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+                <div class="query-card-body">
+                    <!-- 统计面板 -->
+                    <div id="chartStatsPanel" class="small mb-3">
+                        <div class="text-center text-muted">加载中...</div>
+                    </div>
+                    <!-- 饼图：异常状态（status=3,7）按 task_error 分类 -->
+                    <div>
+                        <small class="text-muted fw-bold">⚠️ 异常任务分布</small>
+                        <div style="position: relative; height: 200px;">
+                            <canvas id="chartErrorDist"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：结果展示区 -->
+        <div class="col-lg-8">
+            <!-- 加载状态 -->
+            <div id="loadingIndicator" class="text-center py-5 d-none">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+                <p class="mt-3 text-muted">正在查询多服务器数据，请稍候...</p>
+            </div>
+
+            <!-- 结果内容 -->
+            <div id="resultContainer">
+                <div class="query-card text-center py-5 animate__animated animate__pulse">
+                    <div class="query-card-body">
+                        <i class="bi bi-search display-1 text-muted opacity-50"></i>
+                        <h5 class="mt-3 text-muted">输入查询条件开始分析</h5>
+                        <p class="text-muted small">支持任务单号或货架号查询，自动聚合跨环境子任务数据</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JSON详情模态框 -->
+<div class="modal fade" id="jsonModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-filetype-json me-2"></i>原始数据</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex justify-content-end mb-2">
+                    <button class="btn btn-sm btn-outline-secondary" id="copyJsonBtn">
+                        <i class="bi bi-clipboard"></i> 复制
+                    </button>
+                </div>
+                <pre id="jsonContent" class="bg-dark text-light p-3 rounded" style="max-height: 70vh; overflow: auto; font-size: 0.9rem;"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 帮助模态框 -->
+<div class="modal fade" id="helpModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-question-circle me-2"></i>使用帮助</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="helpModalBody">
+                <div class="text-center text-muted py-3">
+                    <div class="spinner-border spinner-border-sm me-2"></div>加载中...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/vendor/chart.js/chart.min.js"></script>
+<script>
+    (function() {
+        // ---------- DOM 元素 ----------
+        const typeTaskRadio = document.getElementById('typeTask');
+        const typeShelfRadio = document.getElementById('typeShelf');
+        // 选项卡面板，保留变量但不使用
+        const taskPanel = document.getElementById('tabTaskContent');
+        const shelfPanel = document.getElementById('tabShelfContent');
+        const orderIdInput = document.getElementById('orderIdInput');
+        const shelfInput = document.getElementById('shelfInput');
+        const serverIpInput = document.getElementById('serverIpInput');
+        const ipHint = document.getElementById('ipHint');
+        const queryBtn = document.getElementById('queryBtn');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const resultContainer = document.getElementById('resultContainer');
+        
+        const fetchLocalDbCheck = document.getElementById('fetchLocalDb');
+        const fetchTemplateInfoCheck = document.getElementById('fetchTemplateInfo');
+        const fetchOtherTasksCheck = document.getElementById('fetchOtherTasks');
+
+        // Bootstrap 模态框实例
+        let jsonModal, helpModal;
+        let currentJsonData = {};
+
+        // 查询历史（最多5条）
+        let queryHistory = JSON.parse(localStorage.getItem('taskQueryHistory') || '[]');
+
+        // ---------- 初始化 ----------
+        document.addEventListener('DOMContentLoaded', () => {
+            jsonModal = new bootstrap.Modal(document.getElementById('jsonModal'));
+            helpModal = new bootstrap.Modal(document.getElementById('helpModal'));
+            
+            // 绑定事件
+            typeTaskRadio.addEventListener('change', toggleQueryPanel);
+            typeShelfRadio.addEventListener('change', toggleQueryPanel);
+            serverIpInput.addEventListener('input', updateIpHint);
+            queryBtn.addEventListener('click', executeQuery);
+            document.getElementById('helpToggle').addEventListener('click', async () => {
+                helpModal.show();
+                const body = document.getElementById('helpModalBody');
+                if (body && body.querySelector('.spinner-border')) {
+                    try {
+                        const res = await fetch('/query/help');
+                        const html = await res.text();
+                        body.innerHTML = html;
+                    } catch (e) {
+                        body.innerHTML = '<div class="text-danger">加载帮助文档失败: ' + e.message + '</div>';
+                    }
+                }
+            });
+            document.getElementById('copyJsonBtn').addEventListener('click', copyJsonToClipboard);
+            
+            // 回车快捷查询
+            orderIdInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') executeQuery(); });
+            shelfInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') executeQuery(); });
+            
+            // 初始化IP提示
+            updateIpHint();
+            renderHistoryTags();
+            
+            // 选项卡切换同步单选按钮
+            document.querySelectorAll('#navTaskLink, #navShelfLink').forEach(tab => {
+                tab.addEventListener('shown.bs.tab', (event) => {
+                    const isTask = event.target.id === 'navTaskLink';
+                    typeTaskRadio.checked = isTask;
+                    typeShelfRadio.checked = !isTask;
+                    // 触发change事件以确保相关逻辑更新
+                    typeTaskRadio.dispatchEvent(new Event('change'));
+                });
+            });
+            
+            // 从URL参数预填充
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('orderId')) {
+                typeTaskRadio.checked = true;
+                // 激活任务选项卡
+                new bootstrap.Tab(document.querySelector('#navTaskLink')).show();
+                toggleQueryPanel();
+                orderIdInput.value = urlParams.get('orderId');
+                setTimeout(executeQuery, 200);
+            } else if (urlParams.has('shelf')) {
+                typeShelfRadio.checked = true;
+                // 激活货架选项卡
+                new bootstrap.Tab(document.querySelector('#navShelfLink')).show();
+                toggleQueryPanel();
+                shelfInput.value = urlParams.get('shelf');
+                setTimeout(executeQuery, 200);
+            }
+            
+            // 初始化图表
+            loadTaskStatusChart();
+            
+            // 绑定刷新按钮
+            document.getElementById('refreshChartBtn').addEventListener('click', () => {
+                loadTaskStatusChart();
+            });
+        });
+
+        // ---------- 图表相关 ----------
+        let chartErrorDist = null;
+        let chartLastLoadTime = 0;
+        const CHART_DEBOUNCE_MS = 1000;
+        
+        async function loadTaskStatusChart() {
+            // 防抖：1秒内只能触发一次
+            const now = Date.now();
+            if (now - chartLastLoadTime < CHART_DEBOUNCE_MS) {
+                alert('⚠️ 请勿频繁刷新，1秒内只能刷新一次');
+                return;
+            }
+            chartLastLoadTime = now;
+            
+            try {
+                const res = await fetch('/api/stats/main_task_status');
+                const data = await res.json();
+                
+                if (!data.success) {
+                    document.getElementById('chartStatsPanel').innerHTML = 
+                        '<div class="text-center text-danger small">加载失败</div>';
+                    return;
+                }
+                
+                // 销毁旧图表
+                if (chartErrorDist) { chartErrorDist.destroy(); chartErrorDist = null; }
+                
+                // ========== 1. 统计面板：全部状态 ==========
+                let panelHtml = '';
+                const total = data.total;
+                const dist = data.distribution || [];
+                const statusOrder = [-1, 3, 4, 5, 6, 7, 8];
+                const distMap = {};
+                dist.forEach(d => { distMap[d.status] = d; });
+                
+                statusOrder.forEach(status => {
+                    const item = distMap[status];
+                    if (!item) return;
+                    const pct = total > 0 ? ((item.count / total) * 100).toFixed(1) : 0;
+                    const barWidth = total > 0 ? ((item.count / total) * 100) : 0;
+                    
+                    panelHtml += `
+                        <div class="mb-2">
+                            <div class="d-flex align-items-center mb-1">
+                                <span class="me-2" style="width:12px; height:12px; background:${item.color}; border-radius:3px; display:inline-block;"></span>
+                                <span class="fw-bold" style="font-size:0.8rem;">${item.label}</span>
+                                <span class="ms-auto" style="font-size:0.8rem;">${item.count} (${pct}%)</span>
+                            </div>
+                            <div style="height:4px; background:#e9ecef; border-radius:2px;">
+                                <div style="height:4px; width:${barWidth}%; background:${item.color}; border-radius:2px;"></div>
+                            </div>`;
+                    
+                    if (item.subs && item.subs.length > 0) {
+                        panelHtml += '<div class="ms-3 mt-1" style="font-size:0.7rem; color:#6c757d;">';
+                        item.subs.forEach(sub => { panelHtml += `<span class="me-2">• ${sub}</span>`; });
+                        panelHtml += '</div>';
+                    }
+                });
+                
+                const anomalyTotal = (distMap[3]?.count || 0) + (distMap[5]?.count || 0) + (distMap[7]?.count || 0);
+                const anomalyPct = total > 0 ? ((anomalyTotal / total) * 100).toFixed(1) : 0;
+                
+                panelHtml += `
+                    <div class="mt-2 pt-2 border-top">
+                        <span class="fw-bold ${anomalyPct > 20 ? 'text-danger' : 'text-warning'}" style="font-size:0.8rem;">
+                            ⚠️ 异常合计: ${anomalyTotal} (${anomalyPct}%)
+                        </span>
+                        <span class="text-muted ms-2" style="font-size:0.75rem;">总计: ${total} 个任务</span>
+                    </div>`;
+                
+                document.getElementById('chartStatsPanel').innerHTML = panelHtml;
+                
+                // ========== 2. 合并饼图：status=3,7 按 task_error 分类 ==========
+                const errorData = data.errorDetail || [];
+                const labels = errorData.map(e => `${e.status}:${e.errorDesc}`);
+                const values = errorData.map(e => e.count);
+                const colors = errorData.map(e => e.status === 3 ? '#ffc107' : '#dc3545');
+                
+                const ctx = document.getElementById('chartErrorDist');
+                if (ctx && errorData.length > 0) {
+                    chartErrorDist = new Chart(ctx.getContext('2d'), {
+                        type: 'pie',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                data: values,
+                                backgroundColor: colors,
+                                borderColor: '#fff',
+                                borderWidth: 2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    position: 'bottom',
+                                    labels: {
+                                        padding: 6,
+                                        usePointStyle: true,
+                                        font: { size: 10 }
+                                    }
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                            const pct = total > 0 ? ((context.raw / total) * 100).toFixed(1) : 0;
+                                            return `${context.label}: ${context.raw} (${pct}%)`;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                } else if (ctx) {
+                    const ctx2d = ctx.getContext('2d');
+                    ctx2d.clearRect(0, 0, ctx.width, ctx.height);
+                    ctx2d.font = '12px sans-serif';
+                    ctx2d.fillStyle = '#6c757d';
+                    ctx2d.textAlign = 'center';
+                    ctx2d.fillText('暂无异常任务数据', ctx.width/2, ctx.height/2);
+                }
+                
+            } catch (e) {
+                console.error('图表加载失败:', e);
+                document.getElementById('chartStatsPanel').innerHTML = 
+                    '<div class="text-center text-danger small">加载失败: ' + e.message + '</div>';
+            }
+        }
+        
+        function toggleQueryPanel() {
+            // 选项卡已处理显示，无需额外操作
+        }
+
+        function updateIpHint() {
+            let ip = serverIpInput.value.trim();
+            if (/^\d{1,3}$/.test(ip)) {
+                const num = parseInt(ip, 10);
+                if (num >= 0 && num <= 254) {
+                    const fullIp = `10.68.2.${num}`;
+                    ipHint.textContent = fullIp;
+                    serverIpInput.value = fullIp;
+                    return;
+                }
+            }
+            ipHint.textContent = ip || '10.68.2.32';
+        }
+
+        function getFinalIp() {
+            let ip = serverIpInput.value.trim();
+            if (/^\d{1,3}$/.test(ip)) {
+                const num = parseInt(ip, 10);
+                if (num >= 0 && num <= 254) {
+                    return `10.68.2.${num}`;
+                }
+            }
+            return ip || '10.68.2.32';
+        }
+
+        function getBaseUrl() {
+            const ip = getFinalIp();
+            return `http://${ip}:8315`;
+        }
+
+        // ---------- 查询主流程 ----------
+        async function executeQuery() {
+            const isTaskQuery = typeTaskRadio.checked;
+            let orderId = orderIdInput.value.trim();
+            const shelf = shelfInput.value.trim();
+
+            if (isTaskQuery && !orderId) {
+                alert('请输入任务单号');
+                return;
+            }
+            if (!isTaskQuery && !shelf) {
+                alert('请输入货架号');
+                return;
+            }
+
+            // 禁用输入框防止重复提交
+            orderIdInput.disabled = true;
+            shelfInput.disabled = true;
+            serverIpInput.disabled = true;
+            typeTaskRadio.disabled = true;
+            typeShelfRadio.disabled = true;
+            
+            loadingIndicator.classList.remove('d-none');
+            resultContainer.innerHTML = '';
+            queryBtn.disabled = true;
+            queryBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>查询中...';
+
+            try {
+                if (!isTaskQuery) {
+                    orderId = await findOrderIdByShelf(shelf);
+                    if (!orderId) {
+                        throw new Error(`未找到货架 ${shelf} 的相关任务`);
+                    }
+                    orderIdInput.value = orderId;
+                }
+
+                addToHistory(isTaskQuery ? orderId : `${shelf} (货架)`);
+                const result = await performDeepQuery(orderId);
+                renderResult(result);
+                // 查询完成后刷新图表
+                loadTaskStatusChart();
+            } catch (error) {
+                console.error('查询失败:', error);
+                resultContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle"></i> 查询失败: ${error.message}
+                    </div>
+                `;
+            } finally {
+                loadingIndicator.classList.add('d-none');
+                // 恢复输入框
+                orderIdInput.disabled = false;
+                shelfInput.disabled = false;
+                serverIpInput.disabled = false;
+                typeTaskRadio.disabled = false;
+                typeShelfRadio.disabled = false;
+                queryBtn.disabled = false;
+                queryBtn.innerHTML = '<i class="bi bi-search"></i> 开始查询';
+            }
+        }
+
+        async function findOrderIdByShelf(shelf) {
+            const baseUrl = getBaseUrl();
+            const statusPriority = [6, 7, 5, 9, 4, 3, 2, 1, 8];
+            for (const status of statusPriority) {
+                try {
+                    const response = await fetch(`${baseUrl}/crossTask/query`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            taskStatus: status.toString(),
+                            shelfNum: shelf,
+                            pageSize: 1,
+                            pageNo: 1
+                        })
+                    });
+                    const data = await response.json();
+                    if (data.code === 1000 && data.data.list && data.data.list.length > 0) {
+                        return data.data.list[0].orderId;
+                    }
+                } catch (e) {
+                    console.warn(`查询状态 ${status} 失败:`, e);
+                }
+            }
+            return null;
+        }
+
+        async function performDeepQuery(orderId) {
+            const baseUrl = getBaseUrl();
+            const result = {
+                orderId,
+                baseUrl,
+                mainTask: null,
+                subTasks: [],
+                localTaskGroup: null,
+                localTaskGroupDetail: null,
+                templateInfo: null,
+                otherTasksSameTemplate: []
+            };
+
+            const mainRes = await fetch(`${baseUrl}/crossTask/query`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId, pageSize: 1, pageNo: 1 })
+            });
+            const mainData = await mainRes.json();
+            if (mainData.code === 1000 && mainData.data.list?.length > 0) {
+                result.mainTask = mainData.data.list[0];
+            } else {
+                throw new Error('未找到该任务单号对应的主任务');
+            }
+
+            const mainTask = result.mainTask;
+
+            const detailRes = await fetch(`${baseUrl}/crossTask/detail`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: mainTask.id })
+            });
+            const detailData = await detailRes.json();
+            if (detailData.code === 1000 && detailData.data) {
+                result.subTasks = detailData.data.sort((a, b) => (a.taskSeq || 0) - (b.taskSeq || 0));
+            }
+
+            if (fetchLocalDbCheck.checked) {
+                try {
+                    const localRes = await fetch(`/api/task_group/${orderId}`);
+                    if (localRes.ok) {
+                        const localData = await localRes.json();
+                        result.localTaskGroup = localData.taskGroup;
+                        result.localTaskGroupDetail = localData.details;
+                    }
+                } catch (e) {
+                    console.warn('本地数据库查询失败:', e);
+                }
+            }
+
+            if (fetchTemplateInfoCheck.checked && mainTask.modelProcessCode) {
+                try {
+                    const tmplRes = await fetch(`/api/template/${mainTask.modelProcessCode}`);
+                    if (tmplRes.ok) {
+                        result.templateInfo = await tmplRes.json();
+                    }
+                } catch (e) {
+                    console.warn('模板信息获取失败:', e);
+                }
+            }
+
+            if (fetchOtherTasksCheck.checked && mainTask.modelProcessCode) {
+                const statuses = ['6', '7', '5', '9', '4'];
+                const promises = statuses.map(status => 
+                    fetch(`${baseUrl}/crossTask/query`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            modelProcessCode: mainTask.modelProcessCode,
+                            taskStatus: status,
+                            pageSize: 10,
+                            pageNo: 1
+                        })
+                    }).then(r => r.json())
+                );
+                const results = await Promise.all(promises);
+                const otherTasks = [];
+                results.forEach(res => {
+                    if (res.code === 1000 && res.data.list) {
+                        otherTasks.push(...res.data.list.filter(t => t.orderId !== orderId));
+                    }
+                });
+                result.otherTasksSameTemplate = otherTasks.slice(0, 20);
+            }
+
+            return result;
+        }
+
+        // ---------- 辅助函数：状态徽章、时间格式化、JSON安全转义 ----------
+        function getStatusBadge(status) {
+            const map = {
+                1: ['未发送', 'secondary'], 2: ['正在取消', 'info'], 3: ['已取消', 'secondary'],
+                4: ['正在发送', 'info'], 5: ['发送失败', 'danger'], 6: ['执行中', 'primary'],
+                7: ['执行失败', 'danger'], 8: ['已完成', 'success'], 9: ['已下发', 'warning'],
+                '-1': ['容量管控', 'dark']
+            };
+            const [text, color] = map[status] || [`状态${status}`, 'secondary'];
+            return `<span class="badge bg-${color}">${text}</span>`;
+        }
+
+        function formatTime(value) {
+            if (!value && value !== 0) return '-';
+            
+            // 如果是数字字符串或数字
+            if (typeof value === 'number' || /^\d+$/.test(value)) {
+                const num = parseInt(value, 10);
+                // 10位数字视为秒时间戳 (2001-2286年范围)
+                if (num > 1000000000 && num < 9999999999) {
+                    const date = new Date(num * 1000);
+                    return date.toLocaleString('zh-CN', { hour12: false });
+                }
+                // 13位数字视为毫秒时间戳
+                if (num > 9999999999) {
+                    const date = new Date(num);
+                    return date.toLocaleString('zh-CN', { hour12: false });
+                }
+            }
+            
+            // 尝试作为日期字符串解析
+            const date = new Date(value);
+            if (!isNaN(date.getTime())) {
+                return date.toLocaleString('zh-CN', { hour12: false });
+            }
+            
+            // 都失败则返回原值
+            return String(value);
+        }
+
+        function escapeJsonForInline(data) {
+            if (data === null || data === undefined) return 'null';
+            const jsonStr = JSON.stringify(data);
+            // 转义特殊字符用于HTML属性
+            // 在onclick属性中，我们使用单引号包裹参数，所以：
+            // 1. 转义单引号为 \\'
+            // 2. 转义双引号为 &quot; (HTML实体)
+            // 3. 转义反斜杠
+            // 4. 转义换行符
+            return jsonStr
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/"/g, '&quot;')
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '\\r');
+        }
+
+        // ---------- 渲染结果（每个子任务卡片化，默认展开详细信息） ----------
+        function renderResult(result) {
+            const main = result.mainTask;
+            const subTasks = result.subTasks;
+            const cardIdPrefix = `card_${result.orderId.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            
+            let html = `
+                <!-- 任务总览卡片 -->
+                <div class="query-card mb-3 animate__animated animate__fadeIn" id="${cardIdPrefix}_overview">
+                    <div class="query-card-header bg-primary bg-opacity-10 d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-card-list me-2"></i>任务总览</h5>
+                        <div>
+                            <button class="btn btn-sm btn-outline-secondary me-1" onclick="event.stopPropagation(); showJsonForCard('总览', ${escapeJsonForInline(main)})" title="查看原始 JSON">
+                                <i class="bi bi-info-circle"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#${cardIdPrefix}_overview_body" aria-expanded="true">
+                                <i class="bi bi-chevron-up collapse-icon"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="collapse show" id="${cardIdPrefix}_overview_body">
+                        <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <table class="table table-sm table-borderless">
+                                    <tr><th class="w-40">任务单号</th><td><code>${main.orderId || main.order_id || '-'}</code></td></tr>
+                                    <tr><th>任务状态</th><td>${getStatusBadge(main.taskStatus || main.status)} ${(main.taskStatusName || main.task_status_name) ? `<small class="text-muted">(${main.taskStatusName || main.task_status_name})</small>` : ''}</td></tr>
+                                    <tr><th>模板名称</th><td>${main.modelProcessName || main.templateName || main.model_process_name || '-'}</td></tr>
+                                    <tr><th>模板代码</th><td>
+                                        <code>${main.modelProcessCode || main.templateCode || main.model_process_code || '-'}</code>
+                                        ${result.templateInfo ? 
+                                            `<a href="/template/edit/${main.modelProcessCode || main.templateCode}" target="_blank" class="btn btn-sm btn-outline-primary ms-2">
+                                                <i class="bi bi-pencil-square"></i> 编辑模板
+                                            </a>` : ''}
+                                    </td></tr>
+                                    <tr><th>所在区域ID</th><td>${main.areaId || main.area_id || '-'}</td></tr>
+                                    <tr><th>分派的AGV</th><td>${main.robotNum || main.deviceNum || main.robot_num || '-'}</td></tr>
+                                    <tr><th>设备序列号</th><td>${main.robotId || main.deviceCode || main.robot_id || main.device_code || '-'}</td></tr>
+                                    <tr><th>设备IP</th><td>${main.deviceIp || main.device_ip || '-'}</td></tr>
+                                    <tr><th>路径点集</th><td><code>${main.pathPoints || main.taskPath || main.path_points || '-'}</code></td></tr>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <table class="table table-sm table-borderless">
+                                    <tr><th>AGV设备类型</th><td>${main.robotType || main.robot_type || '-'}</td></tr>
+                                    <tr><th>货架模型编号</th><td>${main.shelfModel || main.shelf_model || '-'}</td></tr>
+                                    <tr><th>货架模型</th><td>${main.shelfModelName || main.shelf_model_name || '-'}</td></tr>
+                                    <tr><th>任务货架</th><td>${main.carrierCode || main.shelfNum || main.carrier_code || main.shelf_num || '-'}</td></tr>
+                                    <tr><th>错误描述</th><td>${main.errorDesc || main.error_desc || '-'}</td></tr>
+                                    <tr><th>创建时间</th><td>${formatTime(main.createTime ?? main.create_time)}</td></tr>
+                                    <tr><th>开始时间</th><td>${formatTime(main.startTime ?? main.start_time)}</td></tr>
+                                    <tr><th>结束时间</th><td>${formatTime(main.endTime ?? main.end_time)}</td></tr>
+                                    <tr><th>服务器IP</th><td>${result.baseUrl}</td></tr>
+                                    <tr><th>变更状态</th><td>${main.changeStatus ?? main.change_status ?? '-'}</td></tr>
+                                    <tr><th>更新时间</th><td>${formatTime(main.updateTime ?? main.update_time)}</td></tr>
+                                </table>
+                            </div>
+                        </div>
+                            
+                            ${result.localTaskGroup ? `
+                            <div class="mt-3 p-3 bg-light bg-opacity-25 rounded">
+                                <h6><i class="bi bi-database"></i> 本地数据库记录</h6>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-sm btn-outline-info" onclick='showJsonForCard("本地-task_group", ${escapeJsonForInline(result.localTaskGroup)})'>
+                                        查看 task_group 数据
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-info" onclick='showJsonForCard("本地-task_group_detail", ${escapeJsonForInline(result.localTaskGroupDetail)})'>
+                                        查看 task_group_detail 数据
+                                    </button>
+                                </div>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // 子任务区域标题（整体可折叠，但内部每个子任务卡片独立）
+            if (subTasks.length > 0) {
+                html += `
+                <div class="query-card mb-3 animate__animated animate__fadeIn" id="${cardIdPrefix}_subtasks_container">
+                    <div class="query-card-header bg-success bg-opacity-10 d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-diagram-2 me-2"></i>子任务明细 (${subTasks.length})</h5>
+                        <div>
+                            <button class="btn btn-sm btn-outline-secondary me-1" onclick="event.stopPropagation(); showJsonForCard('所有子任务', ${escapeJsonForInline(subTasks)})" title="查看原始 JSON">
+                                <i class="bi bi-info-circle"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#${cardIdPrefix}_subtasks_container_body" aria-expanded="true">
+                                <i class="bi bi-chevron-up collapse-icon"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="collapse show" id="${cardIdPrefix}_subtasks_container_body">
+                        <div class="card-body">
+                            ${subTasks.map((task, index) => renderSubTaskCard(task, index, result.baseUrl)).join('')}
+                        </div>
+                    </div>
+                </div>
+                `;
+            }
+
+            // 同模板其他任务卡片
+            if (result.otherTasksSameTemplate && result.otherTasksSameTemplate.length > 0) {
+                html += `
+                <div class="query-card animate__animated animate__fadeIn" id="${cardIdPrefix}_othertasks">
+                    <div class="query-card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>该模板其他执行中/异常任务 (${result.otherTasksSameTemplate.length})</h5>
+                        <div>
+                            <button class="btn btn-sm btn-outline-secondary me-1" onclick="event.stopPropagation(); showJsonForCard('其他任务', ${escapeJsonForInline(result.otherTasksSameTemplate)})" title="查看原始 JSON">
+                                <i class="bi bi-info-circle"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#${cardIdPrefix}_othertasks_body" aria-expanded="true">
+                                <i class="bi bi-chevron-up collapse-icon"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="collapse show" id="${cardIdPrefix}_othertasks_body">
+                        <div class="card-body">
+                            <div class="list-group">
+                                ${result.otherTasksSameTemplate.map(t => `
+                                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <code>${t.orderId}</code>
+                                            <span class="ms-2">${getStatusBadge(t.taskStatus)}</span>
+                                            ${t.shelfNum ? `<span class="badge bg-secondary ms-2">货架: ${t.shelfNum}</span>` : ''}
+                                        </div>
+                                        <a href="?orderId=${encodeURIComponent(t.orderId)}" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-box-arrow-in-right"></i> 查看
+                                        </a>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }
+
+            resultContainer.innerHTML = html;
+
+            // 监听所有折叠事件以更新图标
+            document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(btn => {
+                const targetId = btn.getAttribute('data-bs-target');
+                const target = document.querySelector(targetId);
+                if (target) {
+                    target.addEventListener('show.bs.collapse', () => {
+                        btn.innerHTML = '<i class="bi bi-chevron-up collapse-icon"></i>';
+                    });
+                    target.addEventListener('hide.bs.collapse', () => {
+                        btn.innerHTML = '<i class="bi bi-chevron-down collapse-icon"></i>';
+                    });
+                }
+            });
+        }
+
+        // 渲染单个子任务卡片（完整字段显示，按照FindTheTask.php逻辑）
+        function renderSubTaskCard(task, index, baseUrl) {
+            const cardId = `subtask_${task.id || index}`;
+            
+            // 辅助函数：从多个候选字段名中获取第一个存在的值
+            const getField = (...names) => {
+                for (let name of names) {
+                    if (task[name] !== undefined && task[name] !== null && task[name] !== '') {
+                        return task[name];
+                    }
+                }
+                return null;
+            };
+            
+            // 基础字段
+            const subOrderId = getField('subOrderId', 'sub_order_id', 'taskId', 'task_id') || task.id || '-';
+            const taskSeq = getField('taskSeq', 'task_seq', 'sequence', 'seq') || index + 1;
+            const serviceUrl = getField('serviceUrl', 'service_url', 'serverUrl', 'server_url') || baseUrl;
+            
+            // 从serviceUrl提取服务器IP
+            let serverIp = '-';
+            try {
+                if (serviceUrl && serviceUrl !== '-') {
+                    const url = new URL(serviceUrl);
+                    serverIp = url.hostname;
+                }
+            } catch (e) {
+                serverIp = serviceUrl;
+            }
+            
+            // 任务信息字段（按照PHP文件中的字段）
+            // 注意：远程API（/crossTask/query 和 /crossTask/detail）返回驼峰命名
+            // 如 deviceNum, deviceCode, templateCode, taskPath 等
+            const areaId = getField('area_id', 'areaId') || '-';
+            const templateCode = getField('template_code', 'templateCode', 'model_process_code') || '-';
+            const robotNum = getField('robot_num', 'robotNum', 'deviceNum') || '-';
+            const robotId = getField('robot_id', 'robotId', 'device_code', 'deviceCode') || '-';
+            const deviceIp = getField('device_ip', 'deviceIp', 'DEVICE_IP') || '-';
+            const pathPoints = getField('path_points', 'pathPoints', 'taskPath') || '-';
+            const robotType = getField('robot_type', 'robotType') || '-';
+            const shelfModel = getField('shelf_model', 'shelfModel') || '-';
+            const shelfModelName = getField('shelf_model_name', 'shelfModelName') || '-';
+            const carrierCode = getField('carrier_code', 'carrierCode') || '-';
+            const errorDesc = getField('error_desc', 'errorDesc') || '-';
+            const createTime = getField('create_time', 'createTime');
+            const startTime = getField('start_time', 'startTime');
+            const endTime = getField('end_time', 'endTime');
+            const status = getField('status', 'taskStatus', 'task_status') || 0;
+            const taskStatusName = getField('task_status_name', 'taskStatusName') || '-';
+            const orderId = getField('order_id', 'orderId') || '-';
+            const outOrderId = getField('out_order_id', 'outOrderId') || '-';
+            const tgId = getField('tg_id', 'tgId', 'id') || '-';
+            
+            // 子任务特定字段
+            const startPoint = getField('start_point', 'startPoint') || '-';
+            const endPoint = getField('end_point', 'endPoint') || '-';
+            const action = getField('action', 'actionType') || '-';
+            const angel = getField('angel', 'angle') || '-';
+            const x = getField('x', 'posX') || '-';
+            const y = getField('y', 'posY') || '-';
+            const shelfNum = getField('shelf_num', 'shelfNum') || '-';
+            
+            // 格式化时间
+            const formattedCreate = formatTime(createTime);
+            const formattedStart = formatTime(startTime);
+            const formattedEnd = formatTime(endTime);
+            
+            // 注意：内联事件中调用 showJsonForCard 时，需要对 JSON 字符串进行安全转义
+            const taskJsonSafe = escapeJsonForInline(task);
+            
+            return `
+            <div class="subtask-card mb-2" id="${cardId}">
+                <div class="query-card-header py-2 d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="fw-bold">子任务 #${taskSeq}</span>
+                        <span class="ms-2">${getStatusBadge(status)} ${taskStatusName !== '-' ? `<small class="text-muted">(${taskStatusName})</small>` : ''}</span>
+                        <code class="ms-3">${subOrderId}</code>
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary me-1" onclick="event.stopPropagation(); showJsonForCard('子任务 ' + ${taskSeq}, ${taskJsonSafe})" title="查看原始 JSON">
+                            <i class="bi bi-info-circle"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#${cardId}_body" aria-expanded="true">
+                            <i class="bi bi-chevron-up collapse-icon"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="collapse show" id="${cardId}_body">
+                    <div class="query-card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <table class="table table-sm table-borderless small table-modern">
+                                    <tr><th class="w-40">子任务ID</th><td><code>${subOrderId}</code></td></tr>
+                                    <tr><th>服务器IP</th><td>${serverIp}</td></tr>
+                                    <tr><th>所在区域ID</th><td>${areaId}</td></tr>
+                                    <tr><th>任务模板</th><td>${templateCode}</td></tr>
+                                    <tr><th>分派的AGV</th><td>${robotNum}</td></tr>
+                                    <tr><th>设备序列号</th><td>${robotId}</td></tr>
+                                    <tr><th>设备IP</th><td>${deviceIp}</td></tr>
+                                    <tr><th>路径点集</th><td><code>${pathPoints}</code></td></tr>
+                                    <tr><th>AGV设备类型</th><td>${robotType}</td></tr>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <table class="table table-sm table-borderless small table-modern">
+                                    <tr><th>货架模型编号</th><td>${shelfModel}</td></tr>
+                                    <tr><th>货架模型</th><td>${shelfModelName}</td></tr>
+                                    <tr><th>任务货架</th><td>${carrierCode}</td></tr>
+                                    <tr><th>错误描述</th><td>${errorDesc}</td></tr>
+                                    <tr><th>创建时间</th><td>${formattedCreate}</td></tr>
+                                    <tr><th>开始时间</th><td>${formattedStart}</td></tr>
+                                    <tr><th>结束时间</th><td>${formattedEnd}</td></tr>
+                                    <tr><th>任务状态值</th><td>${status}</td></tr>
+                                    <tr><th>任务状态</th><td>${taskStatusName}</td></tr>
+                                    <tr><th>order_id</th><td>${orderId}</td></tr>
+                                    <tr><th>out_order_id</th><td>${outOrderId}</td></tr>
+                                    <tr><th>tg_id</th><td>${tgId}</td></tr>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- 子任务特定信息 -->
+                        ${startPoint !== '-' || endPoint !== '-' || action !== '-' || angel !== '-' || x !== '-' || y !== '-' || shelfNum !== '-' ? `
+                        <div class="mt-3 pt-3 border-top">
+                            <h6 class="mb-2"><i class="bi bi-list-task"></i> 子任务执行详情</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <table class="table table-sm table-borderless small table-modern">
+                                        <tr><th>起始点</th><td><code>${startPoint}</code></td></tr>
+                                        <tr><th>目标点</th><td><code>${endPoint}</code></td></tr>
+                                        <tr><th>动作</th><td>${action}</td></tr>
+                                    </table>
+                                </div>
+                                <div class="col-md-6">
+                                    <table class="table table-sm table-borderless small table-modern">
+                                        <tr><th>坐标 (X, Y)</th><td>${x}, ${y}</td></tr>
+                                        <tr><th>角度</th><td>${angel}</td></tr>
+                                        <tr><th>货架号</th><td>${shelfNum}</td></tr>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        ` : ''}
+                        
+                        <!-- 操作按钮区 -->
+                        <div class="mt-3 pt-3 border-top d-flex flex-wrap gap-2">
+                            ${status == 6 || status == 9 ? 
+                                `<button class="btn btn-sm btn-outline-warning" onclick="adjustPriority('${subOrderId}', '${serviceUrl}')">
+                                    <i class="bi bi-arrow-up"></i> 优先执行
+                                </button>` : ''}
+                            ${status == 3 ? 
+                                `<button class="btn btn-sm btn-outline-warning" onclick="resendTask('${subOrderId}', '${orderId}', ${taskSeq})" title="已取消任务重发">
+                                    <i class="bi bi-arrow-repeat"></i> 重发
+                                </button>` : ''}
+                            ${status == 7 ? 
+                                `<button class="btn btn-sm btn-outline-danger" onclick="resendTask('${subOrderId}', '${orderId}', ${taskSeq})" title="失败任务重发">
+                                    <i class="bi bi-arrow-repeat"></i> 重发
+                                </button>` : ''}
+                            ${(status == 4 || status == 6 || status == 9) ? 
+                                `<button class="btn btn-sm btn-outline-danger" onclick="resendTask('${subOrderId}', '${orderId}', ${taskSeq})" title="强制重发（修改大模板和子模板状态为5，sub_order_id+1）">
+                                    <i class="bi bi-arrow-repeat"></i> 强制重发
+                                </button>` : ''}
+                            ${status == 5 ? 
+                                `<button class="btn btn-sm btn-outline-secondary" disabled title="正在重发中">
+                                    <i class="bi bi-hourglass-split"></i> 重发中...
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="forceCompleteTask('${subOrderId}', '${orderId}', ${taskSeq})" title="异常完成（仅将子任务状态置为3）">
+                                    <i class="bi bi-check-circle"></i> 异常完成
+                                </button>` : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            `;
+        }
+
+        // ---------- JSON 模态框操作 ----------
+        window.showJsonForCard = function(title, data) {
+            console.log('showJsonForCard called', title, typeof data, data); // 调试用
+            
+            let jsonData;
+            if (typeof data === 'string') {
+                try {
+                    // 将HTML实体转换回双引号
+                    const decodedData = data.replace(/&quot;/g, '"');
+                    // 如果已经是JSON字符串，尝试解析
+                    jsonData = JSON.parse(decodedData);
+                } catch (e) {
+                    console.error('JSON解析失败', e, '原始数据:', data);
+                    jsonData = data; // 显示原始字符串
+                }
+            } else {
+                jsonData = data;
+            }
+            
+            const modalTitle = document.querySelector('#jsonModal .modal-title');
+            if (modalTitle) {
+                modalTitle.innerHTML = `<i class="bi bi-filetype-json me-2"></i>原始数据 - ${title}`;
+            }
+            
+            const jsonContent = document.getElementById('jsonContent');
+            if (jsonContent) {
+                try {
+                    jsonContent.textContent = JSON.stringify(jsonData, null, 2);
+                } catch (e) {
+                    console.error('JSON序列化失败', e);
+                    jsonContent.textContent = String(jsonData);
+                }
+            }
+            
+            // 确保模态框实例存在
+            if (!jsonModal) {
+                const modalElement = document.getElementById('jsonModal');
+                if (modalElement) {
+                    jsonModal = new bootstrap.Modal(modalElement);
+                } else {
+                    console.error('找不到JSON模态框元素');
+                    return;
+                }
+            }
+            
+            try {
+                jsonModal.show();
+            } catch (e) {
+                console.error('显示模态框失败', e);
+            }
+        };
+
+        function copyJsonToClipboard() {
+            const text = document.getElementById('jsonContent').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('已复制到剪贴板');
+            });
+        }
+
+        // 优先级调整
+        window.adjustPriority = async function(subOrderId, serviceUrl) {
+            if (!confirm('确定要提高该子任务的优先级吗？')) return;
+            try {
+                const url = new URL(serviceUrl);
+                const updateUrl = `${url.protocol}//${url.host}/ics/out/updateTaskPriority`;
+                const res = await fetch(updateUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orderId: subOrderId, score: "100000" })
+                });
+                const data = await res.json();
+                if (data.code === 1000) {
+                    alert('优先级调整成功');
+                } else {
+                    alert('调整失败: ' + (data.desc || '未知错误'));
+                }
+            } catch (e) {
+                alert('请求失败: ' + e.message);
+            }
+        };
+
+        // 任务重发
+        window.resendTask = async function(subOrderId, orderId, taskSeq) {
+            const confirmMsg = `确定要重发该子任务吗？\n\n` +
+                `子任务ID: ${subOrderId}\n` +
+                `任务单号: ${orderId}\n` +
+                `任务序号: ${taskSeq}\n\n` +
+                `点击确定后将执行重发操作。`;
+            
+            if (!confirm(confirmMsg)) return;
+            
+            try {
+                const res = await fetch('/api/task/resend', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        orderId: orderId,
+                        subOrderId: subOrderId,
+                        taskSeq: taskSeq
+                    })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    alert('✅ ' + data.message);
+                    // 3秒后自动重新查询
+                    setTimeout(() => executeQuery(), 3000);
+                } else {
+                    if (data.code === 'PRECEDING_TASK_ACTIVE') {
+                        alert('⚠️ 上一条任务仍在执行中，无法重发\n\n' +
+                            `上一条任务ID: ${data.precedingTaskId}\n` +
+                            `服务器地址: ${data.serverUrl}\n\n` +
+                            '请先到对应服务器查询或取消该任务后再重发。');
+                    } else if (data.code === 'MULTIPLE_ACTIVE') {
+                        alert('⚠️ ' + data.message + '\n\n' +
+                            '调试信息:\n' +
+                            (data.activeTasks || []).map(t => 
+                                `  task_seq=${t.task_seq} sub_order_id=${t.sub_order_id} status=${t.status}`
+                            ).join('\n'));
+                    } else {
+                        alert('❌ 重发失败: ' + (data.message || '未知错误'));
+                    }
+                }
+            } catch (e) {
+                alert('❌ 请求失败: ' + e.message);
+            }
+        };
+
+        // 异常完成（仅将子任务状态置为3）
+        window.forceCompleteTask = async function(subOrderId, orderId, taskSeq) {
+            const confirmMsg = `确定要将该子任务标记为异常完成吗？\n\n` +
+                `子任务ID: ${subOrderId}\n` +
+                `任务单号: ${orderId}\n` +
+                `任务序号: ${taskSeq}\n\n` +
+                `此操作仅将子任务状态改为3（已取消），不修改大模板和sub_order_id。`;
+            
+            if (!confirm(confirmMsg)) return;
+            
+            try {
+                const res = await fetch('/api/task/force_complete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        orderId: orderId,
+                        subOrderId: subOrderId,
+                        taskSeq: taskSeq
+                    })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    alert('✅ ' + data.message);
+                    setTimeout(() => executeQuery(), 3000);
+                } else {
+                    alert('❌ 操作失败: ' + (data.message || '未知错误'));
+                }
+            } catch (e) {
+                alert('❌ 请求失败: ' + e.message);
+            }
+        };
+
+        // ---------- 查询历史 ----------
+        function addToHistory(term) {
+            queryHistory = [term, ...queryHistory.filter(t => t !== term)].slice(0, 5);
+            localStorage.setItem('taskQueryHistory', JSON.stringify(queryHistory));
+            renderHistoryTags();
+        }
+
+        function renderHistoryTags() {
+            const container = document.getElementById('historyTags');
+            if (queryHistory.length === 0) {
+                container.innerHTML = '<span class="text-muted">暂无历史</span>';
+                return;
+            }
+            container.innerHTML = queryHistory.map(term => 
+                `<span class="badge bg-light text-dark me-1 mb-1" style="cursor:pointer;" onclick="fillHistory('${term}')">${term}</span>`
+            ).join('');
+        }
+
+        window.fillHistory = function(term) {
+            if (term.includes('(货架)')) {
+                const shelf = term.replace(' (货架)', '');
+                typeShelfRadio.checked = true;
+                toggleQueryPanel();
+                shelfInput.value = shelf;
+            } else {
+                typeTaskRadio.checked = true;
+                toggleQueryPanel();
+                orderIdInput.value = term;
+            }
+            executeQuery();
+        };
+
+    })();
+</script>
+{% endblock %}

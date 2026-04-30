@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+
+{% block title %}复制模板 - {{ template.model_process_code }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2>
+            <i class="bi bi-copy text-success"></i> 复制任务模板
+        </h2>
+        <p class="text-muted">
+            基于模板 <code>{{ template.model_process_code }}</code> 创建新模板
+        </p>
+    </div>
+    <div>
+        <a href="{{ url_for('view_template', template_id=template.id) }}" 
+           class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> 返回详情
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-info-circle"></i> 复制说明
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>您正在基于以下模板创建新模板：</p>
+                <div class="alert alert-info">
+                    <h6>原模板信息</h6>
+                    <p class="mb-1"><strong>模板代码:</strong> <code>{{ template.model_process_code }}</code></p>
+                    <p class="mb-1"><strong>模板名称:</strong> {{ template.model_process_name }}</p>
+                    <p class="mb-0"><strong>ID:</strong> {{ template.id }} | <strong>子任务数:</strong> {{ details|default([])|length }}</p>
+                </div>
+                
+                <h5 class="mt-4">复制规则</h5>
+                <ul>
+                    <li>新模板将继承原模板的所有配置和子任务</li>
+                    <li>系统会自动为新模板生成新的ID后缀</li>
+                    <li>例如：输入 <code>HJBY_test</code>，如果最后一条记录ID为484，则新模板代码为 <code>HJBY_test_485</code></li>
+                    <li>如果输入的名称已存在，系统会自动递增ID</li>
+                </ul>
+            </div>
+        </div>
+        
+        <form action="{{ url_for('copy_template', template_id=template.id) }}" method="post">
+            <div class="form-section">
+                <h4><i class="bi bi-pencil"></i> 新模板配置</h4>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">新模板基础名称</label>
+                        <input type="text" class="form-control" name="new_base_name" 
+                               value="{% if template.model_process_code %}{{ template.model_process_code.split('_')[:-1]|join('_') }}{% endif %}" 
+                               required
+                               placeholder="例如: HJBY_test">
+                        <div class="form-text">
+                            不要包含ID后缀，系统会自动添加
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">预计新模板代码</label>
+                        <input type="text" class="form-control" id="predictedCode" readonly>
+                        <div class="form-text" id="predictionInfo">
+                            输入基础名称后显示预计代码
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">新模板名称</label>
+                        <input type="text" class="form-control" name="model_process_name" 
+                               value="{{ template.model_process_name }} (复制)" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">状态</label>
+                        <select class="form-select" name="enable">
+                            <option value="0" {% if template.enable == 0 %}selected{% endif %}>禁用 (跨环境任务)</option>
+                            <option value="1" {% if template.enable == 1 %}selected{% endif %}>启用 (普通任务)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="copy-template-box">
+                    <h5><i class="bi bi-files"></i> 复制内容预览</h5>
+                    <p class="mb-3">将复制以下内容到新模板：</p>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item">
+                                    <i class="bi bi-check-circle text-success"></i> 模板基本信息
+                                </li>
+                                <li class="list-group-item">
+                                    <i class="bi bi-check-circle text-success"></i> 服务器配置
+                                </li>
+                                <li class="list-group-item">
+                                    <i class="bi bi-check-circle text-success"></i> 回流配置
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item">
+                                    <i class="bi bi-check-circle text-success"></i> 所有子任务 ({{ details|default([])|length }}个)
+                                </li>
+                                <li class="list-group-item">
+                                    <i class="bi bi-check-circle text-success"></i> 容量管控设置
+                                </li>
+                                <li class="list-group-item">
+                                    <i class="bi bi-check-circle text-success"></i> 回调URL配置
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-outline-primary btn-sm" 
+                                data-bs-toggle="collapse" data-bs-target="#previewDetails">
+                            查看详细预览
+                        </button>
+                    </div>
+                    
+                    <div class="collapse mt-3" id="previewDetails">
+                        <div class="card card-body">
+                            <h6>原模板配置预览</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p><strong>容量管控:</strong> 
+                                        {% if template.capacity is none %}
+                                            未设置
+                                        {% elif template.capacity == -1 %}
+                                            不限制
+                                        {% else %}
+                                            {{ template.capacity }}
+                                        {% endif %}
+                                    </p>
+                                    <p><strong>目标点位:</strong> {{ template.target_points or '未设置' }}</p>
+                                    <p><strong>区域ID:</strong> {{ template.area_id or '未设置' }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>目标服务器:</strong> {{ template.target_points_ip or '未设置' }}</p>
+                                    <p><strong>空车回流等待:</strong> {{ template.back_wait_time or 0 }} 秒</p>
+                                    <p><strong>回调URL:</strong> {{ template.request_url or '未设置' }}</p>
+                                </div>
+                            </div>
+                            
+                            {% if details %}
+                                <h6 class="mt-3">子任务预览 ({{ details|default([])|length }}个)</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>#</th>
+                                                <th>模板代码</th>
+                                                <th>模板名称</th>
+                                                <th>服务器</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for detail in details[:5] %}
+                                                <tr>
+                                                    <td>{{ detail.task_seq }}</td>
+                                                    <td><code>{{ detail.template_code|default('未设置') }}</code></td>
+                                                    <td>{{ detail.template_name|default('未设置') }}</td>
+                                                    <td class="small">
+                            {% if detail.task_servicec %}
+                                {{ detail.task_servicec|truncate(20) }}
+                            {% else %}
+                                未设置
+                            {% endif %}
+                        </td>
+                                                </tr>
+                                            {% endfor %}
+                                            {% if details|length > 5 %}
+                                                <tr>
+                                                    <td colspan="4" class="text-center text-muted">
+                                                        还有 {{ details|default([])|length - 5 }} 个子任务...
+                                                    </td>
+                                                </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="confirmCopy" required>
+                        <label class="form-check-label" for="confirmCopy">
+                            我确认要创建新模板，并理解这将向数据库插入新记录
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 操作按钮 -->
+            <div class="form-section">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <button type="button" class="btn btn-outline-secondary" onclick="history.back()">
+                            <i class="bi bi-x-circle"></i> 取消
+                        </button>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-success" id="copyButton">
+                            <i class="bi bi-files"></i> 确认复制
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+    
+    <div class="col-md-4">
+        <!-- 原模板信息 -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-template"></i> 原模板信息
+                </h5>
+            </div>
+            <div class="card-body">
+                <h6>基本信息</h6>
+                <ul class="list-group list-group-flush mb-3">
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>模板代码</span>
+                        <code class="small">{{ template.model_process_code }}</code>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>模板名称</span>
+                        <span>{{ template.model_process_name }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>状态</span>
+                        <span class="badge {% if template.enable == 1 %}bg-success{% else %}bg-warning{% endif %}">
+                            {% if template.enable == 1 %}启用{% else %}禁用{% endif %}
+                        </span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>ID</span>
+                        <span>{{ template.id }}</span>
+                    </li>
+                </ul>
+                
+                <h6>关键配置</h6>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>容量管控</span>
+                        <span>
+                            {% if template.capacity is none %}
+                                未设置
+                            {% elif template.capacity == -1 %}
+                                不限制
+                            {% else %}
+                                {{ template.capacity }}
+                            {% endif %}
+                        </span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>目标服务器</span>
+                        <code class="small">
+                            {% if template.target_points_ip %}
+                                {{ template.target_points_ip|truncate(15) }}
+                            {% else %}
+                                未设置
+                            {% endif %}
+                        </code>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>子任务数</span>
+                        <span class="badge bg-info rounded-pill">{{ details|default([])|length }}</span>
+                    </li>
+                </ul>
+                
+                <div class="mt-3">
+                    <a href="{{ url_for('view_template', template_id=template.id) }}" 
+                       class="btn btn-outline-primary btn-sm w-100">
+                        <i class="bi bi-eye"></i> 查看原模板详情
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 复制提示 -->
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-lightbulb"></i> 使用提示
+                </h5>
+            </div>
+            <div class="card-body">
+                <h6>命名建议</h6>
+                <ul class="small">
+                    <li>使用有意义的名称，便于识别</li>
+                    <li>遵循现有命名规范</li>
+                    <li>避免使用特殊字符</li>
+                </ul>
+                
+                <h6 class="mt-3">示例</h6>
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>输入</th>
+                            <th>生成</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>HJBY_test</code></td>
+                            <td><code>HJBY_test_485</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>BACK_32_to_31</code></td>
+                            <td><code>BACK_32_to_31_486</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>NEW_TEMPLATE</code></td>
+                            <td><code>NEW_TEMPLATE_1</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="alert alert-warning small mt-3">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>注意：</strong>复制后请根据需要修改新模板的配置
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+    // 预测新模板代码
+    document.addEventListener('DOMContentLoaded', function() {
+        const baseNameInput = document.querySelector('input[name="new_base_name"]');
+        const predictedCodeInput = document.getElementById('predictedCode');
+        const predictionInfo = document.getElementById('predictionInfo');
+        
+        // 从原模板代码提取基础名称（去掉ID后缀）
+        const originalCode = '{{ template.model_process_code|default('') }}';
+        const lastUnderscoreIndex = originalCode.lastIndexOf('_');
+        let originalBaseName = originalCode;
+        
+        // 检查最后一部分是否是数字
+        if (lastUnderscoreIndex !== -1) {
+            const lastPart = originalCode.substring(lastUnderscoreIndex + 1);
+            if (!isNaN(lastPart)) {
+                originalBaseName = originalCode.substring(0, lastUnderscoreIndex);
+            }
+        }
+        
+        // 设置初始值
+        baseNameInput.value = originalBaseName;
+        updatePrediction();
+        
+        // 监听输入变化
+        baseNameInput.addEventListener('input', updatePrediction);
+        
+        function updatePrediction() {
+            const baseName = baseNameInput.value.trim();
+            if (!baseName) {
+                predictedCodeInput.value = '';
+                predictionInfo.textContent = '请输入基础名称';
+                return;
+            }
+            
+            // 这里应该调用后端API获取下一个可用ID
+            // 暂时使用示例ID
+            const exampleId = 485; // 这应该是从后端获取的实际值
+            predictedCodeInput.value = `${baseName}_${exampleId}`;
+            predictionInfo.textContent = `示例ID: ${exampleId} (实际ID将由系统确定)`;
+        }
+    });
+    
+    // 简单的复制处理函数
+    function simpleCopyHandler() {
+        console.log('simpleCopyHandler被调用');
+        const baseName = document.querySelector('input[name="new_base_name"]').value.trim();
+        const confirmCheckbox = document.getElementById('confirmCopy');
+        
+        // 简单验证
+        if (!baseName) {
+            alert('请输入新模板的基础名称');
+            return false;
+        }
+        
+        if (!confirmCheckbox.checked) {
+            alert('请确认复制操作');
+            return false;
+        }
+        
+        // 显示确认对话框
+        const confirmed = confirm(`确定要基于原模板创建新模板 "${baseName}" 吗？\n\n新模板将继承原模板的所有配置和子任务。`);
+        if (confirmed) {
+            console.log('用户确认，提交表单');
+            document.querySelector('form').submit();
+        }
+        return false;
+    }
+    
+    // 绑定事件
+    document.addEventListener('DOMContentLoaded', function() {
+        const copyButton = document.getElementById('copyButton');
+        if (copyButton) {
+            copyButton.addEventListener('click', simpleCopyHandler);
+            console.log('复制按钮事件绑定成功');
+        } else {
+            console.error('复制按钮未找到');
+        }
+    });
+</script>
+{% endblock %}
+{% endblock %}

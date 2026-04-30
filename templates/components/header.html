@@ -1,0 +1,27 @@
+{# 页面头部组件 #}
+<div class="header text-center animate__animated animate__fadeInDown mb-4">
+    <div class="position-relative">
+        <h1 class="display-4 fw-bold mb-3">
+            {% if header_icon %}
+                <i class="bi {{ header_icon }} me-2"></i>
+            {% endif %}
+            {{ header_title|default('跨环境任务模板管理系统') }}
+        </h1>
+        {% if header_subtitle %}
+            <p class="lead mb-4 opacity-75">{{ header_subtitle }}</p>
+        {% endif %}
+        
+        {% if header_actions %}
+            <div class="d-flex flex-wrap justify-content-center gap-2 mt-3">
+                {% for action in header_actions %}
+                    <a href="{{ action.url }}" class="btn {{ action.class|default('btn-light') }} btn-lg px-4">
+                        {% if action.icon %}
+                            <i class="bi {{ action.icon }} me-2"></i>
+                        {% endif %}
+                        {{ action.text }}
+                    </a>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+</div>

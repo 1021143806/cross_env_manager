@@ -1,0 +1,17 @@
+# 数据库配置
+DB_HOST=47.98.244.173
+DB_PORT=53308
+DB_USER=root
+DB_PASSWORD=Qq13235202993
+DB_NAME=ds
+DB_CHARSET=utf8mb4
+
+# Flask配置
+FLASK_SECRET_KEY=cross_env_manager_secret_key_2026
+FLASK_DEBUG=false
+FLASK_HOST=0.0.0.0
+FLASK_PORT=5000
+
+# 应用配置
+APP_NAME=跨环境任务模板管理系统
+APP_VERSION=1.0

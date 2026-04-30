@@ -1,0 +1,44 @@
+# 配置文件（含敏感信息）
+config/*.toml
+config/old/*
+config/env.toml
+
+# 测试文件
+test/
+test_*
+
+# SQL 文件
+*.sql
+
+# 配置管理相关文件
+static/js/config.js
+static/js/backups/*
+
+# 开发环境文件
+.env
+.env.local
+*.log
+
+# 调车模块数据文件
+data/
+
+# Python 虚拟环境
+venv/
+
+# 备份文件
+backup/
+
+# 开发调试文件
+dev/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/

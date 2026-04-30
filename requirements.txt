@@ -1,0 +1,12 @@
+Flask==2.3.3
+pymysql==1.1.0
+cryptography==42.0.5
+python-dotenv==1.0.0
+Werkzeug==2.3.7
+Jinja2==3.1.2
+click==8.1.6
+itsdangerous==2.1.2
+markdown==3.5.1
+tomli==2.0.1
+DBUtils==3.1.2
+Flask-Caching==2.3.1

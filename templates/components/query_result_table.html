@@ -1,0 +1,164 @@
+{# 查询结果表格组件 #}
+<div class="query-result-section {{ section_class|default('') }}" 
+     style="{{ section_style|default('') }}"
+     {% if section_id %}id="{{ section_id }}"{% endif %}>
+    
+    {% if title %}
+        <h3 class="result-title mb-3">
+            {% if title_icon %}
+                <i class="bi {{ title_icon }} me-2"></i>
+            {% endif %}
+            {{ title }}
+        </h3>
+    {% endif %}
+    
+    {% if empty_message and not data %}
+        <div class="alert alert-{{ empty_type|default('warning') }}">
+            {% if empty_icon %}
+                <i class="bi {{ empty_icon }} me-2"></i>
+            {% endif %}
+            {{ empty_message }}
+        </div>
+    {% elif data %}
+        <div class="table-responsive">
+            <table class="table table-{{ table_type|default('striped') }} table-hover">
+                <thead>
+                    <tr>
+                        {% for column in columns %}
+                            <th {% if column.width %}style="width: {{ column.width }}"{% endif %}
+                                {% if column.class %}class="{{ column.class }}"{% endif %}>
+                                {% if column.icon %}
+                                    <i class="bi {{ column.icon }} me-1"></i>
+                                {% endif %}
+                                {{ column.title }}
+                            </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in data %}
+                        <tr {% if row.class %}class="{{ row.class }}"{% endif %}>
+                            {% for column in columns %}
+                                <td {% if column.cell_class %}class="{{ column.cell_class }}"{% endif %}>
+                                    {% if column.template %}
+                                        {# 自定义模板渲染 #}
+                                        {% include column.template with context %}
+                                    {% elif column.key %}
+                                        {# 直接显示数据 #}
+                                        {% set value = row[column.key]|default('') %}
+                                        {% if column.format == 'code' %}
+                                            <code>{{ value }}</code>
+                                        {% elif column.format == 'badge' %}
+                                            <span class="badge bg-{{ column.badge_type|default('secondary') }}">{{ value }}</span>
+                                        {% elif column.format == 'date' %}
+                                            {{ value|default('') }}
+                                        {% elif column.format == 'boolean' %}
+                                            {% if value %}
+                                                <i class="bi bi-check-circle text-success"></i>
+                                            {% else %}
+                                                <i class="bi bi-x-circle text-danger"></i>
+                                            {% endif %}
+                                        {% elif column.format == 'link' and column.link_key %}
+                                            <a href="{{ row[column.link_key]|default('#') }}" 
+                                               class="text-decoration-none">
+                                                {{ value }}
+                                            </a>
+                                        {% else %}
+                                            {{ value }}
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% if pagination and pagination.total_pages > 1 %}
+            <nav aria-label="查询结果分页" class="mt-3">
+                <ul class="pagination justify-content-center">
+                    {% if pagination.has_prev %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ pagination.prev_url }}" aria-label="上一页">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link" aria-hidden="true">&laquo;</span>
+                        </li>
+                    {% endif %}
+                    
+                    {% for page in pagination.pages %}
+                        {% if page == pagination.current_page %}
+                            <li class="page-item active" aria-current="page">
+                                <span class="page-link">{{ page }}</span>
+                            </li>
+                        {% else %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ pagination.page_urls[page] }}">{{ page }}</a>
+                            </li>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if pagination.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ pagination.next_url }}" aria-label="下一页">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link" aria-hidden="true">&raquo;</span>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        {% endif %}
+        
+        {% if summary %}
+            <div class="mt-3">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    {{ summary }}
+                </div>
+            </div>
+        {% endif %}
+    {% endif %}
+</div>
+
+<style>
+    .query-result-section {
+        background-color: var(--form-section-bg);
+        border-radius: 12px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: var(--card-shadow);
+        border: 1px solid var(--border-color);
+    }
+    
+    .result-title {
+        color: var(--text-color);
+        padding-bottom: 0.75rem;
+        border-bottom: 2px solid var(--border-color);
+    }
+    
+    .table th {
+        background-color: var(--detail-card-bg);
+        border-bottom: 2px solid var(--border-color);
+        font-weight: 600;
+    }
+    
+    .table td {
+        border-color: var(--border-color);
+    }
+    
+    .table-striped tbody tr:nth-of-type(odd) {
+        background-color: var(--detail-card-bg);
+    }
+    
+    .table-hover tbody tr:hover {
+        background-color: rgba(var(--bs-primary-rgb), 0.1);
+    }
+</style>

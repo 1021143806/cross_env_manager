@@ -1,0 +1,27 @@
+{# 页脚组件 #}
+<footer class="mt-5 pt-4 text-center animate__animated animate__fadeInUp">
+    <div class="glass-effect rounded-3 p-4">
+        <p class="mb-2">跨环境任务模板管理系统 &copy; 2026 | 版本 2.0</p>
+        <p class="small opacity-75 mb-0">基于《跨环境配置及实施说明书》开发 · 现代化UI · 暗黑模式支持</p>
+        <div class="mt-3">
+            <span class="badge bg-primary me-2">Bootstrap 5.3</span>
+            <span class="badge bg-success me-2">Python Flask</span>
+            <span class="badge bg-info me-2">MySQL</span>
+            <span class="badge bg-warning">响应式设计</span>
+        </div>
+    </div>
+</footer>
+
+<style>
+    .glass-effect {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    [data-bs-theme="dark"] .glass-effect {
+        background: rgba(30, 30, 30, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+</style>

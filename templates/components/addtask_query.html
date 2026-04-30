@@ -1,0 +1,33 @@
+<!-- 任务查询 -->
+<div class="card h-100 animate__animated animate__fadeInRight">
+    <div class="card-header-custom">
+        <h4 class="mb-0"><i class="bi bi-search-heart me-2"></i>任务查询</h4>
+    </div>
+    <div class="card-body-custom">
+        <div class="query-toggle">
+            <div class="toggle-option active" data-type="shelf">按货架查询</div>
+            <div class="toggle-option" data-type="order">按OrderId查询</div>
+        </div>
+
+        <div class="mb-3" id="shelf-query-group">
+            <label class="form-label fw-semibold">货架号</label>
+            <input type="text" id="shelf-query-input" class="form-control" placeholder="请输入货架号">
+        </div>
+
+        <div class="mb-3" id="order-query-group" style="display: none;">
+            <label class="form-label fw-semibold">OrderId</label>
+            <input type="text" id="order-query-input" class="form-control" placeholder="请输入OrderId">
+        </div>
+
+        <button class="btn btn-info text-white w-100 mb-4" id="query-btn">
+            <i class="bi bi-search me-2"></i>查询任务
+        </button>
+
+        <div id="task-details">
+            <div class="empty-state" id="empty-state">
+                <i class="bi bi-inbox fs-1 opacity-50"></i>
+                <p class="mt-3">暂无任务数据，请先查询</p>
+            </div>
+        </div>
+    </div>
+</div>
