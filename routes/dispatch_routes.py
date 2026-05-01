@@ -219,6 +219,25 @@ def write_global_log(action, region_key, detail='', level='info', raw_data=None)
     if len(logs) > 100:
         logs = logs[-100:]
     _save_json(GLOBAL_LOG_PATH, logs)
+    
+    # 监控采样：每5次调车操作采样一次
+    _dispatch_sample_counter[0] += 1
+    if _dispatch_sample_counter[0] % 5 == 0:
+        try:
+            from app import _dispatch_samples
+            _dispatch_samples.append({
+                'time': datetime.now().isoformat(),
+                'action': action,
+                'region_key': region_key,
+                'level': level
+            })
+            if len(_dispatch_samples) > 3600:
+                _dispatch_samples.pop(0)
+        except ImportError:
+            pass
+
+# 调车采样计数器
+_dispatch_sample_counter = [0]
 
 
 @dispatch_bp.route('/api/dispatch/global_log')
@@ -1319,8 +1338,15 @@ SELF_HEAL_DEFAULTS = {
 
 
 def _query_device_status(server, api_path, area_id, device_code):
-    """查询单个设备状态"""
-    url = f"http://{server}{api_path}"
+    """查询单个设备状态
+    api_path 支持两种格式：
+    - 相对路径: /ics/out/device/list/deviceInfo → 拼接 http://{server}{api_path}
+    - 完整 URL: http://192.168.1.100:8080/ics/... → 直接使用
+    """
+    if api_path.startswith('http://') or api_path.startswith('https://'):
+        url = api_path
+    else:
+        url = f"http://{server}{api_path}"
     body = {"areaId": str(area_id), "deviceType": "0", "deviceCode": device_code}
     try:
         req = urllib.request.Request(url,

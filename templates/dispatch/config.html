@@ -298,8 +298,8 @@ function renderVisualEditor(data) {
                     <input class="form-control form-control-sm" type="number" value="${(region.self_heal||{}).check_interval||300}" onchange="updateSelfHeal('${key}','check_interval',parseInt(this.value)||300)"></div>
                 <div class="col-md-3"><label class="form-label small">异常超时恢复间隔(分钟)</label>
                     <input class="form-control form-control-sm" type="number" value="${(region.self_heal||{}).recover_timeout_minutes||30}" onchange="updateSelfHeal('${key}','recover_timeout_minutes',parseInt(this.value)||30)"></div>
-                <div class="col-md-3"><label class="form-label small">查询API路径</label>
-                    <input class="form-control form-control-sm" value="${(region.self_heal||{}).device_query_api||'/ics/out/device/list/deviceInfo'}" onchange="updateSelfHeal('${key}','device_query_api',this.value)"></div>
+                <div class="col-md-3"><label class="form-label small">查询API地址</label>
+                    <input class="form-control form-control-sm" placeholder="http://ip:port/ics/out/device/list/deviceInfo" value="${(region.self_heal||{}).device_query_api||'/ics/out/device/list/deviceInfo'}" onchange="updateSelfHeal('${key}','device_query_api',this.value)"></div>
             </div></details></div>`;
         container.appendChild(card);
     });

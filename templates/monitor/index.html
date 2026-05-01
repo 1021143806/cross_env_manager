@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+{% block title %}CEM 系统监控{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --monitor-bg: #0d1117;
+        --monitor-card: #161b22;
+        --monitor-border: #30363d;
+        --monitor-text: #c9d1d9;
+        --monitor-dim: #8b949e;
+        --monitor-green: #3fb950;
+        --monitor-blue: #58a6ff;
+        --monitor-yellow: #d2991d;
+        --monitor-red: #f85149;
+        --monitor-purple: #a371f7;
+        --monitor-cyan: #39d2c0;
+    }
+
+    .monitor-shell {
+        background: var(--monitor-bg);
+        border: 1px solid var(--monitor-border);
+        border-radius: 12px;
+        overflow: hidden;
+        font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+
+    /* 顶栏 */
+    .monitor-topbar {
+        background: var(--monitor-card);
+        border-bottom: 1px solid var(--monitor-border);
+        padding: 0.6rem 1rem;
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+        font-size: 0.82rem;
+    }
+    .monitor-topbar .topbar-item {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        color: var(--monitor-dim);
+    }
+    .monitor-topbar .topbar-value {
+        color: var(--monitor-text);
+        font-weight: 600;
+    }
+    .monitor-topbar .topbar-value.green { color: var(--monitor-green); }
+    .monitor-topbar .topbar-value.blue { color: var(--monitor-blue); }
+    .monitor-topbar .topbar-value.yellow { color: var(--monitor-yellow); }
+    .monitor-topbar .topbar-value.red { color: var(--monitor-red); }
+    .monitor-topbar .topbar-sep {
+        width: 1px; height: 20px; background: var(--monitor-border);
+    }
+
+    /* 表头 */
+    .monitor-thead {
+        display: grid;
+        grid-template-columns: 50px 100px 80px 1fr 60px;
+        padding: 0.4rem 1rem;
+        background: var(--monitor-card);
+        border-bottom: 1px solid var(--monitor-border);
+        font-size: 0.72rem;
+        color: var(--monitor-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    /* 行 */
+    .monitor-row {
+        display: grid;
+        grid-template-columns: 50px 100px 80px 1fr 60px;
+        padding: 0.45rem 1rem;
+        font-size: 0.8rem;
+        border-bottom: 1px solid rgba(48,54,61,0.5);
+        transition: background 0.15s;
+        align-items: center;
+    }
+    .monitor-row:hover { background: rgba(88,166,255,0.05); }
+    .monitor-row .col-time { color: var(--monitor-dim); font-size: 0.75rem; }
+    .monitor-row .col-action { font-weight: 600; }
+    .monitor-row .col-action.report { color: var(--monitor-cyan); }
+    .monitor-row .col-action.execute { color: var(--monitor-yellow); }
+    .monitor-row .col-action.error { color: var(--monitor-red); }
+    .monitor-row .col-action.clean { color: var(--monitor-purple); }
+    .monitor-row .col-region { color: var(--monitor-dim); }
+    .monitor-row .col-detail { color: var(--monitor-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .monitor-row .col-count { text-align: right; font-weight: 600; }
+
+    /* 底栏 */
+    .monitor-bottombar {
+        background: var(--monitor-card);
+        border-top: 1px solid var(--monitor-border);
+        padding: 0.4rem 1rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        font-size: 0.75rem;
+        color: var(--monitor-dim);
+    }
+    .monitor-bottombar .fkey {
+        background: var(--monitor-border);
+        color: var(--monitor-text);
+        padding: 0.15rem 0.5rem;
+        border-radius: 3px;
+        font-size: 0.7rem;
+        margin-right: 0.3rem;
+    }
+
+    /* 进度条 */
+    .mini-bar {
+        display: inline-flex;
+        height: 4px;
+        background: var(--monitor-border);
+        border-radius: 2px;
+        width: 60px;
+        vertical-align: middle;
+        margin: 0 0.3rem;
+    }
+    .mini-bar .fill {
+        height: 100%;
+        border-radius: 2px;
+        transition: width 0.5s ease;
+    }
+    .mini-bar .fill.green { background: var(--monitor-green); }
+    .mini-bar .fill.blue { background: var(--monitor-blue); }
+    .mini-bar .fill.yellow { background: var(--monitor-yellow); }
+    .mini-bar .fill.red { background: var(--monitor-red); }
+
+    /* 响应式 */
+    @media (max-width: 768px) {
+        .monitor-thead, .monitor-row {
+            grid-template-columns: 40px 70px 60px 1fr 40px;
+            font-size: 0.7rem;
+        }
+        .monitor-topbar { gap: 0.8rem; font-size: 0.7rem; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="monitor-shell">
+    <!-- 顶栏：系统信息 -->
+    <div class="monitor-topbar">
+        <div class="topbar-item">🖥 <span>CEM v2.0</span></div>
+        <div class="topbar-sep"></div>
+        <div class="topbar-item">📡 请求 <span class="topbar-value blue" id="reqRate">-</span>/min</div>
+        <div class="topbar-item">📤 上报 <span class="topbar-value cyan" id="dispReport">-</span>/min</div>
+        <div class="topbar-item">🚀 执行 <span class="topbar-value yellow" id="dispExec">-</span>/min</div>
+        <div class="topbar-sep"></div>
+        <div class="topbar-item">⚠ 错误 <span class="topbar-value red" id="errCount">-</span></div>
+        <div class="topbar-item">🗄 模板 <span class="topbar-value green" id="tplCount">-</span></div>
+        <div class="topbar-sep"></div>
+        <div class="topbar-item">💾 内存 <span class="topbar-value purple" id="memCur">-</span>/<span class="topbar-value" id="memPeak" style="color:var(--monitor-dim);">-</span>MB</div>
+        <div class="topbar-sep"></div>
+        <div class="topbar-item">
+            <span class="mini-bar"><span class="fill blue" id="reqBar" style="width:0%"></span></span> 请求
+        </div>
+        <div class="topbar-item">
+            <span class="mini-bar"><span class="fill green" id="repBar" style="width:0%"></span></span> 上报
+        </div>
+        <div class="topbar-item ms-auto">
+            <select id="windowSelect" onchange="refreshData()" style="background:var(--monitor-card);color:var(--monitor-text);border:1px solid var(--monitor-border);border-radius:4px;padding:0.15rem 0.4rem;font-size:0.75rem;font-family:inherit;">
+                <option value="300">5min</option>
+                <option value="900" selected>15min</option>
+                <option value="3600">1h</option>
+            </select>
+        </div>
+        <div class="topbar-item">
+            <label style="cursor:pointer;display:flex;align-items:center;gap:0.3rem;">
+                <input type="checkbox" id="autoRefresh" checked onchange="toggleAutoRefresh()" style="accent-color:var(--monitor-green);">
+                自动
+            </label>
+        </div>
+    </div>
+
+    <!-- 表头 -->
+    <div class="monitor-thead">
+        <span>时间</span>
+        <span>操作</span>
+        <span>区域</span>
+        <span>详情</span>
+        <span style="text-align:right;">计数</span>
+    </div>
+
+    <!-- 日志流 -->
+    <div id="logStream" style="max-height:55vh;overflow-y:auto;">
+        <div style="padding:2rem;text-align:center;color:var(--monitor-dim);">
+            <div class="spinner-border spinner-border-sm me-2" style="color:var(--monitor-blue);"></div>加载中...
+        </div>
+    </div>
+
+    <!-- 底栏 -->
+    <div class="monitor-bottombar">
+        <span><span class="fkey">F5</span> 刷新</span>
+        <span><span class="fkey">A</span> 自动刷新</span>
+        <span style="margin-left:auto;" id="statusText">就绪</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let refreshTimer = null;
+const REFRESH_INTERVAL = 10000;
+
+$(document).ready(function() {
+    refreshData();
+    if (document.getElementById('autoRefresh').checked) startTimer();
+    
+    // 键盘快捷键
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'F5') { e.preventDefault(); refreshData(); }
+        if (e.key === 'a' || e.key === 'A') {
+            const cb = document.getElementById('autoRefresh');
+            cb.checked = !cb.checked;
+            toggleAutoRefresh();
+        }
+    });
+});
+
+function toggleAutoRefresh() {
+    if (document.getElementById('autoRefresh').checked) startTimer();
+    else stopTimer();
+}
+
+function startTimer() { stopTimer(); refreshTimer = setInterval(refreshData, REFRESH_INTERVAL); }
+function stopTimer() { if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; } }
+
+function refreshData() {
+    const window = document.getElementById('windowSelect').value;
+    document.getElementById('statusText').textContent = '刷新中...';
+    
+    // 并行请求：监控数据 + 操作日志
+    Promise.all([
+        fetch('/api/system/monitor?window=' + window).then(r => r.json()),
+        fetch('/api/dispatch/global_log?_=' + Date.now()).then(r => r.json())
+    ]).then(([monitor, logData]) => {
+        renderTopbar(monitor.summary, monitor.memory_stats);
+        renderLogStream(logData.logs || []);
+        document.getElementById('statusText').textContent = 
+            '更新于 ' + new Date().toLocaleTimeString();
+    }).catch(err => {
+        console.error(err);
+        document.getElementById('statusText').textContent = '更新失败';
+    });
+}
+
+function renderTopbar(s, mem) {
+    if (!s) return;
+    const reqRate = s.request_rate || 0;
+    const dispReport = s.dispatch_report_rate || 0;
+    const dispExec = s.dispatch_execute_rate || 0;
+    const errCount = s.error_count || 0;
+    
+    document.getElementById('reqRate').textContent = reqRate;
+    document.getElementById('dispReport').textContent = dispReport;
+    document.getElementById('dispExec').textContent = dispExec;
+    document.getElementById('errCount').textContent = errCount;
+    
+    // 内存
+    if (mem) {
+        document.getElementById('memCur').textContent = mem.process_current_mb || 0;
+        document.getElementById('memPeak').textContent = mem.process_peak_mb || 0;
+    }
+    
+    // 进度条（最大值按经验设定）
+    document.getElementById('reqBar').style.width = Math.min(reqRate / 50 * 100, 100) + '%';
+    document.getElementById('repBar').style.width = Math.min(dispReport / 100 * 100, 100) + '%';
+    
+    // 模板数通过另一个 API 获取（缓存）
+    fetch('/api/system/monitor?window=3600').then(r => r.json()).then(d => {
+        if (d.db_stats) {
+            document.getElementById('tplCount').textContent = d.db_stats.total_templates || 0;
+        }
+    }).catch(() => {});
+}
+
+function renderLogStream(logs) {
+    const container = document.getElementById('logStream');
+    if (!logs || logs.length === 0) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--monitor-dim);">暂无操作日志</div>';
+        return;
+    }
+    
+    // 取最近 50 条
+    const recent = logs.slice(0, 50);
+    
+    container.innerHTML = recent.map(log => {
+        const time = (log.time || '').length > 16 ? log.time.slice(11, 19) : (log.time || '');
+        const action = log.action || '';
+        const region = log.region_key || '';
+        const detail = log.detail || '';
+        const dupCount = log.dup_count || 0;
+        
+        // 操作类型样式
+        let actionCls = '';
+        if (action === 'report_status') actionCls = 'report';
+        else if (action.startsWith('execute')) actionCls = 'execute';
+        else if (action.includes('error') || log.level === 'error') actionCls = 'error';
+        else if (action.startsWith('clean')) actionCls = 'clean';
+        
+        // 简化 detail 显示
+        let shortDetail = detail;
+        if (shortDetail.length > 60) shortDetail = shortDetail.slice(0, 57) + '...';
+        
+        // 计数
+        const count = dupCount > 1 ? dupCount : 1;
+        const countDisplay = dupCount > 1 ? `<span style="color:var(--monitor-yellow);">×${dupCount}</span>` : '';
+        
+        return `<div class="monitor-row">
+            <span class="col-time">${time}</span>
+            <span class="col-action ${actionCls}">${action}</span>
+            <span class="col-region">${region}</span>
+            <span class="col-detail" title="${detail}">${shortDetail}</span>
+            <span class="col-count">${countDisplay || '·'}</span>
+        </div>`;
+    }).join('');
+}
+</script>
+{% endblock %}

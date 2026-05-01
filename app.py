@@ -17,6 +17,8 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, f
 import re
 import os
 import sys
+import time
+import tracemalloc
 import argparse
 import hashlib
 from datetime import datetime
@@ -165,6 +167,9 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 # 支持 JSON 响应中的中文
 app.json.ensure_ascii = False
 
+# 启动内存追踪（监控页面使用）
+tracemalloc.start()
+
 # 项目根目录
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -237,6 +242,8 @@ def log_request_info():
     if request.headers.get('X-Forwarded-For'):
         client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
     app.logger.info(f"请求开始: IP={client_ip}, 路径={request.path}, 方法={request.method}, 用户={_get_user_info()}")
+    # 记录请求开始时间（用于计算耗时）
+    request._start_time = time.time()
 
 def log_response_info(response):
     """记录响应信息"""
@@ -244,7 +251,27 @@ def log_response_info(response):
     if request.headers.get('X-Forwarded-For'):
         client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
     app.logger.info(f"请求完成: IP={client_ip}, 路径={request.path}, 状态码={response.status_code}, 用户={_get_user_info()}")
+    
+    # 监控采样：每5次请求采样一次，降低开销
+    _request_sample_counter[0] += 1
+    if _request_sample_counter[0] % 5 == 0:
+        duration = (time.time() - getattr(request, '_start_time', time.time())) * 1000
+        _monitor_samples.append({
+            'time': datetime.now().isoformat(),
+            'path': request.path,
+            'method': request.method,
+            'status_code': response.status_code,
+            'duration_ms': round(duration, 1)
+        })
+        if len(_monitor_samples) > 3600:
+            _monitor_samples.pop(0)
+    
     return response
+
+# 监控采样队列（内存，重启即清空）
+_monitor_samples = []       # 请求流量采样
+_request_sample_counter = [0]  # 采样计数器（列表用于可变引用）
+_dispatch_samples = []      # 调车模块采样（由 dispatch_routes 写入）
 
 # 设置日志格式
 logging.basicConfig(

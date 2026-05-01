@@ -271,6 +271,12 @@ $(document).ready(function() {
     loadGlobalLog();
     startTimers();
     
+    // 日志容器滚动监听：滚到顶部自动开启自动滚动，往下翻自动关闭
+    const logContainer = document.getElementById('logContainer');
+    if (logContainer) {
+        logContainer.addEventListener('scroll', onLogScroll);
+    }
+    
     // 页面可见性变化时暂停/恢复轮询
     document.addEventListener('visibilitychange', () => {
         pageVisible = !document.hidden;
@@ -286,7 +292,7 @@ $(document).ready(function() {
 
 function startTimers() {
     stopTimers();
-    logTimer = setInterval(() => { if (logAutoScroll) loadGlobalLog(); }, LOG_INTERVAL);
+    logTimer = setInterval(loadGlobalLog, LOG_INTERVAL);
     dataTimer = setInterval(refreshData, DATA_INTERVAL);
 }
 
@@ -319,9 +325,33 @@ let allLogs = [];
 let logFilter = 'all';
 let logAutoScroll = true;
 
+// 滚动时自动同步开关状态：顶部→开，往下→关
+function onLogScroll() {
+    const container = document.getElementById('logContainer');
+    const checkbox = document.getElementById('logAutoScroll');
+    if (!container || !checkbox) return;
+    const atTop = container.scrollTop <= 10;
+    if (atTop !== logAutoScroll) {
+        logAutoScroll = atTop;
+        checkbox.checked = atTop;
+        if (atTop) {
+            if (!logTimer) logTimer = setInterval(loadGlobalLog, LOG_INTERVAL);
+        } else {
+            if (logTimer) { clearInterval(logTimer); logTimer = null; }
+        }
+    }
+}
+
 function toggleLogAutoScroll() {
     logAutoScroll = document.getElementById('logAutoScroll').checked;
-    if (logAutoScroll) scrollLogToTop();
+    if (logAutoScroll) {
+        scrollLogToTop();
+        // 恢复日志轮询
+        if (!logTimer) logTimer = setInterval(loadGlobalLog, LOG_INTERVAL);
+    } else {
+        // 停止日志轮询
+        if (logTimer) { clearInterval(logTimer); logTimer = null; }
+    }
 }
 
 function switchLogTab(filter) {
@@ -375,13 +405,14 @@ function renderLogs() {
         const logId = encodeURIComponent(time + '|' + action + '|' + detail);
         const rawBtn = hasRaw ? `<button class="btn btn-sm btn-outline-info ms-1" style="font-size:0.65rem;padding:0 0.3rem;" onclick="viewLogRawData('${logId}')" title="查看上报报文"><i class="bi bi-file-code"></i></button>` : '';
         
-        // 从 detail 中提取设备编号和状态，生成前置标签
-        const devMatch = detail.match(/\S+\s+(\S+)\s+status=(\d+)/);
+        // 从 detail 中提取模板名、设备编号和状态，生成前置标签
+        const devMatch = detail.match(/(\S+)\s+(\S+)\s+status=(\d+)/);
         let prefixBadges = '';
         let cleanDetail = detail;
         if (devMatch) {
-            const devNum = devMatch[1];
-            const statusNum = parseInt(devMatch[2]);
+            const tplName = devMatch[1];
+            const devNum = devMatch[2];
+            const statusNum = parseInt(devMatch[3]);
             // 状态颜色
             let stCls = 'bg-secondary';
             let stLabel = 'status=' + statusNum;
@@ -389,7 +420,8 @@ function renderLogs() {
             else if (statusNum === 8) { stCls = 'bg-success'; stLabel = '完成'; }
             else if (statusNum === 3) { stCls = 'bg-warning text-dark'; stLabel = '已取消'; }
             else if (statusNum === 7) { stCls = 'bg-danger'; stLabel = '失败'; }
-            prefixBadges = `<span class="badge bg-light text-dark border me-1" style="font-size:0.7rem;">${devNum}</span>` +
+            prefixBadges = `<span class="badge bg-primary me-1" style="font-size:0.7rem;">${tplName}</span>` +
+                           `<span class="badge bg-light text-dark border me-1" style="font-size:0.7rem;">${devNum}</span>` +
                            `<span class="badge ${stCls} me-1" style="font-size:0.7rem;">${stLabel}</span>`;
             // 去掉 detail 中已提取的部分（模板名 设备号 status=N），保留后面的消息
             cleanDetail = detail.replace(/^\S+\s+\S+\s+status=\d+\s*/, '');
@@ -422,10 +454,7 @@ function renderLogs() {
 function scrollLogToTop() {
     const container = document.getElementById('logContainer');
     if (!container) return;
-    // 仅当用户在顶部（<50px）时才自动滚到顶部，避免打断手动翻阅
-    if (container.scrollTop <= 50) {
-        container.scrollTop = 0;
-    }
+    container.scrollTop = 0;
 }
 
 function loadGlobalLog() {

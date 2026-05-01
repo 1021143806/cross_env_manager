@@ -395,8 +395,8 @@
                 <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
                     <i class="bi bi-diagram-3 fs-2 me-2"></i>
                     <div>
-                        <div class="fw-bold fs-4">跨环境任务模板管理系统</div>
-                        <div class="small opacity-75">现代化界面 · 暗黑模式支持 · 智能管理AGV跨环境任务模板</div>
+                        <div class="fw-bold fs-4">跨环境任务管理系统</div>
+                        <div class="small opacity-75">CEM · AGV智能调度</div>
                     </div>
                 </a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -411,12 +411,12 @@
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('addtask') }}">
-                                <i class="bi bi-send me-1"></i> 任务下发
+                                <i class="bi bi-send me-1"></i> 下发
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('query_index') }}">
-                                <i class="bi bi-search me-1"></i> 查询功能
+                                <i class="bi bi-search me-1"></i> 查询
                             </a>
                         </li>
                         <li class="nav-item">
@@ -431,7 +431,12 @@
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('dispatch.dashboard') }}">
-                                <i class="bi bi-truck me-1"></i> 调车管理
+                                <i class="bi bi-truck me-1"></i> 调车
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('monitor.monitor_page') }}">
+                                <i class="bi bi-activity me-1"></i> 监控
                             </a>
                         </li>
                     </ul>
