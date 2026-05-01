@@ -174,6 +174,7 @@ def write_global_log(action, region_key, detail='', level='info', raw_data=None)
         tn = raw_data.get('modelProcessCode') or raw_data.get('template_name', '')
         dn = raw_data.get('deviceNum', '')
         st = raw_data.get('status', '')
+        # 统一规范化 orderId：兼容 orderId 和 order_id 两种字段名
         oid = raw_data.get('orderId') or raw_data.get('order_id', '')
         # 从后往前找最近一条匹配的 report_status 日志
         for i in range(len(logs) - 1, -1, -1):
@@ -187,11 +188,13 @@ def write_global_log(action, region_key, detail='', level='info', raw_data=None)
             if r_tn == tn and r_dn == dn and str(r_st) == str(st):
                 # 找到匹配：更新时间和内容
                 log['time'] = datetime.now().isoformat()
-                if rd.get('orderId') == oid and rd.get('order_id') == raw_data.get('order_id'):
-                    # 完全一致：追加重复次数
+                # 统一规范化旧日志的 orderId 后再比较
+                r_oid = rd.get('orderId') or rd.get('order_id', '')
+                if r_oid == oid:
+                    # 完全一致：追加重复次数（放在开头，避免冒号前空格问题）
                     dup_count = log.get('dup_count', 1) + 1
                     log['dup_count'] = dup_count
-                    log['detail'] = detail + f' (重复#{dup_count})'
+                    log['detail'] = f'(重复#{dup_count}) ' + detail
                 else:
                     # 有偏差：覆盖内容，重置重复计数
                     log['detail'] = detail
@@ -482,17 +485,23 @@ def handle_status_report(data):
     region_key = data.get('region_key', '')
     if not region_key and template_name:
         # 遍历所有区域，查找包含该模板的区域
+        # 优先精确匹配 code，再回退到文件名匹配
         index = _load_cache_index()
+        fallback_rk = None
         for rk, region in index.items():
             if not isinstance(region, dict) or 'templates' not in region:
                 continue
             for t in region.get('templates', []):
                 template_code = t.get('code') or t.get('name', '')
-                if template_code == template_name or t['file'].replace('.json', '') == template_name:
+                if template_code == template_name:
                     region_key = rk
                     break
+                if not fallback_rk and t['file'].replace('.json', '') == template_name:
+                    fallback_rk = rk
             if region_key:
                 break
+        if not region_key and fallback_rk:
+            region_key = fallback_rk
     
     if not region_key or not template_name:
         # 无法匹配区域/模板，静默接受上报（不返回错误，避免 ICS 重试）
@@ -682,7 +691,9 @@ def api_report_status():
                         # 异步执行调度（不阻塞上报响应）
                         def _auto_dispatch():
                             try:
-                                region = index.get(rk)
+                                # 在线程内重新加载最新配置，避免使用闭包中的旧 index
+                                fresh_index = _load_cache_index()
+                                region = fresh_index.get(rk)
                                 if not region: return
                                 balance = calculate_area_balance(rk, region)
                                 if balance['direction'] == 'none':
@@ -1067,7 +1078,7 @@ def _execute_dispatch(region_key, region, balance):
             device_num = f"SIM_D{i}" if simulated else f"DISP_D{i}"
         tasks.append({
             "deviceCode": device_code, "deviceNum": device_num,
-            "status": 6, "_simulated": simulated,
+            "status": 6, "_simulated": True if simulated else False,
             "order_id": order_id, "create_time": now, "update_time": now
         })
     _save_json(template_file, tasks)
@@ -1177,13 +1188,30 @@ def api_manual_dispatch(region_key):
             return _json_resp({'error': f'区域 {region_key} 没有{direction}方向的空车模板'}, 400)
         
         # 构造一个简单的 balance 用于 _execute_dispatch
+        # 手动下发跳过平衡计算，但需要传入真实的 time_slot 状态用于 reason 判断
+        time_slot_active = False
+        time_slot_matched = None
+        time_slots_config = region.get('time_slots', {})
+        if time_slots_config.get('enabled', False):
+            now_time = datetime.now().strftime('%H:%M')
+            for slot in time_slots_config.get('slots', []):
+                start = slot.get('start', '00:00')
+                end = slot.get('end', '00:00')
+                if start <= end:
+                    matched = start <= now_time <= end
+                else:
+                    matched = now_time >= start or now_time <= end
+                if matched:
+                    time_slot_active = True
+                    time_slot_matched = slot
+                    break
         balance = {
             'region_key': region_key,
             'direction': direction,
             'dispatch_count': 1,  # 手动下发1台
             'effective_enabled': region.get('enabled', False),
-            'time_slot_active': False,
-            'time_slot_matched': None,
+            'time_slot_active': time_slot_active,
+            'time_slot_matched': time_slot_matched,
             'can_dispatch': True
         }
         
@@ -1365,6 +1393,7 @@ def _self_heal_check_region(region_key, region):
                 _save_json(now_file, now_devices)
                 cleaned += 1
         
+        # 保存模板 JSON（在循环外统一保存，避免多次 I/O）
         _save_json(fpath, tasks)
     
     return {'cleaned': cleaned, 'errors': errors}

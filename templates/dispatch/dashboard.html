@@ -371,7 +371,9 @@ function renderLogs() {
         const level = log.level || 'info';
         const meta = getLogActionMeta(action, level);
         const hasRaw = log.raw_data && Object.keys(log.raw_data).length > 0;
-        const rawBtn = hasRaw ? `<button class="btn btn-sm btn-outline-info ms-1" style="font-size:0.65rem;padding:0 0.3rem;" onclick="viewLogRawData(${idx})" title="查看上报报文"><i class="bi bi-file-code"></i></button>` : '';
+        // 使用日志唯一标识（time+action+detail）代替数组索引，避免日志更新后索引错位
+        const logId = encodeURIComponent(time + '|' + action + '|' + detail);
+        const rawBtn = hasRaw ? `<button class="btn btn-sm btn-outline-info ms-1" style="font-size:0.65rem;padding:0 0.3rem;" onclick="viewLogRawData('${logId}')" title="查看上报报文"><i class="bi bi-file-code"></i></button>` : '';
         
         // 从 detail 中提取设备编号和状态，生成前置标签
         const devMatch = detail.match(/\S+\s+(\S+)\s+status=(\d+)/);
@@ -389,8 +391,15 @@ function renderLogs() {
             else if (statusNum === 7) { stCls = 'bg-danger'; stLabel = '失败'; }
             prefixBadges = `<span class="badge bg-light text-dark border me-1" style="font-size:0.7rem;">${devNum}</span>` +
                            `<span class="badge ${stCls} me-1" style="font-size:0.7rem;">${stLabel}</span>`;
-            // 去掉 detail 中已提取的部分，保留后面的消息
+            // 去掉 detail 中已提取的部分（模板名 设备号 status=N），保留后面的消息
             cleanDetail = detail.replace(/^\S+\s+\S+\s+status=\d+\s*/, '');
+        }
+        // 提取重复标记（放在 detail 开头，格式: (重复#N)）
+        let dupBadge = '';
+        const dupMatch = cleanDetail.match(/^\(重复#(\d+)\)\s*/);
+        if (dupMatch) {
+            dupBadge = `<span class="badge bg-warning text-dark me-1" style="font-size:0.7rem;">重复#${dupMatch[1]}</span>`;
+            cleanDetail = cleanDetail.replace(/^\(重复#\d+\)\s*/, '');
         }
         // orderId 加框（兼容含空格的订单ID，匹配到 : 或行尾）
         cleanDetail = cleanDetail.replace(/orderId=(.+?)(?=: |$)/g, '<span class="badge bg-light text-dark border me-1" style="font-size:0.7rem;">订单:$1</span>');
@@ -401,6 +410,7 @@ function renderLogs() {
             <div style="flex:1;min-width:0;">
                 <span class="badge bg-secondary me-1" style="font-size:0.7rem;">${region}</span>
                 ${prefixBadges}
+                ${dupBadge}
                 <span>${cleanDetail || action}</span>${rawBtn}
             </div>
         </div>`;
@@ -437,9 +447,12 @@ function loadGlobalLog() {
 
 let currentRawData = null;
 
-function viewLogRawData(idx) {
+function viewLogRawData(logId) {
     const filtered = filterLogs(allLogs, logFilter);
-    const log = filtered[idx];
+    const log = filtered.find(l => {
+        const id = encodeURIComponent((l.time || '') + '|' + (l.action || '') + '|' + (l.detail || ''));
+        return id === logId;
+    });
     if (!log || !log.raw_data) return;
     currentRawData = log.raw_data;
     document.getElementById('rawDataContent').textContent = JSON.stringify(log.raw_data, null, 2);
