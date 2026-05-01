@@ -1386,11 +1386,19 @@ def _should_clean_device(device_info):
     return False
 
 
-def _self_heal_check_region(region_key, region):
-    """检查单个区域的异常任务并清理"""
+def _self_heal_check_region(region_key, region, force=False, template_code=None):
+    """检查单个区域的异常任务并清理
+    
+    Args:
+        force: 强制模式，忽略超时判断，检查所有 status=6 任务
+        template_code: 指定模板 code，为空则检查所有模板
+    Returns:
+        {'cleaned': int, 'errors': list, 'steps': list}
+        steps: [{device_code, device_num, state, action, reason}]
+    """
     sh = region.get('self_heal', {})
-    if not sh.get('enabled', SELF_HEAL_DEFAULTS['enabled']):
-        return {'cleaned': 0, 'errors': []}
+    if not sh.get('enabled', SELF_HEAL_DEFAULTS['enabled']) and not force:
+        return {'cleaned': 0, 'errors': [], 'steps': []}
     
     timeout_minutes = sh.get('recover_timeout_minutes', SELF_HEAL_DEFAULTS['recover_timeout_minutes'])
     server = region.get('server', '')
@@ -1398,30 +1406,49 @@ def _self_heal_check_region(region_key, region):
     api_path = sh.get('device_query_api', SELF_HEAL_DEFAULTS['device_query_api'])
     
     if not server:
-        return {'cleaned': 0, 'errors': ['无服务器配置']}
+        return {'cleaned': 0, 'errors': ['无服务器配置'], 'steps': []}
     
     from datetime import timedelta
     threshold = (datetime.now() - timedelta(minutes=timeout_minutes)).isoformat()
     cleaned = 0
     errors = []
+    steps = []
     
     for t in region.get('templates', []):
-        fpath = _get_template_file_path(region_key, t)
-        tasks = _load_json(fpath)
-        stale_tasks = [task for task in tasks
-                       if task.get('status') == 6
-                       and not task.get('_simulated')
-                       and task.get('create_time', '') < threshold]
-        
-        if not stale_tasks:
+        tpl_code = t.get('code') or t.get('name', '')
+        # 如果指定了模板，只检查该模板
+        if template_code and tpl_code != template_code:
             continue
         
-        # 最多检查10个异常任务
-        for task in stale_tasks[:10]:
+        fpath = _get_template_file_path(region_key, t)
+        tasks = _load_json(fpath)
+        
+        if force:
+            # 强制模式：检查所有 status=6 的非模拟任务
+            check_tasks = [task for task in tasks
+                          if task.get('status') == 6
+                          and not task.get('_simulated')]
+        else:
+            # 正常模式：只检查超时任务
+            check_tasks = [task for task in tasks
+                          if task.get('status') == 6
+                          and not task.get('_simulated')
+                          and task.get('create_time', '') < threshold]
+        
+        if not check_tasks:
+            continue
+        
+        # 最多检查20个任务（强制模式放宽上限）
+        max_check = 20 if force else 10
+        for task in check_tasks[:max_check]:
             device_code = task.get('deviceCode', '')
+            device_num = task.get('deviceNum', '')
             if not device_code:
                 continue
+            
             device_info = _query_device_status(server, api_path, area_id, device_code)
+            state = device_info.get('state', '查询失败') if device_info else '查询失败'
+            
             if _should_clean_device(device_info):
                 # 从模板 JSON 删除
                 tasks = [t for t in tasks if t.get('deviceCode') != device_code or t.get('status') != 6]
@@ -1431,11 +1458,22 @@ def _self_heal_check_region(region_key, region):
                 now_devices = [d for d in now_devices if d.get('deviceCode') != device_code]
                 _save_json(now_file, now_devices)
                 cleaned += 1
+                steps.append({
+                    'device_code': device_code, 'device_num': device_num,
+                    'state': state, 'action': '清理',
+                    'reason': f'设备状态: {state}'
+                })
+            else:
+                steps.append({
+                    'device_code': device_code, 'device_num': device_num,
+                    'state': state, 'action': '保留',
+                    'reason': f'设备状态: {state}（任务中/故障）'
+                })
         
         # 保存模板 JSON（在循环外统一保存，避免多次 I/O）
         _save_json(fpath, tasks)
     
-    return {'cleaned': cleaned, 'errors': errors}
+    return {'cleaned': cleaned, 'errors': errors, 'steps': steps}
 
 
 def _self_heal_check_all():
@@ -1527,3 +1565,57 @@ def api_self_heal_check():
             return jsonify({'success': True, 'total_cleaned': total})
     except Exception as e:
         return jsonify({'error': f'自恢复检查失败: {str(e)}'}), 500
+
+
+@dispatch_bp.route('/api/dispatch/self_heal/force_check/<region_key>', methods=['POST'])
+@login_required
+@admin_required
+def api_self_heal_force_check(region_key):
+    """强制检查指定模板的所有设备（忽略超时，逐个查询服务器）"""
+    try:
+        template_code = request.args.get('template_code', '')
+        index = _load_cache_index()
+        region = index.get(region_key)
+        if not region:
+            return jsonify({'error': f'区域 {region_key} 不存在'}), 404
+        
+        if not template_code:
+            return jsonify({'error': '缺少 template_code 参数'}), 400
+        
+        # 验证模板存在
+        tpl_found = False
+        for t in region.get('templates', []):
+            if (t.get('code') or t.get('name', '')) == template_code:
+                tpl_found = True
+                break
+        if not tpl_found:
+            return jsonify({'error': f'模板 {template_code} 不存在于区域 {region_key}'}), 404
+        
+        start_time = time.time()
+        result = _self_heal_check_region(region_key, region, force=True, template_code=template_code)
+        elapsed = round(time.time() - start_time, 1)
+        
+        # 更新自恢复状态
+        with _self_heal_lock:
+            _self_heal_status[region_key] = {
+                'last_check': datetime.now().isoformat(),
+                'cleaned_count': result['cleaned'],
+                'errors': result['errors']
+            }
+        
+        if result['cleaned'] > 0:
+            write_global_log('self_heal', region_key,
+                f'强制检查 {template_code}: 清理 {result["cleaned"]} 个, 保留 {len(result["steps"]) - result["cleaned"]} 个, 耗时 {elapsed}s')
+        
+        return jsonify({
+            'success': True,
+            'region_key': region_key,
+            'template_code': template_code,
+            'cleaned': result['cleaned'],
+            'total_checked': len(result['steps']),
+            'elapsed': elapsed,
+            'steps': result['steps'],
+            'errors': result['errors']
+        })
+    except Exception as e:
+        return jsonify({'error': f'强制检查失败: {str(e)}'}), 500

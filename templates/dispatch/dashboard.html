@@ -1773,10 +1773,50 @@ function loadSelfHealStatus(regionKey) {
             html += '<div class="text-muted">暂无检查记录</div>';
         }
         
-        html += '<button class="btn btn-sm btn-outline-success mt-2" onclick="triggerSelfHeal(\'' + regionKey + '\')"><i class="bi bi-heart-pulse"></i> 手动触发检查</button>';
+        // 模板列表（用于强制检查下拉菜单）
+        const templates = (regionConfig.templates || []).map(t => t.code || t.name || '');
+        const tplItems = templates.map(t => '<li><a class="dropdown-item small" href="javascript:void(0)" onclick="triggerForceCheck(\'' + regionKey + '\',\'' + t + '\')">' + t + '</a></li>').join('');
+        
+        html += '<div class="mt-2 d-flex gap-1">';
+        html += '<button class="btn btn-sm btn-outline-success" onclick="triggerSelfHeal(\'' + regionKey + '\')"><i class="bi bi-heart-pulse"></i> 手动检查</button>';
+        html += '<div class="dropdown">';
+        html += '<button class="btn btn-sm btn-outline-warning dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-search"></i> 强制检查</button>';
+        html += '<ul class="dropdown-menu dropdown-menu-end small">' + tplItems + '</ul>';
+        html += '</div>';
+        html += '</div>';
+        html += '<div id="forceCheckResult-' + regionKey + '" class="mt-2 small" style="max-height:200px;overflow-y:auto;"></div>';
         html += '</div>';
         el.innerHTML = html;
     }).catch(err => { el.innerHTML = '<div class="text-danger py-2">加载失败: ' + err.message + '</div>'; });
+}
+
+function triggerForceCheck(regionKey, templateCode) {
+    if (!templateCode) { showToast('请选择模板', 'warning'); return; }
+    
+    const resultEl = document.getElementById('forceCheckResult-' + regionKey);
+    resultEl.innerHTML = '<div class="text-muted"><div class="spinner-border spinner-border-sm me-1"></div>强制检查 ' + templateCode + ' ...</div>';
+    
+    fetch('/api/dispatch/self_heal/force_check/' + encodeURIComponent(regionKey) + '?template_code=' + encodeURIComponent(templateCode), { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                resultEl.innerHTML = '<div class="text-danger">' + (data.error || '检查失败') + '</div>';
+                return;
+            }
+            let html = '<div class="border-top pt-2 mt-1">';
+            html += '<div class="fw-bold mb-1">强制检查 ' + templateCode + ' (共' + data.total_checked + '个, 耗时' + data.elapsed + 's)</div>';
+            (data.steps || []).forEach(s => {
+                const icon = s.action === '清理' ? '✅' : '⏭️';
+                const color = s.action === '清理' ? 'text-success' : 'text-muted';
+                html += '<div class="' + color + '">' + icon + ' ' + s.device_num + ' (' + s.device_code + ') → ' + s.state + ' → ' + s.action + '</div>';
+            });
+            html += '<div class="fw-bold mt-1">结果: 清理 ' + data.cleaned + ' 个, 保留 ' + (data.total_checked - data.cleaned) + ' 个</div>';
+            html += '</div>';
+            resultEl.innerHTML = html;
+            if (data.cleaned > 0) refreshData();
+            loadSelfHealStatus(regionKey);
+        })
+        .catch(err => { resultEl.innerHTML = '<div class="text-danger">检查失败: ' + err.message + '</div>'; });
 }
 
 function triggerSelfHeal(regionKey) {

@@ -42,14 +42,6 @@
         overflow: hidden;
         transition: transform 0.15s, box-shadow 0.15s;
     }
-    .region-card.drag-over {
-        border-color: var(--primary-color, #0d6efd);
-        box-shadow: 0 0 0 2px var(--primary-color, #0d6efd);
-        transform: scale(1.01);
-    }
-    .region-card.dragging {
-        opacity: 0.4;
-    }
     .region-card .region-header {
         padding: 0.75rem 1rem;
         background: var(--detail-card-bg);
@@ -239,20 +231,12 @@ function renderVisualEditor(data) {
             </div>`;
         });
         card = document.createElement('div'); card.className='region-card';
-        card.draggable = true;
         card.dataset.regionKey = key;
-        // 拖动事件
-        card.addEventListener('dragstart', onDragStart);
-        card.addEventListener('dragenter', onDragEnter);
-        card.addEventListener('dragleave', onDragLeave);
-        card.addEventListener('dragover', onDragOver);
-        card.addEventListener('drop', onDrop);
-        card.addEventListener('dragend', onDragEnd);
         
         const enabledChecked = region.enabled ? 'checked' : '';
         const regionId = region.id !== undefined ? region.id : '-';
         card.innerHTML = `<div class="region-header">
-            <span><i class="bi bi-grip-vertical me-2" style="cursor:grab;color:var(--text-muted);"></i><span class="badge bg-secondary me-2">#${regionId}</span><strong>${key}</strong> <small class="text-muted ms-2">areaId: ${region.areaId||''}</small></span>
+            <span><span class="badge bg-secondary me-2">#${regionId}</span><strong>${key}</strong> <small class="text-muted ms-2">areaId: ${region.areaId||''}</small></span>
             <div class="form-check form-switch d-inline-block">
                 <input class="form-check-input" type="checkbox" ${enabledChecked} onchange="updateRegionField('${key}','enabled',this.checked)">
                 <label class="form-check-label small">启用</label>
@@ -303,53 +287,6 @@ function renderVisualEditor(data) {
             </div></details></div>`;
         container.appendChild(card);
     });
-}
-
-// ========== 拖动排序 ==========
-let dragSrcKey = null;
-
-function onDragStart(e) {
-    dragSrcKey = this.dataset.regionKey;
-    this.style.opacity = '0.5';
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', this.dataset.regionKey);
-}
-
-function onDragOver(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-}
-
-function onDragEnter(e) {
-    e.preventDefault();
-    this.classList.add('drag-over');
-}
-
-function onDragLeave(e) {
-    this.classList.remove('drag-over');
-}
-
-function onDrop(e) {
-    e.preventDefault();
-    this.classList.remove('drag-over');
-    const targetKey = this.dataset.regionKey;
-    if (!dragSrcKey || dragSrcKey === targetKey) return;
-    
-    // 交换 id 值
-    const srcId = configData[dragSrcKey].id || 999;
-    const tgtId = configData[targetKey].id || 999;
-    configData[dragSrcKey].id = tgtId;
-    configData[targetKey].id = srcId;
-    
-    renderVisualEditor(configData);
-    syncSourceEditor();
-    showToast('区域顺序已调整', 'success');
-}
-
-function onDragEnd(e) {
-    this.style.opacity = '1';
-    document.querySelectorAll('.region-card').forEach(c => c.classList.remove('drag-over'));
-    dragSrcKey = null;
 }
 
 function updateRegionField(key, field, value) { if(configData[key]){configData[key][field]=value;syncSourceEditor();} }
