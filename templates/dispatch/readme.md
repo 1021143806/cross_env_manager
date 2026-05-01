@@ -83,14 +83,61 @@ data/dispatch/
     "xmin": 2,
     "xmax": 4,
     "templates": [
-      {"name": "DKCqu",   "file": "DKCqu.json",   "task_type": "empty_in",  "shared": false},
-      {"name": "DKCback", "file": "DKCback.json", "task_type": "empty_out", "shared": false},
-      {"name": "load1",   "file": "load1.json",   "task_type": "load_in",   "shared": false},
-      {"name": "loadback","file": "loadback.json","task_type": "load_out",  "shared": false}
-    ]
+      {"code": "K1", "display_name": "调空车来", "file": "K1.json", "task_type": "empty_in",  "shared": false},
+      {"code": "K2", "display_name": "回空车",   "file": "K2.json", "task_type": "empty_out", "shared": false},
+      {"code": "F1", "display_name": "负载来",   "file": "F1.json", "task_type": "load_in",   "shared": false},
+      {"code": "F2", "display_name": "负载回",   "file": "F2.json", "task_type": "load_out",  "shared": false}
+    ],
+    "empty_dispatch": {
+      "url": "http://10.68.2.31:7000/ics/taskOrder/addTask",
+      "template": "DKCqu"
+    },
+    "time_slots": {
+      "enabled": false,
+      "slots": [
+        {"start": "08:00", "end": "20:00", "xmin": 3, "xmax": 6},
+        {"start": "20:00", "end": "08:00", "xmin": 1, "xmax": 2}
+      ]
+    },
+    "self_heal": {
+      "enabled": false,
+      "check_interval": 300,
+      "recover_timeout_minutes": 30,
+      "device_query_api": "/ics/out/device/list/deviceInfo"
+    }
   }
 }
 ```
+
+### 模板字段说明
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|:---:|------|
+| `code` | string | ✅ | 模板代码，计算用唯一标识（如 `K1`），上报时 `modelProcessCode` 匹配此字段 |
+| `display_name` | string | ❌ | 看板显示名称，可自定义中文名（如 `调空车来`），为空时回退到 `code` |
+| `file` | string | ✅ | 对应的 JSON 文件名（如 `K1.json`） |
+| `task_type` | string | ✅ | 模板类型：`empty_in` / `empty_out` / `load_in` / `load_out` |
+| `shared` | bool | ❌ | 是否跨区域共享模板，共享模板存储在 `_shared/` 目录 |
+
+### 区域配置字段说明
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `areaId` | string | `"0"` | 区域 ID |
+| `enabled` | bool | `false` | 区域启用开关，关闭时走模拟下发 |
+| `server` | string | `""` | ICS 服务器地址（`ip:port`） |
+| `xmin` | int | `2` | 保留设备数下限 |
+| `xmax` | int | `4` | 保留设备数上限 |
+| `max_dispatch_once` | int | `3` | 单次最大调车数（容量管控） |
+| `auto_dispatch_debounce` | int | `5` | 自动调度防抖秒数（顶层配置） |
+| `empty_dispatch.url` | string | — | 空车下发 URL，支持完整 `http://` 地址 |
+| `empty_dispatch.template` | string | — | 空车下发模板代码，为空时使用空车模板的 `code` |
+| `time_slots.enabled` | bool | `false` | 分时段配置开关 |
+| `time_slots.slots` | array | `[]` | 时段列表，支持跨天（如 `20:00~08:00`），`xmin=-1,xmax=-1` 表示禁用 |
+| `self_heal.enabled` | bool | `false` | 自恢复开关 |
+| `self_heal.check_interval` | int | `300` | 自恢复检查间隔（秒） |
+| `self_heal.recover_timeout_minutes` | int | `30` | 异常任务超时阈值（分钟） |
+| `self_heal.device_query_api` | string | — | 设备状态查询 API，支持相对路径或完整 `http://` URL |
 
 ### task_type 四种类型
 
@@ -158,35 +205,83 @@ data/dispatch/
 
 **路径**: `POST /api/dispatch/report_status`
 
-**请求体** (JSON):
+**权限**: 🔓 无需登录（外部设备上报）
+
+**响应**: 始终返回 `{"code": 1000, "desc": "success"}`，即使匹配失败也返回 1000 避免 ICS 重试。
+
+#### 报文格式1：内部格式（兼容旧版）
+
 ```json
 {
-  "region_key": "region_1",
-  "template_name": "DKCqu",
+  "region_key": "区域1",
+  "template_name": "K1",
   "deviceCode": "BL11637BAK00010",
   "deviceNum": "C185",
   "status": 6,
-  "order_id": "可选"
+  "order_id": "pad_html_2026-04-28 12:00:00_123_4567"
 }
 ```
 
-**status 说明**:
+#### 报文格式2：外部上报格式（ICS 实际报文）
 
-| 值 | 含义 | 处理逻辑 |
-|----|------|----------|
-| `6` | 任务开始 | 记录到对应模板 JSON 文件 |
-| `8` | 任务完成 | 从模板 JSON 删除；来区域完成 → 写入 `currentCount.json`；离开完成 → 从 `currentCount.json` 删除 |
-
-**响应**:
 ```json
-{"success": true, "message": "状态上报成功"}
+{
+  "shelfCurrPosition": "12345678",
+  "subTaskStatus": "3",
+  "orderId": "pad_html_2026-04-28 12:00:00_123_4567",
+  "deviceCode": "BL11637BAK00010",
+  "modelProcessCode": "K1",
+  "subTaskTypeId": "75",
+  "subTaskId": "12345678",
+  "deviceNum": "C185",
+  "qrContent": "12345678",
+  "subTaskSeq": "3",
+  "shelfNumber": "DJ0001",
+  "icsTaskOrderDetailId": "123456789",
+  "processRate": "1/1",
+  "status": 6
+}
 ```
 
-**调用示例**:
+#### 字段映射
+
+| 外部报文字段 | 内部字段 | 说明 |
+|-------------|----------|------|
+| `modelProcessCode` | `template_name` | 模板代码，匹配配置中的 `code` 字段 |
+| `orderId` | `order_id` | 任务单号，用于去重判断 |
+| `deviceCode` | `deviceCode` | 设备序列号（唯一标识） |
+| `deviceNum` | `deviceNum` | 设备编号（显示用） |
+| `status` | `status` | 任务状态：`6`=开始，`8`=完成 |
+| `subTaskStatus` | — | 子任务状态字符串（`"3"`=执行中，`"8"`=完成），辅助判断 |
+| — | `region_key` | 区域标识，为空时通过 `modelProcessCode` 自动匹配 |
+
+#### 自动匹配逻辑
+
+当 `region_key` 为空时，系统遍历所有区域查找包含该 `modelProcessCode` 的模板：
+1. 优先精确匹配 `code` 字段
+2. 回退到文件名匹配（去掉 `.json` 后缀）
+3. 匹配失败时静默接受上报（返回 1000），不阻塞 ICS
+
+#### status 处理逻辑
+
+| status | 含义 | 处理逻辑 |
+|--------|------|----------|
+| `6` | 任务开始（运行中） | 写入模板 JSON；已有同设备记录则覆盖更新 |
+| `8` | 任务完成 | 从模板 JSON 删除；来方向 → `currentCount.json` +1；离方向 → `currentCount.json` -1 |
+| 其他 | 取消/失败等 | 同 status=8 处理（清理逻辑） |
+
+#### 调用示例
+
 ```bash
+# 内部格式
 curl -X POST http://localhost:5000/api/dispatch/report_status \
   -H "Content-Type: application/json" \
-  -d '{"region_key":"region_1","template_name":"DKCqu","deviceCode":"BL11637BAK00010","deviceNum":"C185","status":6}'
+  -d '{"region_key":"区域1","template_name":"K1","deviceCode":"BL11637BAK00010","deviceNum":"C185","status":6}'
+
+# 外部 ICS 格式
+curl -X POST http://localhost:5000/api/dispatch/report_status \
+  -H "Content-Type: application/json" \
+  -d '{"deviceCode":"BL11637BAK00010","deviceNum":"C185","modelProcessCode":"K1","status":6,"orderId":"pad_html_2026-04-28 12:00:00_123_4567","subTaskStatus":"3","shelfNumber":"DJ0001"}'
 ```
 
 ## 调车模块核心流程
@@ -315,10 +410,96 @@ else:
 # 容量管控
 dispatch_count = min(abs(need), max_dispatch_once)
 
-# 互斥逻辑（仅检查空车模板 DKCqu/DKCback 之间）
+# 互斥逻辑（仅检查空车模板 empty_in/empty_out 之间）
 if 要下发去空车(in) 但存在未完成的回空车(out)任务 → 禁止下发
 if 要下发回空车(out) 但存在未完成的去空车(in)任务 → 禁止下发
 ```
+
+## 自恢复逻辑
+
+### 流程
+
+```mermaid
+flowchart TD
+    A[后台线程每30s检查] --> B{区域启用自恢复?}
+    B -->|否| A
+    B -->|是| C{距上次检查<br/>超过check_interval?}
+    C -->|否| A
+    C -->|是| D[遍历所有模板JSON]
+    D --> E[筛选异常任务<br/>status=6 且 create_time<br/>超过recover_timeout_minutes]
+    E --> F{有异常任务?}
+    F -->|否| A
+    F -->|是| G[最多检查10个<br/>逐个查询设备状态]
+    G --> H{设备离线/下线<br/>空闲/充电?}
+    H -->|是| I[从模板JSON删除<br/>从currentCount删除]
+    H -->|否 任务中/故障| J[保留任务]
+    I --> K[记录操作日志]
+    J --> K
+    K --> A
+```
+
+### 配置
+
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| `self_heal.enabled` | `false` | 自恢复开关 |
+| `self_heal.check_interval` | `300` | 检查间隔（秒） |
+| `self_heal.recover_timeout_minutes` | `30` | 异常超时阈值（分钟） |
+| `self_heal.device_query_api` | `/ics/out/device/list/deviceInfo` | 设备状态查询 API，支持完整 `http://` URL |
+
+### 清理条件
+
+设备状态为以下之一时清理：
+- `Offline` — 离线
+- `Downlined` — 下线
+- `Idle` — 空闲
+- `InCharging` — 充电中
+
+以下状态保留：
+- 任务执行中
+- 故障状态
+- 查询失败（保守保留）
+
+## 操作日志
+
+### 日志类型
+
+| action | 说明 | 触发时机 |
+|--------|------|----------|
+| `report_status` | 状态上报 | 每次 `POST /api/dispatch/report_status` |
+| `execute` | 执行下发 | 手动/自动触发 `execute` |
+| `execute_balanced` | 平衡跳过 | 计算后无需下发 |
+| `execute_mutex` | 互斥阻止 | 空车模板互斥检查不通过 |
+| `manual_dispatch` | 手动发空车 | 看板手动发空车按钮 |
+| `reset_all` | 清空数据 | 清空区域所有数据 |
+| `clean_simulated` | 清理模拟 | 清理模拟数据 |
+| `self_heal` | 自恢复 | 自恢复清理异常任务 |
+
+### 日志格式
+
+```json
+{
+  "time": "2026-04-28T12:00:00.123456",
+  "action": "report_status",
+  "region_key": "区域1",
+  "detail": "K1 C185 status=6: 模板+K1 +1 (共3条)",
+  "level": "info",
+  "raw_data": { "... 原始报文 ..." },
+  "dup_count": 3
+}
+```
+
+### 重复上报去重
+
+同一设备+模板+状态+订单ID 的重复上报不会新增日志行，而是修改已有日志：
+- `detail` 开头追加 `(重复#N)` 标记
+- `dup_count` 递增
+- 订单ID 不同时覆盖日志内容（视为新任务）
+
+### 日志保留
+
+- `global_log.json`：最多 100 条
+- `dispatch_log.json`（每个区域）：最多 10 条
 
 ## 性能负荷
 
