@@ -544,17 +544,21 @@ function renderAreas(areas) {
         html += `
         <div class="col-lg-6">
             <div class="area-card">
-                <div class="area-header">
-                    <span class="area-title">
-                        <i class="bi bi-geo-alt me-1 text-primary"></i>${area.name}
-                        <small class="text-muted ms-2" style="font-size:0.8rem;">xmin:${area.xmin} xmax:${area.xmax}</small>
-                        ${area.server ? `<small class="text-muted ms-2" style="font-size:0.75rem;opacity:0.6;">📡 ${area.server}</small>` : ''}
-                        <div class="form-check form-switch d-inline-block ms-2">
+                <div class="area-header" style="flex-direction:column;align-items:stretch;gap:0.4rem;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                        <span class="area-title">
+                            <i class="bi bi-geo-alt me-1 text-primary"></i>${area.name}
+                        </span>
+                        ${dirBadge}
+                    </div>
+                    <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;font-size:0.78rem;">
+                        <span class="text-muted">xmin:${area.xmin} xmax:${area.xmax}</span>
+                        ${area.server ? `<span class="text-muted" style="opacity:0.6;">📡 ${area.server}</span>` : ''}
+                        <div class="form-check form-switch d-inline-block mb-0">
                             <input class="form-check-input" type="checkbox" ${area.enabled ? 'checked' : ''} onchange="toggleRegion('${area.region_key}', this.checked)" style="cursor:pointer;">
                             <label class="form-check-label small ${area.enabled ? 'text-success' : 'text-muted'}">${area.enabled ? '已启用' : '已禁用'}</label>
                         </div>
-                    </span>
-                    ${dirBadge}
+                    </div>
                 </div>
                 <div class="area-body">
                     <div class="balance-panel">
@@ -884,11 +888,12 @@ function updateAreasData(areas) {
             formulaRow.innerHTML = getFormulaText(area);
         }
         
-        // 更新方向徽章
+        // 更新方向徽章（在 header 第一行右侧）
         const header = card.querySelector('.area-header');
         const oldBadge = header.querySelector('.direction-badge');
         if (oldBadge) oldBadge.remove();
-        header.insertAdjacentHTML('beforeend', getDirectionBadge(area));
+        const headerRow1 = header.querySelector('div:first-child');
+        if (headerRow1) headerRow1.insertAdjacentHTML('beforeend', getDirectionBadge(area));
         
         // 更新方向文本
         const dirText = card.querySelector('.balance-item.flex-grow-1 .small');
@@ -1719,23 +1724,38 @@ function toggleSelfHealPanel(regionKey, btn) {
 function loadSelfHealStatus(regionKey) {
     const el = document.getElementById('self-heal-content-' + regionKey);
     el.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm me-2"></div>加载自恢复状态...</div>';
-    fetch('/api/dispatch/self_heal/status')
-        .then(r => r.json())
-        .then(data => {
-            const st = data.status[regionKey];
-            if (!st) {
-                el.innerHTML = '<div class="text-muted py-2">暂无自恢复记录（需在配置中启用）</div>';
-                return;
-            }
+    
+    // 同时获取自恢复状态和区域配置
+    Promise.all([
+        fetch('/api/dispatch/self_heal/status').then(r => r.json()),
+        fetch('/api/dispatch/config').then(r => r.json())
+    ]).then(([statusData, configData]) => {
+        const st = statusData.status[regionKey];
+        const regionConfig = configData[regionKey] || {};
+        const selfHealConfig = regionConfig.self_heal || {};
+        const healEnabled = selfHealConfig.enabled || false;
+        
+        let html = '<div class="small">';
+        
+        if (!healEnabled) {
+            html += '<div class="text-warning mb-2"><i class="bi bi-exclamation-triangle me-1"></i>自恢复未在配置中启用</div>';
+        }
+        
+        if (st) {
             const lastCheck = st.last_check ? new Date(st.last_check).toLocaleString('zh-CN') : '从未';
-            el.innerHTML = '<div class="small">' +
-                '<div><strong>上次检查：</strong>' + lastCheck + '</div>' +
-                '<div><strong>清理数量：</strong>' + (st.cleaned_count || 0) + '</div>' +
-                (st.errors && st.errors.length > 0 ? '<div class="text-danger"><strong>错误：</strong>' + st.errors.join(', ') + '</div>' : '') +
-                '<button class="btn btn-sm btn-outline-success mt-2" onclick="triggerSelfHeal(\'' + regionKey + '\')"><i class="bi bi-heart-pulse"></i> 手动触发检查</button>' +
-                '</div>';
-        })
-        .catch(err => { el.innerHTML = '<div class="text-danger py-2">加载失败: ' + err.message + '</div>'; });
+            html += '<div><strong>上次检查：</strong>' + lastCheck + '</div>';
+            html += '<div><strong>清理数量：</strong>' + (st.cleaned_count || 0) + '</div>';
+            if (st.errors && st.errors.length > 0) {
+                html += '<div class="text-danger"><strong>错误：</strong>' + st.errors.join(', ') + '</div>';
+            }
+        } else {
+            html += '<div class="text-muted">暂无检查记录</div>';
+        }
+        
+        html += '<button class="btn btn-sm btn-outline-success mt-2" onclick="triggerSelfHeal(\'' + regionKey + '\')"><i class="bi bi-heart-pulse"></i> 手动触发检查</button>';
+        html += '</div>';
+        el.innerHTML = html;
+    }).catch(err => { el.innerHTML = '<div class="text-danger py-2">加载失败: ' + err.message + '</div>'; });
 }
 
 function triggerSelfHeal(regionKey) {
