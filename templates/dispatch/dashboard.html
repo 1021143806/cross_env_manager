@@ -241,6 +241,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                <div id="rawDataStatus" style="display:none;padding:0.5rem 1rem;border-radius:6px;margin-bottom:0.75rem;font-size:0.9rem;font-weight:600;"></div>
                 <pre id="rawDataContent" style="background:#1e1e1e;color:#d4d4d4;padding:1rem;border-radius:8px;max-height:60vh;overflow:auto;font-size:0.85rem;white-space:pre-wrap;word-break:break-all;"></pre>
             </div>
             <div class="modal-footer">
@@ -493,23 +494,43 @@ function viewLogRawData(logId) {
         // 下发日志：显示请求+响应报文
         titleEl.innerHTML = '<i class="bi bi-send me-2"></i>下发报文详情';
         const rd = log.raw_data;
+        const statusEl = document.getElementById('rawDataStatus');
+        
+        // 响应状态条
+        if (rd.response_body) {
+            const respCode = rd.response_body.code;
+            const respDesc = rd.response_body.desc || '';
+            const isSuccess = respCode === 1000;
+            statusEl.style.display = 'block';
+            statusEl.style.background = isSuccess ? '#064e3b' : '#7f1d1d';
+            statusEl.style.color = isSuccess ? '#6ee7b7' : '#fca5a5';
+            statusEl.style.border = '1px solid ' + (isSuccess ? '#065f46' : '#991b1b');
+            statusEl.innerHTML = '<span style="opacity:0.7;">响应:</span> code=<strong>' + respCode + '</strong>' +
+                (respDesc ? ' <span style="opacity:0.7;">desc=</span><strong>' + respDesc + '</strong>' : '');
+        } else if (rd.simulated) {
+            statusEl.style.display = 'block';
+            statusEl.style.background = '#1e3a5f';
+            statusEl.style.color = '#93c5fd';
+            statusEl.style.border = '1px solid #1e40af';
+            statusEl.innerHTML = '模拟下发，未实际请求';
+        } else {
+            statusEl.style.display = 'none';
+        }
+        
         let display = '';
         display += '═══════ 请求报文 ═══════\n';
         display += 'URL: ' + (rd.dispatch_url || 'N/A') + '\n';
-        display += '模拟: ' + (rd.simulated ? '是' : '否') + '\n';
-        display += '结果: ' + (rd.result || 'N/A') + '\n\n';
+        display += '模拟: ' + (rd.simulated ? '是' : '否') + '\n\n';
         display += JSON.stringify(rd.request_body, null, 2);
         if (rd.response_body) {
             display += '\n\n═══════ 响应报文 ═══════\n';
             display += JSON.stringify(rd.response_body, null, 2);
-        } else if (rd.simulated) {
-            display += '\n\n═══════ 响应报文 ═══════\n';
-            display += '(模拟下发，未实际请求)';
         }
         contentEl.textContent = display;
     } else {
         // 上报日志：显示原始报文
         titleEl.innerHTML = '<i class="bi bi-file-code me-2"></i>上报报文内容';
+        document.getElementById('rawDataStatus').style.display = 'none';
         contentEl.textContent = JSON.stringify(log.raw_data, null, 2);
     }
     new bootstrap.Modal(document.getElementById('rawDataModal')).show();
