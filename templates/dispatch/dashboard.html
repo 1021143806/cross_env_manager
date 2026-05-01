@@ -237,7 +237,7 @@
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h6 class="modal-title"><i class="bi bi-file-code me-2"></i>上报报文内容</h6>
+                <h6 class="modal-title" id="rawDataModalTitle"><i class="bi bi-file-code me-2"></i>报文内容</h6>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -403,7 +403,8 @@ function renderLogs() {
         const hasRaw = log.raw_data && Object.keys(log.raw_data).length > 0;
         // 使用日志唯一标识（time+action+detail）代替数组索引，避免日志更新后索引错位
         const logId = encodeURIComponent(time + '|' + action + '|' + detail);
-        const rawBtn = hasRaw ? `<button class="btn btn-sm btn-outline-info ms-1" style="font-size:0.65rem;padding:0 0.3rem;" onclick="viewLogRawData('${logId}')" title="查看上报报文"><i class="bi bi-file-code"></i></button>` : '';
+        const rawTitle = action === 'execute' ? '查看下发报文' : '查看上报报文';
+        const rawBtn = hasRaw ? `<button class="btn btn-sm btn-outline-info ms-1" style="font-size:0.65rem;padding:0 0.3rem;" onclick="viewLogRawData('${logId}')" title="${rawTitle}"><i class="bi bi-file-code"></i></button>` : '';
         
         // 从 detail 中提取模板名、设备编号和状态，生成前置标签
         const devMatch = detail.match(/(\S+)\s+(\S+)\s+status=(\d+)/);
@@ -484,7 +485,33 @@ function viewLogRawData(logId) {
     });
     if (!log || !log.raw_data) return;
     currentRawData = log.raw_data;
-    document.getElementById('rawDataContent').textContent = JSON.stringify(log.raw_data, null, 2);
+    
+    // 根据操作类型格式化显示内容
+    const titleEl = document.getElementById('rawDataModalTitle');
+    const contentEl = document.getElementById('rawDataContent');
+    if (log.action === 'execute' && log.raw_data.request_body) {
+        // 下发日志：显示请求+响应报文
+        titleEl.innerHTML = '<i class="bi bi-send me-2"></i>下发报文详情';
+        const rd = log.raw_data;
+        let display = '';
+        display += '═══════ 请求报文 ═══════\n';
+        display += 'URL: ' + (rd.dispatch_url || 'N/A') + '\n';
+        display += '模拟: ' + (rd.simulated ? '是' : '否') + '\n';
+        display += '结果: ' + (rd.result || 'N/A') + '\n\n';
+        display += JSON.stringify(rd.request_body, null, 2);
+        if (rd.response_body) {
+            display += '\n\n═══════ 响应报文 ═══════\n';
+            display += JSON.stringify(rd.response_body, null, 2);
+        } else if (rd.simulated) {
+            display += '\n\n═══════ 响应报文 ═══════\n';
+            display += '(模拟下发，未实际请求)';
+        }
+        contentEl.textContent = display;
+    } else {
+        // 上报日志：显示原始报文
+        titleEl.innerHTML = '<i class="bi bi-file-code me-2"></i>上报报文内容';
+        contentEl.textContent = JSON.stringify(log.raw_data, null, 2);
+    }
     new bootstrap.Modal(document.getElementById('rawDataModal')).show();
 }
 

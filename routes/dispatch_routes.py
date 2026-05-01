@@ -1126,8 +1126,21 @@ def _execute_dispatch(region_key, region, balance):
     
     try:
         template_code = target_template.get('code') or target_template.get('name', '')
+        # 构造下发报文数据（请求+响应），供前端详情查看
+        dispatch_raw = {
+            'dispatch_url': dispatch_url,
+            'request_body': request_body,
+            'response_body': response_body,
+            'simulated': simulated,
+            'result': result,
+            'dispatch_count': dispatch_count,
+            'template_code': template_code,
+            'direction': direction,
+            'reason': reason
+        }
         write_global_log('execute', region_key,
-            f'{"模拟" if simulated else "真实"}下发 {dispatch_count} 台, 模板:{template_code}, 方向:{direction}, 原因:{reason}')
+            f'{"模拟" if simulated else "真实"}下发 {dispatch_count} 台, 模板:{template_code}, 方向:{direction}, 原因:{reason}',
+            raw_data=dispatch_raw)
     except Exception as e:
         print(f"[Dispatch] 写入操作日志失败: {e}")
     
