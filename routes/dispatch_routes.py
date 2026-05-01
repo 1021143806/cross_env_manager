@@ -64,13 +64,13 @@ _AUTO_DISPATCH_DEBOUNCE = 5  # 同一区域5秒内最多自动调度一次
 # ========== task_type 兼容 ==========
 
 def _normalize_task_type(t):
-    """兼容旧配置：无 task_type 时根据 direction 和 name 推断"""
+    """兼容旧配置：无 task_type 时根据 direction 和 code/name 推断"""
     if 'task_type' in t:
         return t['task_type']
     # 旧配置兼容：direction + 名称推断
     direction = t.get('direction', 'in')
-    name = t.get('name', '')
-    if name in ('DKCqu', 'DKCback'):
+    template_code = t.get('code') or t.get('name', '')
+    if template_code in ('DKCqu', 'DKCback'):
         return 'empty_in' if direction == 'in' else 'empty_out'
     return 'load_in' if direction == 'in' else 'load_out'
 
@@ -87,10 +87,12 @@ def _is_in_direction(task_type):
 
 def _get_template_file_path(region_key, t):
     """获取模板文件路径，支持共享模板"""
-    if t.get('shared') and t.get('name'):
-        # 共享模板：按模板名存储在 _shared/ 目录
+    # 兼容 code 和 name 字段
+    template_code = t.get('code') or t.get('name', '')
+    if t.get('shared') and template_code:
+        # 共享模板：按模板代码存储在 _shared/ 目录
         os.makedirs(SHARED_DIR, exist_ok=True)
-        return os.path.join(SHARED_DIR, f"{t['name']}.json")
+        return os.path.join(SHARED_DIR, f"{template_code}.json")
     return _get_region_file(region_key, t['file'])
 
 
@@ -158,16 +160,58 @@ def _get_region_file(region_key, filename):
 
 # ========== 全局操作日志 ==========
 
-def write_global_log(action, region_key, detail='', level='info'):
-    """写入全局操作日志（超过500条自动清理，保留最新500条）"""
+def write_global_log(action, region_key, detail='', level='info', raw_data=None):
+    """写入全局操作日志（超过100条自动清理，保留最新100条）
+    
+    report_status 去重逻辑：
+    - 完全一致（同模板+设备+状态+订单ID）：修改已有日志，追加重复次数
+    - 有偏差（同模板+设备+状态，但订单ID不同）：覆盖已有日志内容
+    """
     logs = _load_json(GLOBAL_LOG_PATH)
-    logs.append({
+    
+    # report_status 去重：查找最近一条同模板+设备+状态的日志
+    if action == 'report_status' and raw_data:
+        tn = raw_data.get('modelProcessCode') or raw_data.get('template_name', '')
+        dn = raw_data.get('deviceNum', '')
+        st = raw_data.get('status', '')
+        oid = raw_data.get('orderId') or raw_data.get('order_id', '')
+        # 从后往前找最近一条匹配的 report_status 日志
+        for i in range(len(logs) - 1, -1, -1):
+            log = logs[i]
+            if log.get('action') != 'report_status' or not log.get('raw_data'):
+                continue
+            rd = log['raw_data']
+            r_tn = rd.get('modelProcessCode') or rd.get('template_name', '')
+            r_dn = rd.get('deviceNum', '')
+            r_st = rd.get('status', '')
+            if r_tn == tn and r_dn == dn and str(r_st) == str(st):
+                # 找到匹配：更新时间和内容
+                log['time'] = datetime.now().isoformat()
+                if rd.get('orderId') == oid and rd.get('order_id') == raw_data.get('order_id'):
+                    # 完全一致：追加重复次数
+                    dup_count = log.get('dup_count', 1) + 1
+                    log['dup_count'] = dup_count
+                    log['detail'] = detail + f' (重复#{dup_count})'
+                else:
+                    # 有偏差：覆盖内容，重置重复计数
+                    log['detail'] = detail
+                    log['raw_data'] = raw_data
+                    log['level'] = level
+                    log.pop('dup_count', None)
+                _save_json(GLOBAL_LOG_PATH, logs)
+                return
+        # 没找到匹配，走正常追加逻辑
+    
+    entry = {
         "time": datetime.now().isoformat(),
         "action": action,
         "region_key": region_key,
         "detail": detail,
         "level": level
-    })
+    }
+    if raw_data is not None:
+        entry["raw_data"] = raw_data
+    logs.append(entry)
     # 超过100条保留最新100条
     if len(logs) > 100:
         logs = logs[-100:]
@@ -252,7 +296,10 @@ def calculate_area_balance(region_key, region_config):
         count = len([task for task in tasks if task.get('status') == 6])
         task_type = _normalize_task_type(t)
         
-        item = {"code": t['name'], "name": t['name'], "count": count, "task_type": task_type}
+        # code: 模板代码（计算用），display_name: 看板显示名称（可自定义中文名）
+        template_code = t.get('code') or t.get('name', '')
+        display_name = t.get('display_name') or t.get('name', '')
+        item = {"code": template_code, "name": display_name, "count": count, "task_type": task_type}
         if _is_in_direction(task_type):
             a += count
             incoming_templates.append(item)
@@ -312,7 +359,8 @@ def calculate_area_balance(region_key, region_config):
                 t_direction = 'in' if _is_in_direction(task_type) else 'out'
                 if t_direction != direction:
                     can_dispatch = False
-                    mutex_reason = f"pending {t['name']} task, mutex"
+                    template_code = t.get('code') or t.get('name', '')
+                    mutex_reason = f"pending {template_code} task, mutex"
                     break
     
     return {
@@ -439,7 +487,8 @@ def handle_status_report(data):
             if not isinstance(region, dict) or 'templates' not in region:
                 continue
             for t in region.get('templates', []):
-                if t['name'] == template_name or t['file'].replace('.json', '') == template_name:
+                template_code = t.get('code') or t.get('name', '')
+                if template_code == template_name or t['file'].replace('.json', '') == template_name:
                     region_key = rk
                     break
             if region_key:
@@ -460,7 +509,8 @@ def handle_status_report(data):
     
     template_config = None
     for t in region.get('templates', []):
-        if t['name'] == template_name:
+        template_code = t.get('code') or t.get('name', '')
+        if template_code == template_name:
             template_config = t
             break
     
@@ -499,6 +549,7 @@ def handle_status_report(data):
             existing['shelfNumber'] = data.get('shelfNumber', '')
             existing['shelfCurrPosition'] = data.get('shelfCurrPosition', '')
             existing['update_time'] = now
+            change_summary = f'模板更新 {template_name} (共{len(tasks)}条)'
         else:
             # 新增
             tasks.append({
@@ -511,17 +562,21 @@ def handle_status_report(data):
                 "create_time": now,
                 "update_time": now
             })
+            change_summary = f'模板+{template_name} +1 (共{len(tasks)}条)'
         _save_json(template_file, tasks)
         
     else:
         # 非 6 的状态（包括 8=完成 及其他状态）：执行清理逻辑
         # 从模板 JSON 中删除该设备记录
         tasks = _load_json(template_file)
+        old_count = len(tasks)
         tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') == 6)]
         _save_json(template_file, tasks)
+        template_removed = old_count - len(tasks)
         
         # 更新 currentCount.json（所有类型都更新，因为车确实在移动）
         now_devices = _load_json(now_file)
+        cc_change = ''
         if _is_in_direction(task_type):
             # 来区域完成：写入 currentCount.json
             if not any(d.get('deviceCode') == device_code for d in now_devices):
@@ -532,13 +587,18 @@ def handle_status_report(data):
                     "shelfNumber": data.get('shelfNumber', ''),
                     "create_time": now
                 })
+                cc_change = f', currentCount +1 (共{len(now_devices)}条)'
         else:
             # 离开完成：从 currentCount.json 删除
+            old_cc = len(now_devices)
             now_devices = [d for d in now_devices if d.get('deviceCode') != device_code]
+            if len(now_devices) < old_cc:
+                cc_change = f', currentCount -1 (共{len(now_devices)}条)'
         
         _save_json(now_file, now_devices)
+        change_summary = f'模板-{template_name} -{template_removed}{cc_change}'
     
-    return True, "状态上报成功", True
+    return True, change_summary, True
 
 
 # ========== 路由 ==========
@@ -597,8 +657,13 @@ def api_report_status():
             tn = data.get('modelProcessCode') or data.get('template_name', '?')
             dn = data.get('deviceNum', '?')
             st = data.get('status', '?')
-            write_global_log('report_status', rk, f'{tn} {dn} status={st}: {message}',
-                           'info' if matched else 'warning')
+            oid = data.get('orderId') or data.get('order_id', '')
+            detail = f'{tn} {dn} status={st}'
+            if oid:
+                detail += f' orderId={oid}'
+            detail += f': {message}'
+            write_global_log('report_status', rk, detail,
+                           'info' if matched else 'warning', raw_data=data)
         except:
             pass
         
@@ -770,9 +835,11 @@ def api_region_files(region_key):
         fpath = _get_template_file_path(region_key, t)
         exists = os.path.exists(fpath)
         task_type = _normalize_task_type(t)
+        template_code = t.get('code') or t.get('name', '')
         files.append({
             'filename': t['file'],
-            'name': t['name'],
+            'name': template_code,
+            'display_name': t.get('display_name', ''),
             'task_type': task_type,
             'shared': t.get('shared', False),
             'exists': exists,
@@ -952,7 +1019,8 @@ def _execute_dispatch(region_key, region, balance):
     
     # 空车下发配置：优先使用 empty_dispatch，回退到旧 server 拼接
     empty_dispatch = region.get('empty_dispatch', {})
-    dispatch_template = empty_dispatch.get('template', '') or target_template['name']
+    template_code = target_template.get('code') or target_template.get('name', '')
+    dispatch_template = empty_dispatch.get('template', '') or template_code
     dispatch_url = empty_dispatch.get('url', '')
     if not dispatch_url:
         server = region.get('server', '')
@@ -1018,7 +1086,7 @@ def _execute_dispatch(region_key, region, balance):
     
     try:
         write_dispatch_log(
-            region_key=region_key, template_name=target_template['name'],
+            region_key=region_key, template_name=template_code,
             direction=direction, dispatch_url=log_url, request_body=request_body,
             simulated=simulated, device_code=f"SIM_{sim_id}" if simulated else f"DISP_{sim_id}",
             device_num=f"共{dispatch_count}台", result=result, response_body=response_body, reason=reason
@@ -1027,15 +1095,16 @@ def _execute_dispatch(region_key, region, balance):
         print(f"[Dispatch] 写入下发记录失败: {e}")
     
     try:
+        template_code = target_template.get('code') or target_template.get('name', '')
         write_global_log('execute', region_key,
-            f'{"模拟" if simulated else "真实"}下发 {dispatch_count} 台, 模板:{target_template["name"]}, 方向:{direction}, 原因:{reason}')
+            f'{"模拟" if simulated else "真实"}下发 {dispatch_count} 台, 模板:{template_code}, 方向:{direction}, 原因:{reason}')
     except Exception as e:
         print(f"[Dispatch] 写入操作日志失败: {e}")
     
     return {
         'success': True, 'message': f'{"模拟" if simulated else "真实"}下发 {dispatch_count} 台设备',
         'balance': balance, 'dispatched': True, 'simulated': simulated,
-        'dispatch_count': dispatch_count, 'template_name': target_template['name'], 'direction': direction
+        'dispatch_count': dispatch_count, 'template_name': template_code, 'direction': direction
     }
 
 
@@ -1120,8 +1189,9 @@ def api_manual_dispatch(region_key):
         
         result = _execute_dispatch(region_key, region, balance)
         if result:
+            template_code = target_template.get('code') or target_template.get('name', '')
             write_global_log('manual_dispatch', region_key,
-                f'手动下发 1 台空车, 模板:{target_template["name"]}, 方向:{direction}, '
+                f'手动下发 1 台空车, 模板:{template_code}, 方向:{direction}, '
                 f'{"模拟" if result.get("simulated") else "真实"}')
             return _json_resp(result)
         return _json_resp({'error': '下发失败'}, 500)

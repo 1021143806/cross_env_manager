@@ -162,7 +162,7 @@
             <p class="text-muted mb-0">实时监控各区域设备平衡状态，自动调度空车任务</p>
         </div>
         <div>
-            <button id="refreshBtn" class="btn btn-outline-primary btn-sm me-2" onclick="refreshData()">
+            <button id="refreshBtn" class="btn btn-outline-primary btn-sm me-2" onclick="refreshAll()">
                 <i class="bi bi-arrow-clockwise"></i> 刷新
             </button>
             <a href="{{ url_for('dispatch.config_page') }}" class="btn btn-outline-secondary btn-sm me-2">
@@ -232,34 +232,72 @@
     </div>
 </div>
 
+<!-- 查看报文模态框 -->
+<div class="modal fade" id="rawDataModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title"><i class="bi bi-file-code me-2"></i>上报报文内容</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre id="rawDataContent" style="background:#1e1e1e;color:#d4d4d4;padding:1rem;border-radius:8px;max-height:60vh;overflow:auto;font-size:0.85rem;white-space:pre-wrap;word-break:break-all;"></pre>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-outline-primary" onclick="copyRawData()"><i class="bi bi-clipboard"></i> 复制</button>
+                <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="toastContainer" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
 {% endblock %}
 
 {% block extra_js %}
 <script src="/static/vendor/chart.js/chart.min.js"></script>
 <script>
-let refreshInterval = null;
+let logTimer = null;
+let dataTimer = null;
 let chartInstances = {};
+let pageVisible = true;
 
-let lastDataRefresh = 0;
-const DATA_REFRESH_DEBOUNCE = 100; // 0.1s 防抖
+// 刷新间隔：日志 2s，数据 5s
+const LOG_INTERVAL = 2000;
+const DATA_INTERVAL = 5000;
 
 $(document).ready(function() {
     refreshData();
-    // 日志每0.5s刷新，连带刷新数据（带防抖）
-    refreshInterval = setInterval(refreshAll, 500);
+    loadGlobalLog();
+    startTimers();
+    
+    // 页面可见性变化时暂停/恢复轮询
+    document.addEventListener('visibilitychange', () => {
+        pageVisible = !document.hidden;
+        if (pageVisible) {
+            refreshData();
+            loadGlobalLog();
+            startTimers();
+        } else {
+            stopTimers();
+        }
+    });
 });
 
-function refreshAll() {
-    if (logAutoScroll) loadGlobalLog();
-    refreshDataDebounced();
+function startTimers() {
+    stopTimers();
+    logTimer = setInterval(() => { if (logAutoScroll) loadGlobalLog(); }, LOG_INTERVAL);
+    dataTimer = setInterval(refreshData, DATA_INTERVAL);
 }
 
-function refreshDataDebounced() {
-    const now = Date.now();
-    if (now - lastDataRefresh < DATA_REFRESH_DEBOUNCE) return;
-    lastDataRefresh = now;
+function stopTimers() {
+    if (logTimer) { clearInterval(logTimer); logTimer = null; }
+    if (dataTimer) { clearInterval(dataTimer); dataTimer = null; }
+}
+
+function refreshAll() {
     refreshData();
+    loadGlobalLog();
 }
 
 function refreshData() {
@@ -324,7 +362,7 @@ function renderLogs() {
         return;
     }
     
-    container.innerHTML = filtered.map(log => {
+    container.innerHTML = filtered.map((log, idx) => {
         const time = log.time || '';
         const timeStr = time.length > 16 ? time.slice(11, 19) : time;
         const action = log.action || '';
@@ -332,13 +370,38 @@ function renderLogs() {
         const region = log.region_key || '';
         const level = log.level || 'info';
         const meta = getLogActionMeta(action, level);
+        const hasRaw = log.raw_data && Object.keys(log.raw_data).length > 0;
+        const rawBtn = hasRaw ? `<button class="btn btn-sm btn-outline-info ms-1" style="font-size:0.65rem;padding:0 0.3rem;" onclick="viewLogRawData(${idx})" title="查看上报报文"><i class="bi bi-file-code"></i></button>` : '';
+        
+        // 从 detail 中提取设备编号和状态，生成前置标签
+        const devMatch = detail.match(/\S+\s+(\S+)\s+status=(\d+)/);
+        let prefixBadges = '';
+        let cleanDetail = detail;
+        if (devMatch) {
+            const devNum = devMatch[1];
+            const statusNum = parseInt(devMatch[2]);
+            // 状态颜色
+            let stCls = 'bg-secondary';
+            let stLabel = 'status=' + statusNum;
+            if (statusNum === 6) { stCls = 'bg-info text-dark'; stLabel = '运行中'; }
+            else if (statusNum === 8) { stCls = 'bg-success'; stLabel = '完成'; }
+            else if (statusNum === 3) { stCls = 'bg-warning text-dark'; stLabel = '已取消'; }
+            else if (statusNum === 7) { stCls = 'bg-danger'; stLabel = '失败'; }
+            prefixBadges = `<span class="badge bg-light text-dark border me-1" style="font-size:0.7rem;">${devNum}</span>` +
+                           `<span class="badge ${stCls} me-1" style="font-size:0.7rem;">${stLabel}</span>`;
+            // 去掉 detail 中已提取的部分，保留后面的消息
+            cleanDetail = detail.replace(/^\S+\s+\S+\s+status=\d+\s*/, '');
+        }
+        // orderId 加框（兼容含空格的订单ID，匹配到 : 或行尾）
+        cleanDetail = cleanDetail.replace(/orderId=(.+?)(?=: |$)/g, '<span class="badge bg-light text-dark border me-1" style="font-size:0.7rem;">订单:$1</span>');
         
         return `<div class="log-item">
             <div class="log-time">${timeStr}</div>
             <div class="log-icon ${meta.color}"><i class="bi ${meta.icon}"></i></div>
             <div style="flex:1;min-width:0;">
                 <span class="badge bg-secondary me-1" style="font-size:0.7rem;">${region}</span>
-                <span>${detail || action}</span>
+                ${prefixBadges}
+                <span>${cleanDetail || action}</span>${rawBtn}
             </div>
         </div>`;
     }).join('');
@@ -348,7 +411,11 @@ function renderLogs() {
 
 function scrollLogToTop() {
     const container = document.getElementById('logContainer');
-    if (container) container.scrollTop = 0;
+    if (!container) return;
+    // 仅当用户在顶部（<50px）时才自动滚到顶部，避免打断手动翻阅
+    if (container.scrollTop <= 50) {
+        container.scrollTop = 0;
+    }
 }
 
 function loadGlobalLog() {
@@ -366,6 +433,24 @@ function loadGlobalLog() {
             const container = document.getElementById('logContainer');
             if (container) container.innerHTML = '<div class="text-center text-muted py-3">加载日志失败</div>';
         });
+}
+
+let currentRawData = null;
+
+function viewLogRawData(idx) {
+    const filtered = filterLogs(allLogs, logFilter);
+    const log = filtered[idx];
+    if (!log || !log.raw_data) return;
+    currentRawData = log.raw_data;
+    document.getElementById('rawDataContent').textContent = JSON.stringify(log.raw_data, null, 2);
+    new bootstrap.Modal(document.getElementById('rawDataModal')).show();
+}
+
+function copyRawData() {
+    if (!currentRawData) return;
+    navigator.clipboard.writeText(JSON.stringify(currentRawData, null, 2))
+        .then(() => showToast('报文已复制到剪贴板', 'success'))
+        .catch(() => showToast('复制失败', 'danger'));
 }
 
 function renderSummary(summary) {
@@ -779,7 +864,9 @@ function renderTemplateRows(templates) {
         const icon = is_empty ? 'bi-truck' : 'bi-box-seam';
         const badgeClass = is_empty ? (t.count > 0 ? 'bg-warning text-dark' : 'bg-secondary') : (t.count > 0 ? 'bg-info text-dark' : 'bg-secondary');
         const label = is_empty ? '<span class="badge bg-warning bg-opacity-25 text-warning small me-1">空车</span>' : '<span class="badge bg-info bg-opacity-25 text-info small me-1">负载</span>';
-        return `<tr><td><code>${t.code}</code></td><td>${label}<i class="${icon} me-1 small opacity-50"></i><span class="tpl-name">${t.name}</span></td>
+        // name 字段实际是 display_name（后端已做兼容处理），code 是模板代码
+        const displayName = t.name || t.code;
+        return `<tr><td><code>${t.code}</code></td><td>${label}<i class="${icon} me-1 small opacity-50"></i><span class="tpl-name">${displayName}</span></td>
             <td class="text-center"><span class="badge count-badge ${badgeClass}">${t.count}</span></td></tr>`;
     }).join('');
 }

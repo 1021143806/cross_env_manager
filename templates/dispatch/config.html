@@ -225,10 +225,14 @@ function renderVisualEditor(data) {
                 ['load_in','📦 其他来'],['load_out','📦 其他回']
             ].map(o=>`<option value="${o[0]}" ${taskType===o[0]?'selected':''}>${o[1]}</option>`).join('');
             const sharedChecked = t.shared ? 'checked' : '';
-            const autoFile = (t.name ? t.name + '.json' : '');
+            // 兼容旧配置：code 优先，无则取 name
+            const templateCode = t.code || t.name || '';
+            const displayName = t.display_name || '';
+            const autoFile = (templateCode ? templateCode + '.json' : '');
             templatesHtml += `<div class="template-row">
-                <input class="code-input" value="${t.name||''}" placeholder="模板代码" onchange="updateTemplateName('${key}',${idx},this.value)">
-                <span class="name-input text-muted small d-flex align-items-center" style="min-width:80px;" title="自动生成: ${autoFile}">📄 ${autoFile||'(自动)'}</span>
+                <input class="code-input" value="${templateCode}" placeholder="模板代码" title="计算用的模板代码，同时用于生成文件名" onchange="updateTemplateCode('${key}',${idx},this.value)">
+                <input class="name-input" value="${displayName}" placeholder="显示名称" title="看板界面显示的中文名称" onchange="updateTemplate('${key}',${idx},'display_name',this.value)">
+                <span class="text-muted small d-flex align-items-center" style="min-width:60px;" title="自动生成文件: ${autoFile}">📄 ${autoFile||'(自动)'}</span>
                 <select class="type-select" onchange="updateTemplate('${key}',${idx},'task_type',this.value)">${typeOptions}</select>
                 <label class="shared-check" title="跨区域共享模板"><input type="checkbox" ${sharedChecked} onchange="updateTemplate('${key}',${idx},'shared',this.checked)"> 共享</label>
                 <button class="btn btn-sm btn-outline-danger" onclick="removeTemplate('${key}',${idx})"><i class="bi bi-x"></i></button>
@@ -351,10 +355,10 @@ function onDragEnd(e) {
 function updateRegionField(key, field, value) { if(configData[key]){configData[key][field]=value;syncSourceEditor();} }
 function updateRegionKey(oldKey, newKey) { if(oldKey===newKey||!newKey)return;configData[newKey]=configData[oldKey];delete configData[oldKey];renderVisualEditor(configData);syncSourceEditor(); }
 function updateTemplate(rk,idx,f,v) { if(configData[rk]&&configData[rk].templates[idx]){configData[rk].templates[idx][f]=v;syncSourceEditor();} }
-function updateTemplateName(rk,idx,v) { if(configData[rk]&&configData[rk].templates[idx]){configData[rk].templates[idx].name=v;configData[rk].templates[idx].file=v? v+'.json' : '';renderVisualEditor(configData);syncSourceEditor();} }
+function updateTemplateCode(rk,idx,v) { if(configData[rk]&&configData[rk].templates[idx]){configData[rk].templates[idx].code=v;configData[rk].templates[idx].file=v? v+'.json' : '';renderVisualEditor(configData);syncSourceEditor();} }
 function updateSelfHeal(rk, field, value) { if(configData[rk]){if(!configData[rk].self_heal)configData[rk].self_heal={};configData[rk].self_heal[field]=value;syncSourceEditor();} }
 function updateEmptyDispatch(rk, field, value) { if(configData[rk]){if(!configData[rk].empty_dispatch)configData[rk].empty_dispatch={};configData[rk].empty_dispatch[field]=value;syncSourceEditor();} }
-function addTemplate(rk) { if(!configData[rk])return;if(!configData[rk].templates)configData[rk].templates=[];configData[rk].templates.push({name:'',file:'',task_type:'load_in',shared:false});renderVisualEditor(configData);syncSourceEditor(); }
+function addTemplate(rk) { if(!configData[rk])return;if(!configData[rk].templates)configData[rk].templates=[];configData[rk].templates.push({code:'',display_name:'',file:'',task_type:'load_in',shared:false});renderVisualEditor(configData);syncSourceEditor(); }
 function removeTemplate(rk,idx) { if(!configData[rk])return;configData[rk].templates.splice(idx,1);renderVisualEditor(configData);syncSourceEditor(); }
 function addRegion() {
     const keys = Object.keys(configData);
