@@ -1282,6 +1282,19 @@ def api_manual_dispatch(region_key):
 # ========== 清理模拟数据 API ==========
 
 @dispatch_bp.route('/api/dispatch/reset_all/<region_key>', methods=['POST'])
+def _reset_region_data(region_key):
+    """清空指定区域所有数据（内部函数，供测试线程使用）"""
+    index = _load_cache_index()
+    region = index.get(region_key)
+    if not region:
+        return
+    for t in region.get('templates', []):
+        fpath = _get_template_file_path(region_key, t)
+        _save_json(fpath, [])
+    now_file = _get_region_file(region_key, 'currentCount.json')
+    _save_json(now_file, [])
+
+
 @login_required
 def api_reset_all(region_key):
     """清空指定区域所有数据（模板JSON + currentCount.json）"""
@@ -1667,354 +1680,69 @@ def _test_log(msg):
 
 
 def _run_test_thread(params):
-    """在后台线程中运行测试逻辑"""
-    import random as _random
-    from http.cookiejar import CookieJar
+    """启动独立子进程运行 dispatch_auto_pilot.py，走真实 HTTP 请求"""
+    import sys, subprocess, traceback
     
     global _test_state
     
-    # 初始化
-    pool_size = params.get('pool_size', 20)
-    load_interval_min = params.get('load_interval_min', 1.0)
-    load_interval_max = params.get('load_interval_max', 20.0)
-    load_dur_min = params.get('load_dur_min', 30.0)
-    load_dur_max = params.get('load_dur_max', 120.0)
-    empty_dur_min = params.get('empty_dur_min', 30.0)
-    empty_dur_max = params.get('empty_dur_max', 120.0)
-    duration = params.get('duration', 0)
-    
-    # 复用测试脚本的核心逻辑
-    BASE_URL = "http://127.0.0.1:5000"
-    
-    cookie_jar = CookieJar()
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar))
-    
-    def _req(m, u, d=None, auth=True):
-        try:
-            b = json.dumps(d).encode() if d else None
-            from urllib.parse import quote
-            u = quote(u, safe='/:?=&')
-            r = urllib.request.Request(u, data=b, method=m)
-            if d: r.add_header('Content-Type', 'application/json')
-            if auth:
-                with opener.open(r, timeout=5) as x:
-                    return json.loads(x.read().decode())
-            else:
-                with urllib.request.urlopen(r, timeout=5) as x:
-                    return json.loads(x.read().decode())
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-    
-    # 登录
-    login_r = _req("POST", f"{BASE_URL}/api/login", {
-        "username": "375563", "password": "DHRTA@2018",
-        "admin_username": "admin", "admin_password": "admin123456"
-    })
-    if not login_r.get('success'):
-        _test_log("登录失败，测试终止")
-        with _test_state_lock:
-            _test_state['running'] = False
-        return
-    
-    _test_log("登录成功")
-    
-    # 加载区域配置
-    cfg_r = _req("GET", f"{BASE_URL}/api/dispatch/config")
-    regions = {}
-    empty_tpl_set = set()
-    for rk, region in cfg_r.items():
-        if not isinstance(region, dict) or 'templates' not in region:
-            continue
-        in_tpls, out_tpls = [], []
-        for t in region.get('templates', []):
-            tpl_code = t.get('code') or t.get('name', '')
-            task_type = t.get('task_type', '')
-            if not task_type:
-                d = t.get('direction', '')
-                task_type = 'load_in' if d == 'in' else 'load_out' if d == 'out' else ''
-            if task_type in ('empty_in', 'empty_out'):
-                empty_tpl_set.add(tpl_code)
-            if task_type in ('empty_in', 'load_in'):
-                in_tpls.append(tpl_code)
-            elif task_type in ('empty_out', 'load_out'):
-                out_tpls.append(tpl_code)
-        if in_tpls or out_tpls:
-            regions[rk] = {'in_tpls': in_tpls, 'out_tpls': out_tpls}
-    
-    if not regions:
-        _test_log("未找到有效区域")
-        with _test_state_lock:
-            _test_state['running'] = False
-        return
-    
-    _test_log(f"加载 {len(regions)} 个区域")
-    
-    # 禁用所有区域
-    for rk in regions:
-        if rk in cfg_r:
-            cfg_r[rk]['enabled'] = False
-    _req("POST", f"{BASE_URL}/api/dispatch/config", cfg_r)
-    
-    # 清空数据
-    for rk in regions:
-        _req("POST", f"{BASE_URL}/api/dispatch/reset_all/{rk}")
-    
-    # 设备池
-    class Pool:
-        def __init__(self, size):
-            self._next = 1
-            self._free = {}
-            for _ in range(size):
-                self._add()
-        def _add(self):
-            dn = f"DJC{self._next}"
-            dc = f"XAGV{self._next:02d}"
-            self._free[dn] = dc
-            self._next += 1
-            return dn, dc
-        def take(self):
-            if not self._free: return self._add()
-            dn = _random.choice(list(self._free.keys()))
-            return dn, self._free.pop(dn)
-        def put(self, dn, dc):
-            self._free[dn] = dc
-        def stats(self):
-            return f"空闲:{len(self._free)} 已创建:{self._next-1}"
-    
-    pool = Pool(pool_size)
-    region_devices = {}
-    pending_tasks = []
-    completed_empty = set()
-    round_num = 0
-    total_ops = {'load_in': 0, 'load_out': 0, 'done_load': 0, 'done_empty': 0, 'exec': 0}
-    start_time = time.time()
-    
-    _test_log(f"设备池初始化: {pool.stats()}")
-    _test_log("开始自动驾驶循环")
-    
-    # 完成线程
-    def done_loop():
-        while not _test_stop_flag.is_set():
-            time.sleep(0.5)
-            now_ts = time.time()
-            ready = [t for t in pending_tasks if t['done_at'] <= now_ts]
-            for t in ready:
-                pending_tasks.remove(t)
-                rk = t['region_key']
-                tpl = t['template']
-                task_type = t['task_type']
-                dn = t['deviceNum']
-                dc = t['deviceCode']
-                oid = t['order_id']
-                is_load = t.get('is_load', True)
-                
-                r = _req("POST", f"{BASE_URL}/api/dispatch/report_status", {
-                    "modelProcessCode": tpl, "deviceNum": dn, "deviceCode": dc,
-                    "orderId": oid, "status": 8,
-                    "shelfCurrPosition": str(_random.randint(10000000, 99999999)),
-                    "subTaskStatus": "8", "subTaskTypeId": "75",
-                    "subTaskId": str(_random.randint(10000000, 99999999)),
-                    "qrContent": str(_random.randint(10000000, 99999999)),
-                    "subTaskSeq": "3", "shelfNumber": f"DJ{_random.randint(1,9999):04d}",
-                    "icsTaskOrderDetailId": str(_random.randint(100000000, 999999999)),
-                    "processRate": "1/1"
-                }, auth=False)
-                
-                if r.get('code') == 1000:
-                    if is_load:
-                        total_ops['done_load'] += 1
-                    else:
-                        total_ops['done_empty'] += 1
-                    
-                    if task_type in ('load_out', 'empty_out'):
-                        pool.put(dn, dc)
-                        if rk in region_devices and dn in region_devices[rk]:
-                            del region_devices[rk][dn]
-                        tag = "回负载" if is_load else "回空车"
-                        _test_log(f"[{rk}] 完成{tag} {tpl} {dn} → 回池")
-                    else:
-                        if rk not in region_devices:
-                            region_devices[rk] = {}
-                        region_devices[rk][dn] = dc
-                        tag = "来负载" if is_load else "来空车"
-                        _test_log(f"[{rk}] 完成{tag} {tpl} {dn} → 到区域")
-    
-    threading.Thread(target=done_loop, daemon=True).start()
-    
     try:
-        while not _test_stop_flag.is_set():
-            elapsed = time.time() - start_time
-            if duration > 0 and elapsed >= duration:
-                _test_log(f"达到运行时长 {duration}s，自动停止")
+        _test_log("正在启动测试子进程...")
+        
+        # 构建命令行参数
+        script = os.path.join(BASE_DIR, 'test', '调车模块压力测试', 'dispatch_auto_pilot.py')
+        cmd = [sys.executable, script]
+        
+        pool_size = params.get('pool_size', 20)
+        load_interval_min = params.get('load_interval_min', 1.0)
+        load_interval_max = params.get('load_interval_max', 20.0)
+        load_dur_min = params.get('load_dur_min', 30.0)
+        load_dur_max = params.get('load_dur_max', 120.0)
+        empty_dur_min = params.get('empty_dur_min', 30.0)
+        empty_dur_max = params.get('empty_dur_max', 120.0)
+        duration = params.get('duration', 0)
+        
+        cmd.extend(['--pool-size', str(pool_size)])
+        cmd.extend(['--load-interval-min', str(load_interval_min)])
+        cmd.extend(['--load-interval-max', str(load_interval_max)])
+        cmd.extend(['--task-duration', f'{load_dur_min}-{load_dur_max}'])
+        cmd.extend(['--empty-duration', f'{empty_dur_min}-{empty_dur_max}'])
+        if duration > 0:
+            cmd.extend(['--duration', str(duration)])
+        
+        _test_log(f"启动: {' '.join(cmd)}")
+        
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            cwd=BASE_DIR
+        )
+        
+        with _test_state_lock:
+            _test_state['_proc'] = proc
+        
+        _test_log("子进程已启动")
+        
+        for line in iter(proc.stdout.readline, ''):
+            if _test_stop_flag.is_set():
+                proc.terminate()
+                _test_log("已停止")
                 break
-            
-            round_num += 1
-            
-            wave = math.sin(round_num * math.pi / 60)
-            in_prob = 0.5 + wave * 0.4
-            
-            is_batch = _random.random() < 0.2
-            batch_count = _random.randint(2, 10) if is_batch else 1
-            
-            for _ in range(batch_count):
-                if _test_stop_flag.is_set():
-                    break
-                rk = _random.choice(list(regions.keys()))
-                region = regions[rk]
-                is_in = _random.random() < in_prob
-                
-                if is_in and region['in_tpls']:
-                    load_in = [t for t in region['in_tpls'] if t not in empty_tpl_set]
-                    if load_in:
-                        dn, dc = pool.take()
-                        tpl = _random.choice(load_in)
-                        oid = f"pad_html{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_{_random.randint(100,999)}_{_random.randint(1000,9999)}"
-                        r = _req("POST", f"{BASE_URL}/api/dispatch/report_status", {
-                            "modelProcessCode": tpl, "deviceNum": dn, "deviceCode": dc,
-                            "orderId": oid, "status": 6,
-                            "shelfCurrPosition": str(_random.randint(10000000, 99999999)),
-                            "subTaskStatus": "3", "subTaskTypeId": "75",
-                            "subTaskId": str(_random.randint(10000000, 99999999)),
-                            "qrContent": str(_random.randint(10000000, 99999999)),
-                            "subTaskSeq": "3", "shelfNumber": f"DJ{_random.randint(1,9999):04d}",
-                            "icsTaskOrderDetailId": str(_random.randint(100000000, 999999999)),
-                            "processRate": "1/1"
-                        }, auth=False)
-                        if r.get('code') == 1000:
-                            total_ops['load_in'] += 1
-                            exec_dur = _random.uniform(load_dur_min, load_dur_max)
-                            now_ts = time.time()
-                            pending_tasks.append({
-                                'type': 'load', 'is_load': True,
-                                'region_key': rk, 'template': tpl, 'task_type': 'load_in',
-                                'deviceNum': dn, 'deviceCode': dc,
-                                'order_id': oid,
-                                'created_at': now_ts, 'done_at': now_ts + exec_dur
-                            })
-                            _test_log(f"[{rk}] 来负载 {tpl} {dn} ({exec_dur:.0f}s后完成)")
-                
-                elif not is_in and region['out_tpls']:
-                    load_out = [t for t in region['out_tpls'] if t not in empty_tpl_set]
-                    if load_out:
-                        if rk in region_devices and region_devices[rk]:
-                            dn = _random.choice(list(region_devices[rk].keys()))
-                            dc = region_devices[rk].pop(dn)
-                        else:
-                            continue
-                        tpl = _random.choice(load_out)
-                        oid = f"pad_html{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_{_random.randint(100,999)}_{_random.randint(1000,9999)}"
-                        r = _req("POST", f"{BASE_URL}/api/dispatch/report_status", {
-                            "modelProcessCode": tpl, "deviceNum": dn, "deviceCode": dc,
-                            "orderId": oid, "status": 6,
-                            "shelfCurrPosition": str(_random.randint(10000000, 99999999)),
-                            "subTaskStatus": "3", "subTaskTypeId": "75",
-                            "subTaskId": str(_random.randint(10000000, 99999999)),
-                            "qrContent": str(_random.randint(10000000, 99999999)),
-                            "subTaskSeq": "3", "shelfNumber": f"DJ{_random.randint(1,9999):04d}",
-                            "icsTaskOrderDetailId": str(_random.randint(100000000, 999999999)),
-                            "processRate": "1/1"
-                        }, auth=False)
-                        if r.get('code') == 1000:
-                            total_ops['load_out'] += 1
-                            exec_dur = _random.uniform(load_dur_min, load_dur_max)
-                            now_ts = time.time()
-                            pending_tasks.append({
-                                'type': 'load', 'is_load': True,
-                                'region_key': rk, 'template': tpl, 'task_type': 'load_out',
-                                'deviceNum': dn, 'deviceCode': dc,
-                                'order_id': oid,
-                                'created_at': now_ts, 'done_at': now_ts + exec_dur
-                            })
-                            _test_log(f"[{rk}] 回负载 {tpl} {dn} ({exec_dur:.0f}s后完成)")
-            
-            # 每5轮执行计算
-            if round_num % 5 == 0:
-                rk_exec = _random.choice(list(regions.keys()))
-                r = _req("POST", f"{BASE_URL}/api/dispatch/execute/{rk_exec}")
-                if r.get('success'):
-                    total_ops['exec'] += 1
-                    dc = r.get('dispatch_count', 0)
-                    _test_log(f"[{rk_exec}] 执行计算: 下发{dc}台")
-                    
-                    # 接空车任务
-                    st_r = _req("GET", f"{BASE_URL}/api/dispatch/status")
-                    for a in st_r.get('areas', []):
-                        erk = a['region_key']
-                        if erk not in regions: continue
-                        for t_list_key in ('incoming', 'outgoing'):
-                            for t in a.get('templates', {}).get(t_list_key, []):
-                                if t.get('count', 0) > 0 and t['code'] in empty_tpl_set:
-                                    fr = _req("GET", f"{BASE_URL}/api/dispatch/region_files/{erk}")
-                                    if fr.get('files'):
-                                        for f in fr['files']:
-                                            if f['filename'].replace('.json', '') == t['code'] and f.get('exists'):
-                                                cr = _req("GET", f"{BASE_URL}/api/dispatch/region_file/{erk}/{f['filename']}")
-                                                if cr.get('content'):
-                                                    for task in json.loads(cr['content']):
-                                                        if task.get('status') == 6:
-                                                            oid = task.get('order_id', '')
-                                                            if oid and oid not in completed_empty:
-                                                                et_task_type = t.get('task_type', '')
-                                                                is_incoming = et_task_type in ('empty_in', 'load_in')
-                                                                if is_incoming:
-                                                                    dn, dc = pool.take()
-                                                                else:
-                                                                    if erk in region_devices and region_devices[erk]:
-                                                                        dn = _random.choice(list(region_devices[erk].keys()))
-                                                                        dc = region_devices[erk].pop(dn)
-                                                                    else:
-                                                                        continue
-                                                                
-                                                                r6 = _req("POST", f"{BASE_URL}/api/dispatch/report_status", {
-                                                                    "modelProcessCode": t['code'], "deviceNum": dn, "deviceCode": dc,
-                                                                    "orderId": oid, "status": 6,
-                                                                    "shelfCurrPosition": str(_random.randint(10000000, 99999999)),
-                                                                    "subTaskStatus": "3", "subTaskTypeId": "75",
-                                                                    "subTaskId": str(_random.randint(10000000, 99999999)),
-                                                                    "qrContent": str(_random.randint(10000000, 99999999)),
-                                                                    "subTaskSeq": "3", "shelfNumber": f"DJ{_random.randint(1,9999):04d}",
-                                                                    "icsTaskOrderDetailId": str(_random.randint(100000000, 999999999)),
-                                                                    "processRate": "1/1"
-                                                                }, auth=False)
-                                                                if r6.get('code') == 1000:
-                                                                    exec_dur = _random.uniform(empty_dur_min, empty_dur_max)
-                                                                    now_ts = time.time()
-                                                                    pending_tasks.append({
-                                                                        'type': 'empty', 'is_load': False,
-                                                                        'region_key': erk, 'template': t['code'],
-                                                                        'task_type': et_task_type,
-                                                                        'deviceNum': dn, 'deviceCode': dc,
-                                                                        'order_id': oid,
-                                                                        'created_at': now_ts, 'done_at': now_ts + exec_dur
-                                                                    })
-                                                                    completed_empty.add(oid)
-                                                                    tag = "来空车" if is_incoming else "回空车"
-                                                                    _test_log(f"[{erk}] {tag} {t['code']} {dn} ({exec_dur:.0f}s后完成)")
-            
-            # 更新状态
-            with _test_state_lock:
-                _test_state['total_ops'] = dict(total_ops)
-                _test_state['pool_stats'] = pool.stats()
-                _test_state['region_devices_count'] = sum(len(v) for v in region_devices.values())
-                _test_state['pending_count'] = len(pending_tasks)
-                _test_state['round_num'] = round_num
-                _test_state['elapsed'] = time.time() - start_time
-            
-            time.sleep(_random.uniform(load_interval_min, load_interval_max))
+            line = line.strip()
+            if line:
+                _test_log(line)
+        
+        proc.wait()
+        _test_log(f"子进程退出 (code={proc.returncode})")
     
     except Exception as e:
-        _test_log(f"测试异常: {str(e)}")
+        _test_log(f"错误: {str(e)}")
+        traceback.print_exc()
     
-    # 清理
-    for rk in regions:
-        _req("POST", f"{BASE_URL}/api/dispatch/reset_all/{rk}")
-    
-    _test_log("测试结束")
     with _test_state_lock:
         _test_state['running'] = False
-        _test_state['total_ops'] = dict(total_ops)
-        _test_state['pool_stats'] = pool.stats()
-        _test_state['elapsed'] = time.time() - start_time
 
 
 @dispatch_bp.route('/dispatch/test')
@@ -2032,7 +1760,11 @@ def api_test_start():
     
     with _test_state_lock:
         if _test_state['running']:
-            return jsonify({'error': '测试已在运行中'}), 409
+            # 检查线程是否还活着，如果已死则允许重新启动
+            if _test_thread and _test_thread.is_alive():
+                return jsonify({'error': '测试已在运行中'}), 409
+            # 线程已死，重置状态
+            _test_state['running'] = False
         
         # 重置状态
         _test_state = {
@@ -2060,10 +1792,16 @@ def api_test_start():
 @login_required
 def api_test_stop():
     """停止自动驾驶测试"""
-    global _test_stop_flag
+    global _test_stop_flag, _test_state
     
     _test_stop_flag.set()
+    
+    # 终止子进程
     with _test_state_lock:
+        proc = _test_state.get('_proc')
+        if proc and proc.poll() is None:
+            proc.terminate()
+            _test_log("已发送终止信号给测试子进程")
         _test_state['running'] = False
     
     return jsonify({'success': True, 'message': '测试已停止'})
@@ -2074,4 +1812,6 @@ def api_test_stop():
 def api_test_status():
     """获取测试状态"""
     with _test_state_lock:
-        return jsonify(dict(_test_state))
+        # 过滤掉不可序列化的对象（如 Popen）
+        safe_state = {k: v for k, v in _test_state.items() if k != '_proc'}
+        return jsonify(safe_state)

@@ -319,11 +319,11 @@
                 <button class="btn btn-sm log-tab" data-filter="report_status" onclick="switchLogTab('report_status')">上报</button>
                 <button class="btn btn-sm log-tab" data-filter="clean" onclick="switchLogTab('clean')">清理</button>
             </div>
-            <div id="logContainer" style="max-height:300px;overflow-y:auto;padding:0.5rem 1rem;">
+            <div id="logContainer" style="max-height:300px;overflow-y:auto;padding:0.5rem 1rem;" onscroll="onLogScroll()">
                 <div class="text-center text-muted py-3">加载中...</div>
-                <div class="text-center py-2" style="opacity:0.15;cursor:default;user-select:none;"
-                     onclick="if(this.parentElement.scrollTop + this.parentElement.clientHeight >= this.parentElement.scrollHeight - 10) window.location.href='/dispatch/test'"
-                     title="彩蛋：滚动到底部点击进入测试">© CEM Auto Pilot</div>
+                <div class="text-center py-1" id="easterEgg" style="opacity:0.08;cursor:default;user-select:none;font-size:0.7rem;transition:opacity 0.3s;"
+                     onclick="if(parseFloat(this.style.opacity)>=0.4)window.location.href='/dispatch/test'"
+                     title="彩蛋：滚动到底部点击进入测试">©</div>
             </div>
         </div>
     </div>
@@ -437,6 +437,13 @@ function onLogScroll() {
         } else {
             if (logTimer) { clearInterval(logTimer); logTimer = null; }
         }
+    }
+    // 彩蛋：滚动到底部时 © 变为50%透明度
+    const egg = document.getElementById('easterEgg');
+    if (egg) {
+        const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 10;
+        egg.style.opacity = atBottom ? '0.5' : '0.08';
+        egg.style.cursor = atBottom ? 'pointer' : 'default';
     }
 }
 

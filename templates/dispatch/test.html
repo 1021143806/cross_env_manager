@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+，{% extends "base.html" %}
 {% block title %}调车自动驾驶测试{% endblock %}
 {% block favicon %}
 <link rel="icon" type="image/png" href="/static/img/agv/favicon-dispatch.png?v=1">
@@ -61,6 +61,13 @@
 
 {% block content %}
 <div class="test-container">
+    <div class="alert alert-warning border-warning d-flex align-items-center gap-2 small mb-3" role="alert">
+        <span>🎮</span>
+        <div>
+            <strong>彩蛋功能 · 仅供开发调试使用</strong><br>
+            <span class="opacity-75">此页面为隐藏彩蛋，用于模拟AGV自动驾驶测试。生产环境请勿使用，以免影响正常业务数据。</span>
+        </div>
+    </div>
     <div class="test-header">
         <span class="status-dot" id="statusDot"></span>
         <strong id="statusText">就绪</strong>
@@ -104,6 +111,20 @@
 {% block extra_js %}
 <script>
 let pollTimer = null;
+let testStartTime = null;
+
+// 页面加载时检查测试状态
+fetch('/api/dispatch/test/status').then(r => r.json()).then(data => {
+    if (data.running) {
+        testStartTime = data.start_time ? new Date(data.start_time) : null;
+        document.getElementById('btnStart').disabled = true;
+        document.getElementById('btnStop').disabled = false;
+        document.getElementById('statusDot').classList.add('running');
+        document.getElementById('statusText').textContent = '运行中';
+        updateDisplay(data);
+        pollTimer = setInterval(pollStatus, 1000);
+    }
+});
 
 function getParams() {
     return {
@@ -119,20 +140,28 @@ function getParams() {
 }
 
 function startTest() {
+    document.getElementById('btnStart').disabled = true;
+    document.getElementById('statusText').textContent = '启动中...';
     fetch('/api/dispatch/test/start', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(getParams())
     }).then(r => r.json()).then(data => {
         if (data.success) {
-            document.getElementById('btnStart').disabled = true;
+            testStartTime = new Date();
             document.getElementById('btnStop').disabled = false;
             document.getElementById('statusDot').classList.add('running');
             document.getElementById('statusText').textContent = '运行中';
             pollTimer = setInterval(pollStatus, 1000);
         } else {
+            document.getElementById('btnStart').disabled = false;
+            document.getElementById('statusText').textContent = '就绪';
             alert('启动失败: ' + (data.error || '未知错误'));
         }
+    }).catch(err => {
+        document.getElementById('btnStart').disabled = false;
+        document.getElementById('statusText').textContent = '就绪';
+        alert('请求失败: ' + err.message);
     });
 }
 
@@ -155,23 +184,29 @@ function pollStatus() {
             document.getElementById('statusDot').classList.remove('running');
             document.getElementById('statusText').textContent = '已停止';
         }
-        
-        const ops = data.total_ops || {};
-        document.getElementById('sLoadIn').textContent = ops.load_in || 0;
-        document.getElementById('sLoadOut').textContent = ops.load_out || 0;
-        document.getElementById('sDoneLoad').textContent = ops.done_load || 0;
-        document.getElementById('sDoneEmpty').textContent = ops.done_empty || 0;
-        document.getElementById('sExec').textContent = ops.exec || 0;
-        document.getElementById('sPool').textContent = data.pool_stats || '-';
-        document.getElementById('sPending').textContent = data.pending_count || 0;
-        
-        const elapsed = data.elapsed || 0;
-        document.getElementById('elapsedText').textContent = 
-            '已运行: ' + Math.floor(elapsed) + 's';
-        
-        // 日志
-        const logs = data.logs || [];
-        const logEl = document.getElementById('logStream');
+        updateDisplay(data);
+    });
+}
+
+function updateDisplay(data) {
+    const ops = data.total_ops || {};
+    document.getElementById('sLoadIn').textContent = ops.load_in || 0;
+    document.getElementById('sLoadOut').textContent = ops.load_out || 0;
+    document.getElementById('sDoneLoad').textContent = ops.done_load || 0;
+    document.getElementById('sDoneEmpty').textContent = ops.done_empty || 0;
+    document.getElementById('sExec').textContent = ops.exec || 0;
+    document.getElementById('sPool').textContent = data.pool_stats || '-';
+    document.getElementById('sPending').textContent = data.pending_count || 0;
+    
+    // 前端自己计算 elapsed（避免后端更新延迟导致卡顿）
+    const elapsed = testStartTime ? Math.floor((Date.now() - testStartTime.getTime()) / 1000) : (data.elapsed || 0);
+    document.getElementById('elapsedText').textContent =
+        '已运行: ' + elapsed + 's';
+    
+    // 日志
+    const logs = data.logs || [];
+    const logEl = document.getElementById('logStream');
+    if (logs.length > 0) {
         logEl.innerHTML = logs.map(l => {
             let cls = '';
             if (l.includes('来负载')) cls = 'log-load-in';
@@ -181,8 +216,10 @@ function pollStatus() {
             else if (l.includes('执行')) cls = 'log-exec';
             return '<div class="' + cls + '">' + l + '</div>';
         }).join('');
-        logEl.scrollTop = logEl.scrollHeight;
-    });
+    } else if (data.running) {
+        logEl.innerHTML = '<span class="text-muted">初始化中...</span>';
+    }
+    logEl.scrollTop = logEl.scrollHeight;
 }
 </script>
 {% endblock %}
