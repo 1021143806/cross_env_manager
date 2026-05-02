@@ -72,7 +72,7 @@
         display: inline-flex;
         align-items: center;
         gap: 0.3rem;
-        padding: 0.25rem 0.5rem;
+        padding: 0.2rem 0.45rem;
         border-radius: 6px;
         background: var(--detail-card-bg);
         border: 1.5px solid var(--border-color);
@@ -81,19 +81,55 @@
         cursor: default;
         white-space: nowrap;
     }
-    .agv-icon i { font-size: 0.95rem; }
+    .agv-icon .agv-sprite {
+        width: 24px; height: 24px;
+        background-image: url('/static/img/agv/rcsagv.png');
+        background-size: 240px 240px;  /* 1280/1280 缩放到 240 = 5.33x 缩小 */
+        image-rendering: auto;
+        flex-shrink: 0;
+    }
+    /* 蓝色AGV（空闲/空车任务中）- 第6行第1列: 0, -120px */
+    .agv-icon .agv-sprite.blue {
+        background-position: 0 -120px;
+    }
+    /* 青蓝+黄色AGV（负载带货架任务中）- 第6行第9列: -192px, -120px */
+    .agv-icon .agv-sprite.loaded {
+        background-position: -192px -120px;
+    }
     .agv-icon .dev-num { font-weight: 600; }
     .agv-icon:hover {
         transform: translateY(-1px);
         box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
-    .agv-icon.busy {
-        border-color: var(--bs-warning);
-        background: rgba(255, 193, 7, 0.08);
+    /* 在区域中（空闲） */
+    .agv-icon.idle {
+        border-color: #28a745;
+        background: rgba(40, 167, 69, 0.06);
     }
-    .agv-icon.busy i {
-        animation: agvPulse 1.5s ease-in-out infinite;
+    /* 来负载 */
+    .agv-icon.load-in {
+        border-color: #0d6efd;
+        background: rgba(13, 110, 253, 0.06);
     }
+    .agv-icon.load-in .agv-sprite { animation: agvPulse 1.5s ease-in-out infinite; }
+    /* 回负载 */
+    .agv-icon.load-out {
+        border-color: #fd7e14;
+        background: rgba(253, 126, 20, 0.06);
+    }
+    .agv-icon.load-out .agv-sprite { animation: agvPulse 1.5s ease-in-out infinite; }
+    /* 来空车 */
+    .agv-icon.empty-in {
+        border-color: #6ea8fe;
+        background: rgba(110, 168, 254, 0.06);
+    }
+    .agv-icon.empty-in .agv-sprite { animation: agvPulse 1.5s ease-in-out infinite; }
+    /* 回空车 */
+    .agv-icon.empty-out {
+        border-color: #feb272;
+        background: rgba(254, 178, 114, 0.06);
+    }
+    .agv-icon.empty-out .agv-sprite { animation: agvPulse 1.5s ease-in-out infinite; }
     @keyframes agvPulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.4; }
@@ -1067,15 +1103,45 @@ function getDirectionBadge(area) {
     return `<span class="direction-badge bg-warning-subtle text-warning border border-warning-subtle"><i class="bi bi-arrow-down"></i>调入 ${area.need}辆</span>`;
 }
 
-function renderDeviceIcons(devices, busy) {
+function getDeviceClass(taskType) {
+    // 根据 task_type 返回对应的 CSS class
+    const map = {
+        'load_in': 'load-in',
+        'load_out': 'load-out',
+        'empty_in': 'empty-in',
+        'empty_out': 'empty-out'
+    };
+    return map[taskType] || 'busy';
+}
+
+function getTaskTypeLabel(taskType) {
+    const map = {
+        'load_in': '来负载',
+        'load_out': '回负载',
+        'empty_in': '来空车',
+        'empty_out': '回空车'
+    };
+    return map[taskType] || taskType || '';
+}
+
+function getSpriteClass(taskType) {
+    // 负载任务用带货架图标（青蓝+黄色），空车/空闲用蓝色图标
+    if (taskType === 'load_in' || taskType === 'load_out') return 'loaded';
+    return 'blue';
+}
+
+function renderDeviceIcons(devices, isPending) {
     if (!devices || devices.length === 0) return '';
-    const cls = busy ? 'agv-icon busy' : 'agv-icon';
     return devices.map(d => {
         const dn = d.deviceNum || '?';
         const dc = d.deviceCode || '';
         const tpl = d.template || '';
-        const title = tpl ? `${dc} (${tpl})` : dc;
-        return `<span class="${cls}" title="${title}"><i class="bi-truck"></i><span class="dev-num">${dn}</span></span>`;
+        const taskType = d.task_type || '';
+        const cls = isPending ? 'agv-icon ' + getDeviceClass(taskType) : 'agv-icon idle';
+        const spriteCls = 'agv-sprite ' + (isPending ? getSpriteClass(taskType) : 'blue');
+        const label = isPending ? getTaskTypeLabel(taskType) : '空闲';
+        const title = tpl ? `${dc} (${tpl}) - ${label}` : `${dc} - ${label}`;
+        return `<span class="${cls}" title="${title}"><span class="${spriteCls}"></span><span class="dev-num">${dn}</span></span>`;
     }).join('');
 }
 

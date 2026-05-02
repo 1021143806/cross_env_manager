@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% block favicon %}
+    <link rel="icon" type="image/png" href="/static/img/agv/favicon.png?v=1">
+    {% endblock %}
     <title>{% block title %}跨环境任务模板管理系统{% endblock %}</title>
     <link href="/static/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/static/vendor/bootstrap-icons/bootstrap-icons.min.css">
