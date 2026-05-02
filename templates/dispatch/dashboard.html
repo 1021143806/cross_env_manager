@@ -845,6 +845,7 @@ function renderAreas(areas) {
                         <button class="btn btn-outline-teal btn-sm" onclick="toggleDispatchLogPanel('${area.region_key}', this)"><i class="bi bi-send"></i> 下发记录</button>
                         <button class="btn btn-outline-purple btn-sm" onclick="toggleTimeSlotPanel('${area.region_key}', this)"><i class="bi bi-clock"></i> 分时配置</button>
                         <button class="btn btn-outline-success btn-sm" onclick="toggleSelfHealPanel('${area.region_key}', this)"><i class="bi bi-heart-pulse"></i> 自恢复</button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="cancelEmptyTasks('${area.region_key}')" title="取消该区域所有空车任务"><i class="bi bi-x-octagon"></i> 取消空车</button>
                         <a href="/dispatch/config" class="btn btn-outline-secondary btn-sm"><i class="bi bi-gear"></i> 配置</a>
                     </div>
                 </div>
@@ -1276,6 +1277,22 @@ function getDirectionBadge(area) {
     if (area.direction === 'none') return `<span class="direction-badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-circle"></i>平衡</span>`;
     if (area.direction === 'out') return `<span class="direction-badge bg-danger-subtle text-danger border border-danger-subtle"><i class="bi bi-arrow-up"></i>调出 ${area.need}辆</span>`;
     return `<span class="direction-badge bg-warning-subtle text-warning border border-warning-subtle"><i class="bi bi-arrow-down"></i>调入 ${area.need}辆</span>`;
+}
+
+function cancelEmptyTasks(regionKey) {
+    if (!confirm(`确定取消 ${regionKey} 所有空车任务？\n\n这将调用 ICS 取消接口，请谨慎操作。`)) return;
+    showToast('正在取消空车任务...', 'info');
+    fetch(`/api/dispatch/cancel_empty_tasks/${encodeURIComponent(regionKey)}`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showToast(data.message, 'success');
+                refreshData();
+            } else {
+                showToast(data.error || '取消失败', 'danger');
+            }
+        })
+        .catch(err => showToast('请求失败: ' + err.message, 'danger'));
 }
 
 function getDeviceClass(taskType) {

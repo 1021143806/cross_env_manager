@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+w#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 调车管理路由蓝图 - 空车调车模块
@@ -1561,6 +1561,118 @@ def api_clean_simulated(region_key):
     except Exception as e:
         write_global_log('clean_simulated_error', region_key, str(e), 'error')
         return jsonify({'error': f'清理失败: {str(e)}'}), 500
+
+
+# ========== 取消空车任务 ==========
+
+def _cancel_empty_task(order_id, server_ip):
+    """调用 ICS 取消任务接口"""
+    import urllib.request as _urllib
+    try:
+        url = f"http://{server_ip}:7000/ics/out/task/cancelTask"
+        body = json.dumps([{"orderId": order_id, "destPosition": ""}]).encode()
+        req = _urllib.Request(url, data=body, method='POST')
+        req.add_header('Content-Type', 'application/json')
+        with _urllib.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode()), None
+    except Exception as e:
+        return None, str(e)
+
+
+def _get_task_server_info(order_id):
+    """通过跨环境任务查询获取子任务 order_id 和服务器地址"""
+    try:
+        from modules.query.task_query_extended import get_cross_task_info
+        result = get_cross_task_info(order_id)
+        if 'error' in result:
+            return None, result['error']
+        details = result.get('cross_task_details', [])
+        if not details:
+            return None, '未找到任务详情'
+        # 取第一个子任务
+        detail = details[0]
+        sub_order_id = detail.get('order_id', '')
+        # 从 related_tasks 获取服务器地址
+        related = result.get('related_tasks', [])
+        server_ip = ''
+        for rt in related:
+            if rt.get('orderId') == order_id:
+                server_ip = rt.get('service_url', '').replace('http://', '').split(':')[0]
+                break
+        if not server_ip:
+            server_ip = '10.68.2.32'  # 默认
+        return {'sub_order_id': sub_order_id, 'server_ip': server_ip}, None
+    except Exception as e:
+        return None, str(e)
+
+
+@dispatch_bp.route('/api/dispatch/cancel_empty_tasks/<region_key>', methods=['POST'])
+@login_required
+@admin_required
+def api_cancel_empty_tasks(region_key):
+    """取消指定区域所有空车任务"""
+    try:
+        index = _load_cache_index()
+        region = index.get(region_key)
+        if not region:
+            return jsonify({'error': f'区域 {region_key} 不存在'}), 404
+        
+        enabled = region.get('enabled', False)
+        cancelled = 0
+        errors = []
+        
+        for t in region.get('templates', []):
+            task_type = _normalize_task_type(t)
+            if not _is_empty_task(task_type):
+                continue
+            fpath = _get_template_file_path(region_key, t)
+            tasks = _load_json(fpath)
+            template_code = t.get('code') or t.get('name', '')
+            
+            for task in tasks:
+                if task.get('status') != 6:
+                    continue
+                order_id = task.get('order_id', '')
+                if not order_id:
+                    continue
+                
+                if enabled:
+                    # 真实取消：查询子任务信息并调用 ICS 取消接口
+                    info, err = _get_task_server_info(order_id)
+                    if err:
+                        errors.append(f'{template_code} {order_id}: {err}')
+                        continue
+                    
+                    sub_order_id = info['sub_order_id']
+                    server_ip = info['server_ip']
+                    
+                    result, cancel_err = _cancel_empty_task(sub_order_id, server_ip)
+                    if cancel_err:
+                        errors.append(f'{template_code} {sub_order_id}: {cancel_err}')
+                        continue
+                    
+                    cancelled += 1
+                    write_global_log('cancel_empty', region_key,
+                        f'取消空车任务: {template_code} order={order_id} sub={sub_order_id} server={server_ip}')
+                else:
+                    # 模拟取消：只清理本地数据
+                    cancelled += 1
+                    write_global_log('cancel_empty', region_key,
+                        f'模拟取消空车任务: {template_code} order={order_id}')
+            
+            # 清理本地模板 JSON
+            if cancelled > 0:
+                tasks = [t for t in tasks if t.get('status') != 6]
+                _save_json(fpath, tasks)
+        
+        return jsonify({
+            'success': True,
+            'cancelled': cancelled,
+            'errors': errors,
+            'message': f'已取消 {cancelled} 个空车任务' + (f', {len(errors)} 个失败' if errors else '')
+        })
+    except Exception as e:
+        return jsonify({'error': f'取消失败: {str(e)}'}), 500
 
 
 # ========== 自恢复逻辑 ==========
