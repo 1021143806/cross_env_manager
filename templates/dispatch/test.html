@@ -114,6 +114,17 @@
         </div>
     </div>
     
+    <div class="mb-2 d-flex align-items-center gap-2 flex-wrap">
+        <span class="small text-muted">预设:</span>
+        <button class="btn btn-outline-secondary btn-sm preset-btn" onclick="applyPreset('quick')" title="快速验证基本功能">⚡ 快速</button>
+        <button class="btn btn-outline-secondary btn-sm preset-btn" onclick="applyPreset('normal')" title="模拟真实生产环境">🌐 真实</button>
+        <button class="btn btn-outline-secondary btn-sm preset-btn" onclick="applyPreset('stress')" title="高并发压力测试">🔥 极限</button>
+        <button class="btn btn-outline-secondary btn-sm preset-btn" onclick="applyPreset('longrun')" title="长时间稳定性测试">⏳ 长时</button>
+        <button class="btn btn-outline-secondary btn-sm preset-btn" onclick="applyPreset('burst')" title="突发流量冲击测试">💥 突发</button>
+        <button class="btn btn-outline-secondary btn-sm preset-btn" onclick="applyPreset('empty')" title="纯空车调度测试">🚛 空车</button>
+        <span class="text-muted">|</span>
+        <button class="btn btn-outline-warning btn-sm" onclick="batchDispatch()" title="按当前参数快速下发20个任务">📦 批量下发</button>
+    </div>
     <details class="mb-2">
         <summary class="small text-muted" style="cursor:pointer;">参数设置</summary>
         <div class="param-grid mt-2">
@@ -191,6 +202,72 @@ fetch('/api/dispatch/test/status').then(r => r.json()).then(data => {
     }
 });
 
+const PRESETS = {
+    quick: {
+        label: '⚡ 快速', desc: '快速验证',
+        pool_size: 10, load_interval_min: 0.5, load_interval_max: 3,
+        load_dur_min: 5, load_dur_max: 15, empty_dur_min: 5, empty_dur_max: 15
+    },
+    normal: {
+        label: '🌐 真实', desc: '模拟生产',
+        pool_size: 20, load_interval_min: 1, load_interval_max: 20,
+        load_dur_min: 30, load_dur_max: 120, empty_dur_min: 30, empty_dur_max: 120
+    },
+    stress: {
+        label: '🔥 极限', desc: '高并发',
+        pool_size: 50, load_interval_min: 0.1, load_interval_max: 1,
+        load_dur_min: 10, load_dur_max: 30, empty_dur_min: 5, empty_dur_max: 15
+    },
+    longrun: {
+        label: '⏳ 长时', desc: '稳定性',
+        pool_size: 30, load_interval_min: 2, load_interval_max: 15,
+        load_dur_min: 30, load_dur_max: 180, empty_dur_min: 30, empty_dur_max: 180
+    },
+    burst: {
+        label: '💥 突发', desc: '冲击测试',
+        pool_size: 40, load_interval_min: 0.05, load_interval_max: 0.5,
+        load_dur_min: 3, load_dur_max: 10, empty_dur_min: 2, empty_dur_max: 8
+    },
+    empty: {
+        label: '🚛 空车', desc: '空车调度',
+        pool_size: 15, load_interval_min: 30, load_interval_max: 60,
+        load_dur_min: 10, load_dur_max: 20, empty_dur_min: 5, empty_dur_max: 15
+    }
+};
+
+function applyPreset(name) {
+    const p = PRESETS[name];
+    if (!p) return;
+    document.getElementById('poolSize').value = p.pool_size;
+    document.getElementById('loadIntMin').value = p.load_interval_min;
+    document.getElementById('loadIntMax').value = p.load_interval_max;
+    document.getElementById('loadDurMin').value = p.load_dur_min;
+    document.getElementById('loadDurMax').value = p.load_dur_max;
+    document.getElementById('emptyDurMin').value = p.empty_dur_min;
+    document.getElementById('emptyDurMax').value = p.empty_dur_max;
+    document.getElementById('duration').value = 0;  // 统一无限运行
+    // 高亮当前预设
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+}
+
+function batchDispatch() {
+    // 在运行中按当前参数快速下发一批任务（20个）
+    const params = getParams();
+    params.batch_count = 20;
+    params.batch_only = true;
+    fetch('/api/dispatch/test/batch', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(params)
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            showToast(`已下发 ${data.count || 0} 个任务`, 'success');
+        } else {
+            showToast(data.error || '下发失败', 'danger');
+        }
+    }).catch(err => showToast('请求失败: ' + err.message, 'danger'));
+}
+
 function getParams() {
     return {
         pool_size: parseInt(document.getElementById('poolSize').value) || 20,
@@ -263,8 +340,8 @@ function parseTasksFromLogs(logs) {
     const now = Date.now();
     
     logs.forEach(line => {
-        // 匹配任务开始: 来负载/回负载 (池→任务, XXs后完成)
-        let m = line.match(/(来负载|回负载)\s+(\S+)\s+(\S+)\s+\(池→任务,\s*([\d.]+)s后完成\)/);
+        // 匹配任务开始: 来负载/回负载 (池→任务, XXs后完成) 或 (XXs后完成)
+        let m = line.match(/(来负载|回负载)\s+(\S+)\s+(\S+)\s+\((?:池→任务,\s*)?([\d.]+)s后完成\)/);
         if (m) {
             const taskType = m[1] === '来负载' ? 'load_in' : 'load_out';
             const remaining = parseFloat(m[4]);

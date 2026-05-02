@@ -7,7 +7,7 @@
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response
 from functools import wraps
 from datetime import datetime
-import os, json, time, threading
+import os, json, time, threading, subprocess
 
 dispatch_bp = Blueprint('dispatch', __name__, template_folder='../templates')
 
@@ -251,6 +251,99 @@ def api_global_log():
 
 # ========== 核心计算逻辑 ==========
 
+def _get_last_calc_info(region_key):
+    """从 global_log 读取该区域最近一条调度相关事件"""
+    logs = _load_json(GLOBAL_LOG_PATH)
+    calc_actions = {'report_status', 'execute', 'execute_balanced', 'execute_mutex', 'manual_dispatch', 'self_heal'}
+    trigger_map = {
+        'report_status': '状态上报',
+        'execute': '自动调度',
+        'execute_balanced': '计算(平衡)',
+        'execute_mutex': '计算(互斥)',
+        'manual_dispatch': '手动发车',
+        'self_heal': '自恢复'
+    }
+    direction_map = {'in': '调入', 'out': '调出'}
+    for log in reversed(logs):
+        if log.get('region_key') == region_key and log.get('action') in calc_actions:
+            action = log.get('action', '')
+            trigger_source = trigger_map.get(action, action)
+            # 从 raw_data 提取方向信息
+            direction = ''
+            rd = log.get('raw_data', {})
+            if isinstance(rd, dict):
+                d = rd.get('direction', '')
+                if d in direction_map:
+                    direction = direction_map[d]
+            # 如果 raw_data 没有，尝试从 detail 解析
+            if not direction:
+                detail = log.get('detail', '')
+                if '方向:in' in detail:
+                    direction = '调入'
+                elif '方向:out' in detail:
+                    direction = '调出'
+            if direction:
+                trigger_source = f'{trigger_source}({direction})'
+            return {
+                "time": log.get('time', ''),
+                "action": action,
+                "detail": log.get('detail', ''),
+                "level": log.get('level', 'info'),
+                "trigger_source": trigger_source
+            }
+    return None
+
+
+def _calc_remaining_minutes(slot):
+    """计算当前时段剩余分钟数（含跨天）"""
+    now = datetime.now()
+    now_minutes = now.hour * 60 + now.minute
+    end_str = slot.get('end', '00:00')
+    eh, em = map(int, end_str.split(':'))
+    end_minutes = eh * 60 + em
+    # 处理跨天
+    if end_minutes <= now_minutes:
+        end_minutes += 24 * 60
+    return end_minutes - now_minutes
+
+
+def _resolve_time_slot(slots):
+    """
+    用优先级解析分时配置，替代旧的时间范围最小逻辑。
+    返回: (active, matched_slot, matched_count, all_matched_names, remaining_minutes)
+    """
+    if not slots:
+        return False, None, 0, [], 0
+    
+    now_time = datetime.now().strftime('%H:%M')
+    matched = []
+    
+    for slot in slots:
+        start = slot.get('start', '00:00')
+        end = slot.get('end', '00:00')
+        priority = slot.get('priority', 999)
+        
+        # 判断是否匹配当前时间（含跨天）
+        if start <= end:
+            is_match = start <= now_time <= end
+        else:
+            is_match = now_time >= start or now_time <= end
+        
+        if is_match:
+            matched.append((priority, slot))
+    
+    if not matched:
+        return False, None, 0, [], 0
+    
+    # 按优先级排序，选优先级最高的（priority 最小）
+    matched.sort(key=lambda x: x[0])
+    best = matched[0][1]
+    all_names = [s.get('name') or f"{s['start']}~{s['end']}" for _, s in matched]
+    remaining = _calc_remaining_minutes(best)
+    
+    return True, best, len(matched), all_names, remaining
+
+
 def calculate_area_balance(region_key, region_config):
     """
     计算区域设备平衡
@@ -271,35 +364,26 @@ def calculate_area_balance(region_key, region_config):
     enabled = region_config.get('enabled', False)
     
     # 分时段配置解析（始终解析，不受手动开关影响，用于展示）
+    # 自动补全旧数据的 priority 和 name
     time_slot_active = False
     time_slot_matched = None
+    time_slot_matched_count = 0
+    time_slot_all_matched = []
+    time_slot_remaining = 0
     time_slots_config = region_config.get('time_slots', {})
     if time_slots_config.get('enabled', False):
-        now_time = datetime.now().strftime('%H:%M')
-        matched_slots = []
-        for slot in time_slots_config.get('slots', []):
-            start = slot.get('start', '00:00')
-            end = slot.get('end', '00:00')
-            # 处理跨天时段（如 20:00 ~ 08:00）
-            if start <= end:
-                matched = start <= now_time <= end
-            else:
-                matched = now_time >= start or now_time <= end
-            if matched:
-                # 计算时段长度（分钟），用于选择最精确的时段
-                if start <= end:
-                    duration = (int(end[:2])*60 + int(end[3:])) - (int(start[:2])*60 + int(start[3:]))
-                else:
-                    duration = (24*60 - (int(start[:2])*60 + int(start[3:]))) + (int(end[:2])*60 + int(end[3:]))
-                matched_slots.append((duration, slot))
+        slots = time_slots_config.get('slots', [])
+        # 自动补全旧数据：无 priority 则按索引生成，无 name 则留空
+        for idx, slot in enumerate(slots):
+            if 'priority' not in slot:
+                slot['priority'] = idx + 1
+            if 'name' not in slot:
+                slot['name'] = ''
         
-        if matched_slots:
-            # 选择时间范围最小的时段（最精确匹配）
-            matched_slots.sort(key=lambda x: x[0])
-            best_slot = matched_slots[0][1]
+        time_slot_active, best_slot, time_slot_matched_count, time_slot_all_matched, time_slot_remaining = _resolve_time_slot(slots)
+        if time_slot_active and best_slot:
             xmin = best_slot.get('xmin', xmin)
             xmax = best_slot.get('xmax', xmax)
-            time_slot_active = True
             time_slot_matched = best_slot
     
     # 分时配置中 xmin=-1, xmax=-1 表示禁用真实任务（仅在手动启用时生效）
@@ -336,7 +420,8 @@ def calculate_area_balance(region_key, region_config):
                     "deviceNum": task.get('deviceNum', ''),
                     "deviceCode": task.get('deviceCode', ''),
                     "template": template_code,
-                    "task_type": task_type
+                    "task_type": task_type,
+                    "order_id": task.get('order_id', '')
                 })
     
     # 统计 b: 离开模板中 status=6 的任务数
@@ -396,6 +481,9 @@ def calculate_area_balance(region_key, region_config):
                     mutex_reason = f"pending {template_code} task, mutex"
                     break
     
+    # 最近一次调度事件
+    last_calc_info = _get_last_calc_info(region_key)
+    
     return {
         "region_key": region_key,
         "areaId": region_config.get('areaId', '0'),
@@ -425,6 +513,12 @@ def calculate_area_balance(region_key, region_config):
         "mutex_reason": mutex_reason,
         "time_slot_active": time_slot_active,
         "time_slot_matched": time_slot_matched,
+        "time_slot_matched_count": time_slot_matched_count,
+        "time_slot_all_matched": time_slot_all_matched,
+        "time_slot_remaining": time_slot_remaining,
+        "last_calc_info": last_calc_info,
+        "poll_dispatch_interval": _load_cache_index().get('poll_dispatch_interval', _POLL_DISPATCH_DEFAULT_INTERVAL),
+        "poll_dispatch_last": _poll_dispatch_last.get(region_key, 0),
         "templates": {
             "incoming": incoming_templates,
             "outgoing": outgoing_templates
@@ -1562,6 +1656,58 @@ def _start_self_heal_thread():
     t.start()
 
 
+# ========== 定时轮询调度 ==========
+
+_POLL_DISPATCH_DEFAULT_INTERVAL = 60  # 默认轮询间隔（秒）
+_poll_dispatch_last = {}  # 记录每个区域上次轮询调度时间
+
+def _start_poll_dispatch_thread():
+    """启动定时轮询调度后台线程（兜底机制）"""
+    def _loop():
+        while True:
+            try:
+                index = _load_cache_index()
+                interval = index.get('poll_dispatch_interval', _POLL_DISPATCH_DEFAULT_INTERVAL)
+                if interval <= 0:
+                    interval = _POLL_DISPATCH_DEFAULT_INTERVAL
+                
+                for rk, region in index.items():
+                    if not isinstance(region, dict) or 'templates' not in region:
+                        continue
+                    
+                    # 计算平衡
+                    balance = calculate_area_balance(rk, region)
+                    if balance['direction'] == 'none':
+                        continue
+                    if not balance['can_dispatch']:
+                        continue
+                    
+                    # 防抖检查（与状态上报触发共用）
+                    now = time.time()
+                    last = _auto_dispatch_last.get(rk, 0)
+                    if now - last < _AUTO_DISPATCH_DEBOUNCE:
+                        continue
+                    
+                    _auto_dispatch_last[rk] = now
+                    _poll_dispatch_last[rk] = now
+                    
+                    # 异步执行调度
+                    def _do_dispatch(rk=rk, region=region, balance=balance):
+                        try:
+                            _execute_dispatch(rk, region, balance)
+                        except Exception as e:
+                            print(f"[PollDispatch] 调度失败 {rk}: {e}")
+                    threading.Thread(target=_do_dispatch, daemon=True).start()
+                
+                time.sleep(interval)
+            except Exception as e:
+                print(f"[PollDispatch] 后台线程异常: {e}")
+                time.sleep(60)
+    
+    t = threading.Thread(target=_loop, daemon=True)
+    t.start()
+
+
 # ========== 自恢复 API ==========
 
 @dispatch_bp.route('/api/dispatch/self_heal/status')
@@ -1679,6 +1825,38 @@ def _test_log(msg):
             _test_state['logs'] = _test_state['logs'][-50:]
 
 
+def _update_test_stats(line):
+    """从子进程日志行解析并更新测试统计数据"""
+    import re
+    with _test_state_lock:
+        ops = _test_state['total_ops']
+        # 来负载
+        if '来负载' in line and '池→任务' in line:
+            ops['load_in'] = ops.get('load_in', 0) + 1
+        # 回负载
+        elif '回负载' in line and '池→任务' in line:
+            ops['load_out'] = ops.get('load_out', 0) + 1
+        # 完成来负载/回负载
+        elif '完成来负载' in line:
+            ops['done_load'] = ops.get('done_load', 0) + 1
+        elif '完成回负载' in line:
+            ops['done_load'] = ops.get('done_load', 0) + 1
+        # 完成来空车/回空车
+        elif '完成来空车' in line or '完成回空车' in line:
+            ops['done_empty'] = ops.get('done_empty', 0) + 1
+        # 执行下发
+        elif '执行' in line and ('下发' in line or '模拟' in line):
+            ops['exec'] = ops.get('exec', 0) + 1
+        # 设备池
+        m = re.search(r'设备池[：:]\s*(\d+)', line)
+        if m:
+            _test_state['pool_stats'] = m.group(1)
+        # 进行中
+        m = re.search(r'进行中[：:]\s*(\d+)', line)
+        if m:
+            _test_state['pending_count'] = int(m.group(1))
+
+
 def _run_test_thread(params):
     """启动独立子进程运行 dispatch_auto_pilot.py，走真实 HTTP 请求"""
     import sys, subprocess, traceback
@@ -1734,6 +1912,8 @@ def _run_test_thread(params):
             line = line.strip()
             if line:
                 _test_log(line)
+                # 解析日志更新统计数据
+                _update_test_stats(line)
         
         proc.wait()
         _test_log(f"子进程退出 (code={proc.returncode})")
@@ -1801,11 +1981,86 @@ def api_test_stop():
     with _test_state_lock:
         proc = _test_state.get('_proc')
         if proc and proc.poll() is None:
-            proc.terminate()
-            _test_log("已发送终止信号给测试子进程")
+            try:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+            except Exception:
+                try:
+                    proc.kill()
+                except:
+                    pass
+            _test_log("测试子进程已终止")
         _test_state['running'] = False
     
     return jsonify({'success': True, 'message': '测试已停止'})
+
+
+@dispatch_bp.route('/api/dispatch/test/batch', methods=['POST'])
+@login_required
+def api_test_batch():
+    """批量下发任务（测试运行中快速注入一批任务）"""
+    import random as _random
+    params = request.get_json() or {}
+    batch_count = params.get('batch_count', 20)
+    
+    if not _test_state.get('running'):
+        return jsonify({'error': '测试未运行，请先启动测试'}), 400
+    
+    index = _load_cache_index()
+    regions_list = [(rk, r) for rk, r in index.items() if isinstance(r, dict) and 'templates' in r]
+    if not regions_list:
+        return jsonify({'error': '没有可用区域'}), 400
+    
+    # 收集所有负载模板
+    all_load_in = []
+    all_load_out = []
+    for rk, region in regions_list:
+        for t in region.get('templates', []):
+            task_type = _normalize_task_type(t)
+            tpl_code = t.get('code') or t.get('name', '')
+            if task_type == 'load_in':
+                all_load_in.append((rk, tpl_code))
+            elif task_type == 'load_out':
+                all_load_out.append((rk, tpl_code))
+    
+    if not all_load_in and not all_load_out:
+        return jsonify({'error': '没有负载模板'}), 400
+    
+    count = 0
+    for _ in range(batch_count):
+        is_in = _random.random() < 0.5
+        if is_in and all_load_in:
+            rk, tpl = _random.choice(all_load_in)
+            dev_num = f"DJC{_random.randint(1, 99)}"
+            dev_code = f"BL{_random.randint(10000, 99999)}BAK{_random.randint(10000, 99999)}"
+            order_id = f"pad_html{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_{_random.randint(100, 999)}_{_random.randint(1000, 9999)}"
+            # 直接调用 handle_status_report
+            data = {
+                'region_key': rk, 'template_name': tpl,
+                'deviceNum': dev_num, 'deviceCode': dev_code,
+                'status': 6, 'order_id': order_id
+            }
+            handle_status_report(data)
+            count += 1
+        elif not is_in and all_load_out:
+            rk, tpl = _random.choice(all_load_out)
+            dev_num = f"DJC{_random.randint(1, 99)}"
+            dev_code = f"BL{_random.randint(10000, 99999)}BAK{_random.randint(10000, 99999)}"
+            order_id = f"pad_html{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_{_random.randint(100, 999)}_{_random.randint(1000, 9999)}"
+            data = {
+                'region_key': rk, 'template_name': tpl,
+                'deviceNum': dev_num, 'deviceCode': dev_code,
+                'status': 6, 'order_id': order_id
+            }
+            handle_status_report(data)
+            count += 1
+    
+    _test_log(f"批量下发: {count}个任务")
+    return jsonify({'success': True, 'count': count})
 
 
 @dispatch_bp.route('/api/dispatch/test/status')

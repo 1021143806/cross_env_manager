@@ -100,6 +100,10 @@
                             <input class="form-control form-control-sm" type="number" id="globalDebounce" value="5" min="1" max="60" onchange="updateGlobalDebounce(parseInt(this.value)||5)">
                             <div class="form-text">同一区域两次自动调度最小间隔</div>
                         </div>
+                        <div class="col-md-3"><label class="form-label small">定时轮询间隔(秒)</label>
+                            <input class="form-control form-control-sm" type="number" id="globalPollInterval" value="60" min="10" max="3600" onchange="updateGlobalPollInterval(parseInt(this.value)||60)">
+                            <div class="form-text">后台定时检查所有区域平衡状态</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -187,8 +191,9 @@ function loadConfig() {
         .then(r => r.json())
         .then(data => {
             configData = data;
-            // 加载全局防抖设置
+            // 加载全局设置
             document.getElementById('globalDebounce').value = data.auto_dispatch_debounce || 5;
+            document.getElementById('globalPollInterval').value = data.poll_dispatch_interval || 60;
             renderVisualEditor(data);
             document.getElementById('sourceEditor').value = JSON.stringify(data, null, 2);
             loadBackups();
@@ -198,6 +203,11 @@ function loadConfig() {
 
 function updateGlobalDebounce(value) {
     configData.auto_dispatch_debounce = value;
+    syncSourceEditor();
+}
+
+function updateGlobalPollInterval(value) {
+    configData.poll_dispatch_interval = value;
     syncSourceEditor();
 }
 

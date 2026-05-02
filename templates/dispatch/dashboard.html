@@ -357,6 +357,7 @@
 <script>
 let logTimer = null;
 let dataTimer = null;
+let calcInfoTimer = null;
 let chartInstances = {};
 let pageVisible = true;
 
@@ -392,11 +393,32 @@ function startTimers() {
     stopTimers();
     logTimer = setInterval(loadGlobalLog, LOG_INTERVAL);
     dataTimer = setInterval(refreshData, DATA_INTERVAL);
+    calcInfoTimer = setInterval(updateCalcInfoTimestamps, 1000);
 }
 
 function stopTimers() {
     if (logTimer) { clearInterval(logTimer); logTimer = null; }
     if (dataTimer) { clearInterval(dataTimer); dataTimer = null; }
+    if (calcInfoTimer) { clearInterval(calcInfoTimer); calcInfoTimer = null; }
+}
+
+function formatTimeDiff(targetMs, isFuture) {
+    const diff = Math.floor((Date.now() - targetMs) / 1000);
+    const seconds = Math.abs(diff);
+    const suffix = diff < 0 ? '后' : '前';
+    if (seconds < 60) return `${seconds}s${suffix}`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m${seconds % 60}s${suffix}`;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    return `${h}h${m}m${suffix}`;
+}
+
+function updateCalcInfoTimestamps() {
+    document.querySelectorAll('[data-timestamp]').forEach(el => {
+        const ts = el.getAttribute('data-timestamp');
+        if (!ts) return;
+        el.textContent = formatTimeDiff(new Date(ts).getTime());
+    });
 }
 
 function refreshAll() {
@@ -725,6 +747,9 @@ function renderAreas(areas) {
                     <div class="formula-row" id="formula-${area.region_key}" style="font-size:0.8rem;padding:0.25rem 0;opacity:0.8;">
                         ${getFormulaText(area)}
                     </div>
+                    <div class="calc-info-row" id="calc-info-${area.region_key}" style="font-size:0.75rem;padding:0.15rem 0;opacity:0.7;">
+                        ${getCalcInfoText(area)}
+                    </div>
                     <div class="row g-3">
                         <div class="col-md-6">
                             <div class="d-flex align-items-start gap-2 mb-2">
@@ -1017,6 +1042,12 @@ function updateAreasData(areas) {
             formulaRow.innerHTML = getFormulaText(area);
         }
         
+        // 更新计算信息行
+        const calcInfoRow = card.querySelector('.calc-info-row');
+        if (calcInfoRow) {
+            calcInfoRow.innerHTML = getCalcInfoText(area);
+        }
+        
         // 更新方向徽章（在 header 第一行右侧）
         const header = card.querySelector('.area-header');
         const oldBadge = header.querySelector('.direction-badge');
@@ -1211,6 +1242,53 @@ function getFormulaText(area) {
     }
     
     return formula;
+}
+
+function getCalcInfoText(area) {
+    let parts = [];
+    
+    // 分时配置信息
+    if (area.time_slot_active && area.time_slot_matched) {
+        const slot = area.time_slot_matched;
+        const slotName = slot.name || (slot.start + '~' + slot.end);
+        const remaining = area.time_slot_remaining || 0;
+        let remainText = '';
+        if (remaining > 0) {
+            const h = Math.floor(remaining / 60);
+            const m = remaining % 60;
+            remainText = h > 0 ? `剩余 ${h}h${m}m` : `剩余 ${m}m`;
+        }
+        parts.push(`<span title="分时配置生效中">⏰ ${escapeHtml(slotName)}(${slot.start}-${slot.end}) · ${remainText}</span>`);
+        
+        // 如果有多个匹配，显示优先于
+        if (area.time_slot_matched_count > 1 && area.time_slot_all_matched) {
+            const others = area.time_slot_all_matched.filter(n => n !== slotName);
+            if (others.length > 0) {
+                parts.push(`<span class="text-warning" title="同一时间有多个时段匹配，按优先级选择了当前时段">📌 优先于: ${others.join(', ')}</span>`);
+            }
+        }
+    }
+    
+    // 上次计算事件
+    const calc = area.last_calc_info;
+    if (calc && calc.time) {
+        const icon = calc.level === 'error' || calc.level === 'warning' ? '⚠️' : '⚡';
+        const initText = formatTimeDiff(new Date(calc.time).getTime(), false);
+        parts.push(`<span title="${escapeHtml(calc.detail || '')}">${icon} 上次: <span data-timestamp="${calc.time}">${initText}</span> ${escapeHtml(calc.trigger_source || '')}</span>`);
+    } else {
+        parts.push(`<span class="text-muted">⚡ 上次计算: - · 暂无记录</span>`);
+    }
+    
+    // 定时轮询倒计时
+    const pollInterval = area.poll_dispatch_interval || 60;
+    const pollLast = area.poll_dispatch_last || 0;
+    // 首次时用当前时间作为基准，显示完整间隔倒计时
+    const baseTime = pollLast > 0 ? pollLast : (Date.now() / 1000);
+    const nextPoll = baseTime * 1000 + pollInterval * 1000;
+    const initText = formatTimeDiff(nextPoll);
+    parts.push(`<span title="定时轮询调度（每${pollInterval}s）">🔄 轮询: <span data-timestamp="${new Date(nextPoll).toISOString()}">${initText}</span>后</span>`);
+    
+    return parts.join(' <span class="text-muted">|</span> ');
 }
 
 function toggleRegion(regionKey, enabled) {
@@ -1676,13 +1754,24 @@ function loadTimeSlotConfig(regionKey) {
             html += '</div>';
             
             if (slots.length > 0) {
-                html += '<div class="mb-2"><strong>时段列表：</strong></div>';
+                html += '<div class="mb-2"><strong>时段列表：</strong><small class="text-muted ms-2">拖动排序调整优先级（从上到下递减）</small></div>';
+                html += '<div id="ts-list-' + regionKey + '" style="min-height:20px;">';
                 slots.forEach((s, idx) => {
                     const xminLabel = s.xmin === -1 ? '禁用' : s.xmin;
                     const xmaxLabel = s.xmax === -1 ? '禁用' : s.xmax;
-                    html += '<div class="json-file-item">';
-                    html += '<div class="file-info">';
-                    html += '<span class="badge bg-info">' + s.start + ' ~ ' + s.end + '</span>';
+                    const name = s.name || '';
+                    const priority = s.priority || (idx + 1);
+                    // 判断是否跨天
+                    const isOvernight = s.start > s.end;
+                    const timeLabel = isOvernight
+                        ? s.start + ' ~ ' + s.end + ' <small class="text-warning">🌙次日</small>'
+                        : s.start + ' ~ ' + s.end;
+                    html += '<div class="json-file-item ts-item" draggable="true" data-slot-idx="' + idx + '" data-slot-priority="' + priority + '">';
+                    html += '<div class="file-info" style="flex:1;min-width:0;">';
+                    html += '<span class="drag-handle me-2" style="cursor:grab;opacity:0.5;">☰</span>';
+                    html += '<span class="badge bg-secondary me-1">P' + priority + '</span>';
+                    if (name) html += '<span class="me-2 fw-bold">' + escapeHtml(name) + '</span>';
+                    html += '<span class="badge ' + (isOvernight ? 'bg-indigo' : 'bg-info') + '">' + timeLabel + '</span>';
                     html += '<span>xmin: <strong>' + xminLabel + '</strong></span>';
                     html += '<span>xmax: <strong>' + xmaxLabel + '</strong></span>';
                     html += '</div>';
@@ -1692,6 +1781,7 @@ function loadTimeSlotConfig(regionKey) {
                     html += '</div>';
                     html += '</div>';
                 });
+                html += '</div>';
             } else {
                 html += '<div class="text-muted py-2">暂无时段配置</div>';
             }
@@ -1703,16 +1793,31 @@ function loadTimeSlotConfig(regionKey) {
             html += '<button class="btn btn-sm btn-outline-secondary" id="ts-cancel-' + regionKey + '" onclick="resetTimeSlotForm(\'' + regionKey + '\')" style="display:none;"><i class="bi bi-x"></i> 取消编辑</button>';
             html += '</div>';
             html += '<div class="row g-2 align-items-end">';
+            html += '<div class="col-md-2"><label class="form-label small">名称</label><input type="text" class="form-control form-control-sm" id="ts-name-' + regionKey + '" placeholder="如:白班" maxlength="20"></div>';
             html += '<div class="col-md-2"><label class="form-label small">开始</label><input type="time" class="form-control form-control-sm" id="ts-start-' + regionKey + '" value="08:00"></div>';
             html += '<div class="col-md-2"><label class="form-label small">结束</label><input type="time" class="form-control form-control-sm" id="ts-end-' + regionKey + '" value="17:00"></div>';
-            html += '<div class="col-md-2"><label class="form-label small">xmin</label><input type="number" class="form-control form-control-sm" id="ts-xmin-' + regionKey + '" value="2"></div>';
-            html += '<div class="col-md-2"><label class="form-label small">xmax</label><input type="number" class="form-control form-control-sm" id="ts-xmax-' + regionKey + '" value="4"></div>';
+            html += '<div class="col-md-1"><label class="form-label small">xmin</label><input type="number" class="form-control form-control-sm" id="ts-xmin-' + regionKey + '" value="2"></div>';
+            html += '<div class="col-md-1"><label class="form-label small">xmax</label><input type="number" class="form-control form-control-sm" id="ts-xmax-' + regionKey + '" value="4"></div>';
             html += '<div class="col-md-2"><button class="btn btn-sm btn-primary" id="ts-btn-' + regionKey + '" onclick="addTimeSlot(\'' + regionKey + '\')"><i class="bi bi-plus"></i> 添加</button></div>';
             html += '</div>';
             html += '<small class="text-muted mt-1 d-block">xmin=-1, xmax=-1 = 禁用真实任务；xmin=0, xmax=0 = 清空到0</small>';
             html += '</div>';
             
+            // 使用说明
+            html += '<div class="mt-2 p-2 small text-muted" style="background:var(--detail-card-bg);border-radius:6px;">';
+            html += '<strong>💡 使用说明：</strong><br>';
+            html += '• 拖动时段可调整优先级（从上到下优先级递减，P1最高）<br>';
+            html += '• 同一时间多个时段匹配时，优先级高的生效<br>';
+            html += '• 结束时间 ≤ 开始时间 = 跨天时段 🌙，自动覆盖到次日<br>';
+            html += '&nbsp;&nbsp;例：22:00~08:00 覆盖当天22点至次日8点<br>';
+            html += '• 示例：白班(08-20, xmin=2) + 高峰(18-22, xmin=3)，18:00-20:00 高峰优先级高则取 xmin=3';
+            html += '</div>';
+            
             el.innerHTML = html;
+            // 初始化拖拽排序
+            if (slots.length > 0) {
+                setTimeout(() => initTimeSlotDrag(regionKey), 100);
+            }
         })
         .catch(err => { el.innerHTML = '<div class="text-danger py-2">加载失败: ' + err.message + '</div>'; });
 }
@@ -1742,6 +1847,7 @@ function toggleTimeSlotEnabled(regionKey, enabled) {
 }
 
 function addTimeSlot(regionKey) {
+    const name = document.getElementById('ts-name-' + regionKey).value.trim();
     const start = document.getElementById('ts-start-' + regionKey).value;
     const end = document.getElementById('ts-end-' + regionKey).value;
     const xmin = parseInt(document.getElementById('ts-xmin-' + regionKey).value);
@@ -1760,7 +1866,9 @@ function addTimeSlot(regionKey) {
         .then(config => {
             if (!config[regionKey]) return;
             if (!config[regionKey].time_slots) config[regionKey].time_slots = { enabled: false, slots: [] };
-            config[regionKey].time_slots.slots.push({ start, end, xmin, xmax });
+            const slots = config[regionKey].time_slots.slots;
+            const newPriority = slots.length > 0 ? Math.max(...slots.map(s => s.priority || 0)) + 1 : 1;
+            slots.push({ name, start, end, xmin, xmax, priority: newPriority });
             return fetch('/api/dispatch/config', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -1787,6 +1895,7 @@ function editTimeSlot(regionKey, idx) {
             const s = slots[idx];
             
             // 填充表单
+            document.getElementById('ts-name-' + regionKey).value = s.name || '';
             document.getElementById('ts-start-' + regionKey).value = s.start;
             document.getElementById('ts-end-' + regionKey).value = s.end;
             document.getElementById('ts-xmin-' + regionKey).value = s.xmin;
@@ -1808,6 +1917,7 @@ function editTimeSlot(regionKey, idx) {
 
 function resetTimeSlotForm(regionKey) {
     // 重置为新增模式
+    document.getElementById('ts-name-' + regionKey).value = '';
     document.getElementById('ts-start-' + regionKey).value = '08:00';
     document.getElementById('ts-end-' + regionKey).value = '17:00';
     document.getElementById('ts-xmin-' + regionKey).value = '2';
@@ -1826,6 +1936,7 @@ function resetTimeSlotForm(regionKey) {
 }
 
 function updateTimeSlot(regionKey, idx) {
+    const name = document.getElementById('ts-name-' + regionKey).value.trim();
     const start = document.getElementById('ts-start-' + regionKey).value;
     const end = document.getElementById('ts-end-' + regionKey).value;
     const xmin = parseInt(document.getElementById('ts-xmin-' + regionKey).value);
@@ -1855,9 +1966,10 @@ function updateTimeSlot(regionKey, idx) {
             }
             // 确保 slots 数组长度足够
             while (config[regionKey].time_slots.slots.length <= idx) {
-                config[regionKey].time_slots.slots.push({ start: '00:00', end: '23:59', xmin: 2, xmax: 4 });
+                config[regionKey].time_slots.slots.push({ name: '', start: '00:00', end: '23:59', xmin: 2, xmax: 4, priority: config[regionKey].time_slots.slots.length + 1 });
             }
-            config[regionKey].time_slots.slots[idx] = { start, end, xmin, xmax };
+            const existing = config[regionKey].time_slots.slots[idx];
+            config[regionKey].time_slots.slots[idx] = { name, start, end, xmin, xmax, priority: existing.priority || (idx + 1) };
             return fetch('/api/dispatch/config', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -1905,6 +2017,102 @@ function removeTimeSlot(regionKey, idx) {
             }
         })
         .catch(err => showToast('删除失败: ' + err.message, 'danger'));
+}
+
+// ========== 分时配置拖拽排序 ==========
+
+function initTimeSlotDrag(regionKey) {
+    const container = document.getElementById('ts-list-' + regionKey);
+    if (!container) return;
+    
+    let dragItem = null;
+    
+    container.addEventListener('dragstart', (e) => {
+        dragItem = e.target.closest('.ts-item');
+        if (!dragItem) return;
+        dragItem.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+    });
+    
+    container.addEventListener('dragend', (e) => {
+        const item = e.target.closest('.ts-item');
+        if (item) item.classList.remove('dragging');
+        dragItem = null;
+    });
+    
+    container.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const afterElement = getDragAfterElement(container, e.clientY);
+        const dragging = container.querySelector('.dragging');
+        if (!dragging) return;
+        if (afterElement) {
+            container.insertBefore(dragging, afterElement);
+        } else {
+            container.appendChild(dragging);
+        }
+    });
+    
+    container.addEventListener('drop', (e) => {
+        e.preventDefault();
+        updateTimeSlotPriorities(regionKey);
+    });
+}
+
+function getDragAfterElement(container, y) {
+    const items = [...container.querySelectorAll('.ts-item:not(.dragging)')];
+    return items.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) {
+            return { offset, element: child };
+        }
+        return closest;
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+function updateTimeSlotPriorities(regionKey) {
+    const items = document.querySelectorAll('#ts-list-' + regionKey + ' .ts-item');
+    const newOrder = [];
+    items.forEach((item, idx) => {
+        const slotIdx = parseInt(item.dataset.slotIdx);
+        newOrder.push({ idx: slotIdx, priority: idx + 1 });
+    });
+    
+    fetch('/api/dispatch/config')
+        .then(r => r.json())
+        .then(config => {
+            if (!config[regionKey] || !config[regionKey].time_slots) return;
+            const slots = config[regionKey].time_slots.slots;
+            // 按新顺序重排 slots 数组并更新 priority
+            const reordered = newOrder.map(n => {
+                const s = slots[n.idx];
+                if (s) s.priority = n.priority;
+                return s;
+            }).filter(Boolean);
+            config[regionKey].time_slots.slots = reordered;
+            return fetch('/api/dispatch/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+        })
+        .then(r => r && r.json())
+        .then(result => {
+            if (result && result.success) {
+                showToast('优先级已更新', 'success');
+                loadTimeSlotConfig(regionKey);
+                refreshData();
+            }
+        })
+        .catch(err => showToast('排序失败: ' + err.message, 'danger'));
+}
+
+// ========== 工具函数 ==========
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 }
 
 function showToast(message, type) {

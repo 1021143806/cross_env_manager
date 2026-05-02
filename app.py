@@ -2617,6 +2617,16 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"[启动] 警告: 自恢复线程启动失败: {e}")
     
+    # ========================================================================
+    # 启动定时轮询调度后台线程
+    # ========================================================================
+    try:
+        from routes.dispatch_routes import _start_poll_dispatch_thread
+        _start_poll_dispatch_thread()
+        print(f"[启动] 定时轮询调度后台线程已启动")
+    except Exception as e:
+        print(f"[启动] 警告: 定时轮询调度线程启动失败: {e}")
+    
     # 获取Flask运行参数（命令行参数优先，然后是配置，最后是环境变量）
     # 注意：配置文件使用小写字段名（如 host, port），环境变量使用大写（如 FLASK_HOST, FLASK_PORT）
     flask_config = config.get('flask', {})
