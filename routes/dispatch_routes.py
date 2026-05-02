@@ -958,9 +958,20 @@ def get_config():
 @login_required
 @admin_required
 def save_config():
-    """保存配置"""
+    """保存配置（自动创建备份）"""
     try:
         data = request.get_json()
+        # 先创建备份
+        try:
+            os.makedirs(BACKUP_DIR, exist_ok=True)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_name = f"dispatch_config_{timestamp}.json"
+            backup_path = os.path.join(BACKUP_DIR, backup_name)
+            with open(backup_path, 'w', encoding='utf-8') as f:
+                f.write(f"// commit: auto-save\n")
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass  # 备份失败不影响保存
         _save_cache_index(data)
         return jsonify({'success': True, 'message': '配置保存成功'})
     except Exception as e:
@@ -1937,8 +1948,8 @@ def _update_test_stats(line):
         # 执行下发
         elif '执行' in line and ('下发' in line or '模拟' in line):
             ops['exec'] = ops.get('exec', 0) + 1
-        # 设备池
-        m = re.search(r'设备池[：:]\s*(\d+)', line)
+        # 设备池（取已创建数）
+        m = re.search(r'已创建[：:]\s*(\d+)', line)
         if m:
             _test_state['pool_stats'] = m.group(1)
         # 进行中
@@ -2062,34 +2073,29 @@ def api_test_start():
 @dispatch_bp.route('/api/dispatch/test/stop', methods=['POST'])
 @login_required
 def api_test_stop():
-    """停止自动驾驶测试"""
+    """停止自动驾驶测试并重启项目"""
     global _test_stop_flag, _test_state
     
     _test_stop_flag.set()
     
-    # 立即标记为停止，不等待子进程
     with _test_state_lock:
         _test_state['running'] = False
+        proc = _test_state.get('_proc')
+        if proc and proc.poll() is None:
+            try:
+                proc.kill()
+            except:
+                pass
     
-    # 异步终止子进程
-    def _kill_proc():
-        with _test_state_lock:
-            proc = _test_state.get('_proc')
-            if proc and proc.poll() is None:
-                try:
-                    proc.kill()
-                    proc.wait(timeout=5)
-                except Exception:
-                    pass
-                try:
-                    proc.stdout.close()
-                except:
-                    pass
-                _test_log("测试子进程已终止")
+    # 延迟重启，先返回响应
+    def _restart():
+        time.sleep(0.5)
+        import sys
+        os.execv(sys.executable, [sys.executable] + sys.argv)
     
-    threading.Thread(target=_kill_proc, daemon=True).start()
+    threading.Thread(target=_restart, daemon=True).start()
     
-    return jsonify({'success': True, 'message': '测试已停止'})
+    return jsonify({'success': True, 'message': '正在重启服务...'})
 
 
 @dispatch_bp.route('/api/dispatch/test/batch', methods=['POST'])

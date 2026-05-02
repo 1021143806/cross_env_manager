@@ -1091,10 +1091,32 @@ function updateAreasData(areas) {
             formulaRow.innerHTML = getFormulaText(area);
         }
         
-        // 更新计算信息行
+        // 更新计算信息行（增量更新 data-timestamp，不重建 DOM）
         const calcInfoRow = card.querySelector('.calc-info-row');
         if (calcInfoRow) {
-            calcInfoRow.innerHTML = getCalcInfoText(area);
+            // 更新上次计算事件的 timestamp
+            const calc = area.last_calc_info;
+            const lastTsEl = calcInfoRow.querySelector('[data-timestamp]');
+            if (calc && calc.time && lastTsEl) {
+                if (lastTsEl.getAttribute('data-timestamp') !== calc.time) {
+                    lastTsEl.setAttribute('data-timestamp', calc.time);
+                }
+            }
+            // 更新轮询倒计时的 timestamp
+            const pollTsEls = calcInfoRow.querySelectorAll('[data-timestamp]');
+            if (pollTsEls.length >= 2) {
+                const pollInterval = area.poll_dispatch_interval || 60;
+                const pollLast = area.poll_dispatch_last || 0;
+                const baseTime = pollLast > 0 ? pollLast : (Date.now() / 1000);
+                const nextPoll = new Date(baseTime * 1000 + pollInterval * 1000).toISOString();
+                pollTsEls[1].setAttribute('data-timestamp', nextPoll);
+            }
+            // 如果结构变化（如分时配置切换），才全量重建
+            const hasTimeSlot = calcInfoRow.textContent.includes('⏰');
+            const shouldHaveTimeSlot = area.time_slot_active && area.time_slot_matched;
+            if (hasTimeSlot !== shouldHaveTimeSlot) {
+                calcInfoRow.innerHTML = getCalcInfoText(area);
+            }
         }
         
         // 更新方向徽章（在 header 第一行右侧）
@@ -1405,7 +1427,7 @@ function getCalcInfoText(area) {
     const baseTime = pollLast > 0 ? pollLast : (Date.now() / 1000);
     const nextPoll = baseTime * 1000 + pollInterval * 1000;
     const initText = formatTimeDiff(nextPoll);
-    parts.push(`<span title="定时轮询调度（每${pollInterval}s）">🔄 轮询: <span data-timestamp="${new Date(nextPoll).toISOString()}">${initText}</span>后</span>`);
+    parts.push(`<span title="定时轮询调度（每${pollInterval}s）">🔄 轮询: <span data-timestamp="${new Date(nextPoll).toISOString()}">${initText}</span></span>`);
     
     return parts.join(' <span class="text-muted">|</span> ');
 }
