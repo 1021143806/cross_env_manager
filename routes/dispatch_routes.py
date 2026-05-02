@@ -311,6 +311,7 @@ def calculate_area_balance(region_key, region_config):
     a = 0
     incoming_templates = []
     outgoing_templates = []
+    pending_devices = []  # 执行中设备列表（status=6 且有 deviceCode）
     
     for t in region_config.get('templates', []):
         fpath = _get_template_file_path(region_key, t)
@@ -327,6 +328,16 @@ def calculate_area_balance(region_key, region_config):
             incoming_templates.append(item)
         else:
             outgoing_templates.append(item)
+        
+        # 收集执行中设备（status=6 且有 deviceCode）
+        for task in tasks:
+            if task.get('status') == 6 and task.get('deviceCode'):
+                pending_devices.append({
+                    "deviceNum": task.get('deviceNum', ''),
+                    "deviceCode": task.get('deviceCode', ''),
+                    "template": template_code,
+                    "task_type": task_type
+                })
     
     # 统计 b: 离开模板中 status=6 的任务数
     b = sum(t['count'] for t in outgoing_templates)
@@ -396,6 +407,11 @@ def calculate_area_balance(region_key, region_config):
         "xmax": xmax,
         "max_dispatch_once": max_once,
         "currentCount": currentCount,
+        "current_devices": [
+            {"deviceNum": d.get('deviceNum', ''), "deviceCode": d.get('deviceCode', '')}
+            for d in now_devices
+        ],
+        "pending_devices": pending_devices,
         "a": a,
         "b": b,
         "expectedCount": expectedCount,
@@ -596,9 +612,22 @@ def handle_status_report(data):
     else:
         # 非 6 的状态（包括 8=完成 及其他状态）：执行清理逻辑
         # 从模板 JSON 中删除该设备记录
+        # 匹配策略：
+        #   1. 优先按 deviceCode 精确匹配（负载任务场景，下发时已知设备）
+        #   2. 如果模板中存在 deviceCode 为空的记录，按 order_id 匹配（空车任务场景）
         tasks = _load_json(template_file)
         old_count = len(tasks)
-        tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') == 6)]
+        # 检查模板中是否有 deviceCode 为空的 status=6 记录（空车下发特征）
+        has_empty_device = any(
+            t.get('status') == 6 and not t.get('deviceCode')
+            for t in tasks
+        )
+        if has_empty_device and order_id:
+            # 空车任务：按 order_id 匹配
+            tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') == 6)]
+        else:
+            # 负载任务：按 deviceCode 匹配
+            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') == 6)]
         _save_json(template_file, tasks)
         template_removed = old_count - len(tasks)
         
@@ -1080,23 +1109,13 @@ def _execute_dispatch(region_key, region, balance):
             result = f'请求失败: {str(e)}'
             response_body = {"error": str(e)}
     
-    # 写入模板 JSON
+    # 写入模板 JSON（模拟和真实下发一致：不指定设备，留空等待 status=6 上报填充）
     template_file = _get_template_file_path(region_key, target_template)
     tasks = _load_json(template_file)
     now = datetime.now().isoformat()
-    # 模拟下发时：来空车生成新设备，回空车从 currentCount 取真实设备
-    now_devices = _load_json(_get_region_file(region_key, 'currentCount.json'))
     for i in range(dispatch_count):
-        if simulated and direction == 'out' and now_devices:
-            # 回空车模拟：从 currentCount 取真实设备
-            dev = now_devices[i % len(now_devices)]
-            device_code = dev.get('deviceCode', f'SIM_{sim_id}_{i}')
-            device_num = dev.get('deviceNum', f'SIM_D{i}')
-        else:
-            device_code = f"SIM_{sim_id}_{i}" if simulated else f"DISP_{sim_id}_{i}"
-            device_num = f"SIM_D{i}" if simulated else f"DISP_D{i}"
         tasks.append({
-            "deviceCode": device_code, "deviceNum": device_num,
+            "deviceCode": "", "deviceNum": "",
             "status": 6, "_simulated": True if simulated else False,
             "order_id": order_id, "create_time": now, "update_time": now
         })
