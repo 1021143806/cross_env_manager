@@ -361,9 +361,9 @@ let calcInfoTimer = null;
 let chartInstances = {};
 let pageVisible = true;
 
-// 刷新间隔：日志 2s，数据 5s
-const LOG_INTERVAL = 2000;
-const DATA_INTERVAL = 5000;
+// 刷新间隔（默认值，会被 API 返回的 refresh_config 覆盖）
+let LOG_INTERVAL = 2000;
+let DATA_INTERVAL = 5000;
 
 $(document).ready(function() {
     refreshData();
@@ -430,6 +430,16 @@ function refreshData() {
     fetch('/api/dispatch/status')
         .then(r => r.json())
         .then(data => {
+            // 动态更新刷新间隔
+            if (data.refresh_config) {
+                const newDataInt = data.refresh_config.data_interval || 5000;
+                const newLogInt = data.refresh_config.log_interval || 2000;
+                if (newDataInt !== DATA_INTERVAL || newLogInt !== LOG_INTERVAL) {
+                    DATA_INTERVAL = newDataInt;
+                    LOG_INTERVAL = newLogInt;
+                    startTimers();  // 重启定时器
+                }
+            }
             renderSummary(data.summary);
             const container = document.getElementById('areaCardsContainer');
             if (!container.hasChildNodes() || container.children.length === 0) {

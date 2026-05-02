@@ -104,6 +104,21 @@
                             <input class="form-control form-control-sm" type="number" id="globalPollInterval" value="60" min="10" max="3600" onchange="updateGlobalPollInterval(parseInt(this.value)||60)">
                             <div class="form-text">后台定时检查所有区域平衡状态</div>
                         </div>
+                        <div class="col-md-3"><label class="form-label small">数据刷新间隔(ms)</label>
+                            <input class="form-control form-control-sm" type="number" id="globalDataInterval" value="5000" min="1000" max="60000" step="500" onchange="updateGlobalDataInterval(parseInt(this.value)||5000)">
+                            <div class="form-text">看板区域数据刷新频率</div>
+                        </div>
+                        <div class="col-md-3"><label class="form-label small">日志刷新间隔(ms)</label>
+                            <input class="form-control form-control-sm" type="number" id="globalLogInterval" value="2000" min="500" max="30000" step="500" onchange="updateGlobalLogInterval(parseInt(this.value)||2000)">
+                            <div class="form-text">看板操作日志刷新频率</div>
+                        </div>
+                    </div>
+                    <div class="mt-2 p-2 small text-muted" style="background:var(--detail-card-bg);border-radius:6px;">
+                        <strong>📊 刷新间隔与服务器负载参考：</strong><br>
+                        • <b>高频</b>（数据1s/日志0.5s）：实时性强，单页面约120次请求/分钟，适合调试<br>
+                        • <b>标准</b>（数据5s/日志2s）：推荐配置，单页面约42次请求/分钟，平衡实时性与负载<br>
+                        • <b>低频</b>（数据30s/日志10s）：单页面约8次请求/分钟，适合多用户或低配服务器<br>
+                        • 数据刷新会触发所有区域重新计算平衡，区域越多开销越大
                     </div>
                 </div>
             </div>
@@ -194,6 +209,8 @@ function loadConfig() {
             // 加载全局设置
             document.getElementById('globalDebounce').value = data.auto_dispatch_debounce || 5;
             document.getElementById('globalPollInterval').value = data.poll_dispatch_interval || 60;
+            document.getElementById('globalDataInterval').value = data.data_refresh_interval || 5000;
+            document.getElementById('globalLogInterval').value = data.log_refresh_interval || 2000;
             renderVisualEditor(data);
             document.getElementById('sourceEditor').value = JSON.stringify(data, null, 2);
             loadBackups();
@@ -208,6 +225,16 @@ function updateGlobalDebounce(value) {
 
 function updateGlobalPollInterval(value) {
     configData.poll_dispatch_interval = value;
+    syncSourceEditor();
+}
+
+function updateGlobalDataInterval(value) {
+    configData.data_refresh_interval = value;
+    syncSourceEditor();
+}
+
+function updateGlobalLogInterval(value) {
+    configData.log_refresh_interval = value;
     syncSourceEditor();
 }
 

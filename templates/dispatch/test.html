@@ -340,8 +340,8 @@ function parseTasksFromLogs(logs) {
     const now = Date.now();
     
     logs.forEach(line => {
-        // 匹配任务开始: 来负载/回负载 (池→任务, XXs后完成) 或 (XXs后完成)
-        let m = line.match(/(来负载|回负载)\s+(\S+)\s+(\S+)\s+\((?:池→任务,\s*)?([\d.]+)s后完成\)/);
+        // 匹配任务开始: 来负载/回负载 (池→任务, XXs后完成) 或 (XXs后完成) 或 (池→任务, 批量下发) 或 (区域→任务, 批量下发)
+        let m = line.match(/(来负载|回负载)\s+(\S+)\s+(\S+)\s+\((?:池→任务|区域→任务)[,\s]+(?:([\d.]+)s后完成|批量下发)\)/);
         if (m) {
             const taskType = m[1] === '来负载' ? 'load_in' : 'load_out';
             const remaining = parseFloat(m[4]);

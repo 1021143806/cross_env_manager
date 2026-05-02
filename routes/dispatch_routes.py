@@ -552,7 +552,11 @@ def get_all_areas_status():
             "need_dispatch": need_dispatch,
             "balanced": balanced
         },
-        "areas": areas
+        "areas": areas,
+        "refresh_config": {
+            "data_interval": index.get('data_refresh_interval', 5000),
+            "log_interval": index.get('log_refresh_interval', 2000)
+        }
     }
 
 
@@ -1977,24 +1981,27 @@ def api_test_stop():
     
     _test_stop_flag.set()
     
-    # 终止子进程
+    # 立即标记为停止，不等待子进程
     with _test_state_lock:
-        proc = _test_state.get('_proc')
-        if proc and proc.poll() is None:
-            try:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait()
-            except Exception:
+        _test_state['running'] = False
+    
+    # 异步终止子进程
+    def _kill_proc():
+        with _test_state_lock:
+            proc = _test_state.get('_proc')
+            if proc and proc.poll() is None:
                 try:
                     proc.kill()
+                    proc.wait(timeout=5)
+                except Exception:
+                    pass
+                try:
+                    proc.stdout.close()
                 except:
                     pass
-            _test_log("测试子进程已终止")
-        _test_state['running'] = False
+                _test_log("测试子进程已终止")
+    
+    threading.Thread(target=_kill_proc, daemon=True).start()
     
     return jsonify({'success': True, 'message': '测试已停止'})
 
@@ -2038,13 +2045,13 @@ def api_test_batch():
             dev_num = f"DJC{_random.randint(1, 99)}"
             dev_code = f"BL{_random.randint(10000, 99999)}BAK{_random.randint(10000, 99999)}"
             order_id = f"pad_html{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_{_random.randint(100, 999)}_{_random.randint(1000, 9999)}"
-            # 直接调用 handle_status_report
             data = {
                 'region_key': rk, 'template_name': tpl,
                 'deviceNum': dev_num, 'deviceCode': dev_code,
                 'status': 6, 'order_id': order_id
             }
             handle_status_report(data)
+            _test_log(f"  [{rk}] 来负载 {tpl} {dev_num} (池→任务, 批量下发)")
             count += 1
         elif not is_in and all_load_out:
             rk, tpl = _random.choice(all_load_out)
@@ -2057,9 +2064,10 @@ def api_test_batch():
                 'status': 6, 'order_id': order_id
             }
             handle_status_report(data)
+            _test_log(f"  [{rk}] 回负载 {tpl} {dev_num} (区域→任务, 批量下发)")
             count += 1
     
-    _test_log(f"批量下发: {count}个任务")
+    _test_log(f"批量下发完成: {count}个任务")
     return jsonify({'success': True, 'count': count})
 
 
