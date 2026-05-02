@@ -219,22 +219,22 @@ function loadConfig() {
 }
 
 function updateGlobalDebounce(value) {
-    configData.auto_dispatch_debounce = value;
+    configData.auto_dispatch_debounce = Math.max(value, 1);
     syncSourceEditor();
 }
 
 function updateGlobalPollInterval(value) {
-    configData.poll_dispatch_interval = value;
+    configData.poll_dispatch_interval = Math.max(value, 10);
     syncSourceEditor();
 }
 
 function updateGlobalDataInterval(value) {
-    configData.data_refresh_interval = value;
+    configData.data_refresh_interval = Math.max(value, 1000);
     syncSourceEditor();
 }
 
 function updateGlobalLogInterval(value) {
-    configData.log_refresh_interval = value;
+    configData.log_refresh_interval = Math.max(value, 500);
     syncSourceEditor();
 }
 

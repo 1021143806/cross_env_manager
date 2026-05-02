@@ -421,7 +421,8 @@ def calculate_area_balance(region_key, region_config):
                     "deviceCode": task.get('deviceCode', ''),
                     "template": template_code,
                     "task_type": task_type,
-                    "order_id": task.get('order_id', '')
+                    "order_id": task.get('order_id', ''),
+                    "create_time": task.get('create_time', '')
                 })
     
     # 统计 b: 离开模板中 status=6 的任务数
@@ -496,7 +497,8 @@ def calculate_area_balance(region_key, region_config):
         "max_dispatch_once": max_once,
         "currentCount": currentCount,
         "current_devices": [
-            {"deviceNum": d.get('deviceNum', ''), "deviceCode": d.get('deviceCode', '')}
+            {"deviceNum": d.get('deviceNum', ''), "deviceCode": d.get('deviceCode', ''),
+             "create_time": d.get('create_time', '')}
             for d in now_devices
         ],
         "pending_devices": pending_devices,
@@ -554,8 +556,8 @@ def get_all_areas_status():
         },
         "areas": areas,
         "refresh_config": {
-            "data_interval": index.get('data_refresh_interval', 5000),
-            "log_interval": index.get('log_refresh_interval', 2000)
+            "data_interval": max(index.get('data_refresh_interval', 5000), 1000),
+            "log_interval": max(index.get('log_refresh_interval', 2000), 500)
         }
     }
 
@@ -791,6 +793,90 @@ def area_detail(area_id):
 def api_status():
     """获取所有区域状态"""
     return jsonify(get_all_areas_status())
+
+
+@dispatch_bp.route('/api/dispatch/device_info')
+@login_required
+def api_device_info():
+    """获取设备详情（按 deviceNum 查询）"""
+    device_num = request.args.get('deviceNum', '')
+    if not device_num:
+        return jsonify({'error': '缺少 deviceNum 参数'}), 400
+    
+    # 从所有区域查找该设备
+    index = _load_cache_index()
+    device_info = None
+    found_region = None
+    
+    for rk, region in index.items():
+        if not isinstance(region, dict):
+            continue
+        # 查 currentCount.json
+        now_file = _get_region_file(rk, 'currentCount.json')
+        now_devices = _load_json(now_file)
+        for d in now_devices:
+            if d.get('deviceNum') == device_num:
+                device_info = {
+                    'deviceNum': d.get('deviceNum', ''),
+                    'deviceCode': d.get('deviceCode', ''),
+                    'status': 'idle',
+                    'region_key': rk,
+                    'order_id': d.get('order_id', ''),
+                    'shelfNumber': d.get('shelfNumber', ''),
+                    'create_time': d.get('create_time', '')
+                }
+                found_region = rk
+                break
+        if device_info:
+            break
+        
+        # 查模板 JSON 中的执行中任务
+        for t in region.get('templates', []):
+            fpath = _get_template_file_path(rk, t)
+            tasks = _load_json(fpath)
+            for task in tasks:
+                if task.get('deviceNum') == device_num and task.get('status') == 6:
+                    task_type = _normalize_task_type(t)
+                    template_code = t.get('code') or t.get('name', '')
+                    device_info = {
+                        'deviceNum': task.get('deviceNum', ''),
+                        'deviceCode': task.get('deviceCode', ''),
+                        'status': 'running',
+                        'region_key': rk,
+                        'template': template_code,
+                        'task_type': task_type,
+                        'order_id': task.get('order_id', ''),
+                        'shelfNumber': task.get('shelfNumber', ''),
+                        'create_time': task.get('create_time', ''),
+                        'update_time': task.get('update_time', '')
+                    }
+                    found_region = rk
+                    break
+            if device_info:
+                break
+        if device_info:
+            break
+    
+    if not device_info:
+        return jsonify({'error': f'设备 {device_num} 未找到'}), 404
+    
+    # 从 global_log 查询该设备的操作历史
+    logs = _load_json(GLOBAL_LOG_PATH)
+    history = []
+    for log in reversed(logs):
+        detail = log.get('detail', '')
+        if device_num in detail:
+            history.append({
+                'time': log.get('time', ''),
+                'action': log.get('action', ''),
+                'detail': detail,
+                'level': log.get('level', 'info')
+            })
+        if len(history) >= 20:
+            break
+    
+    device_info['history'] = history
+    return jsonify(device_info)
 
 
 @dispatch_bp.route('/api/dispatch/report_status', methods=['POST'])
@@ -1672,7 +1758,7 @@ def _start_poll_dispatch_thread():
             try:
                 index = _load_cache_index()
                 interval = index.get('poll_dispatch_interval', _POLL_DISPATCH_DEFAULT_INTERVAL)
-                if interval <= 0:
+                if interval < 10:
                     interval = _POLL_DISPATCH_DEFAULT_INTERVAL
                 
                 for rk, region in index.items():
