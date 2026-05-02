@@ -1,4 +1,4 @@
-，{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}调车自动驾驶测试{% endblock %}
 {% block favicon %}
 <link rel="icon" type="image/png" href="/static/img/agv/favicon-dispatch.png?v=1">
@@ -6,89 +6,122 @@
 
 {% block extra_css %}
 <style>
-    .test-container { max-width: 900px; margin: 0 auto; }
+    .test-container { max-width: 1200px; margin: 0 auto; }
     .test-header {
         display: flex; align-items: center; gap: 1rem;
-        padding: 1rem; background: var(--card-bg);
+        padding: 0.75rem 1rem; background: var(--card-bg);
         border: 1px solid var(--border-color); border-radius: 12px;
-        margin-bottom: 1rem;
+        margin-bottom: 0.75rem;
     }
     .test-header .status-dot {
         width: 12px; height: 12px; border-radius: 50%;
         background: #6c757d; flex-shrink: 0;
     }
-    .test-header .status-dot.running {
-        background: #28a745; animation: pulse 1s infinite;
-    }
+    .test-header .status-dot.running { background: #28a745; animation: pulse 1s infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
     
     .param-grid {
-        display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-        gap: 0.75rem; margin-bottom: 1rem;
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 0.5rem; margin-bottom: 0.75rem;
     }
-    .param-item label { font-size: 0.78rem; opacity: 0.7; display: block; margin-bottom: 0.2rem; }
+    .param-item label { font-size: 0.72rem; opacity: 0.7; display: block; margin-bottom: 0.15rem; }
     .param-item input {
-        width: 100%; padding: 0.35rem 0.5rem; border-radius: 6px;
+        width: 100%; padding: 0.3rem 0.4rem; border-radius: 6px;
         border: 1px solid var(--border-color); background: var(--detail-card-bg);
-        color: var(--text-color); font-size: 0.85rem;
+        color: var(--text-color); font-size: 0.8rem;
     }
     
     .stats-grid {
-        display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-        gap: 0.5rem; margin-bottom: 1rem;
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+        gap: 0.4rem; margin-bottom: 0.75rem;
     }
     .stat-card {
         background: var(--card-bg); border: 1px solid var(--border-color);
-        border-radius: 8px; padding: 0.6rem; text-align: center;
+        border-radius: 8px; padding: 0.4rem; text-align: center;
     }
-    .stat-card .val { font-size: 1.3rem; font-weight: 700; }
-    .stat-card .lbl { font-size: 0.7rem; opacity: 0.6; }
+    .stat-card .val { font-size: 1.1rem; font-weight: 700; }
+    .stat-card .lbl { font-size: 0.65rem; opacity: 0.6; }
     
+    /* 双栏布局 */
+    .dual-panel {
+        display: flex; gap: 0.75rem; margin-bottom: 0.75rem;
+    }
+    .dual-panel .panel-left { flex: 1; min-width: 0; }
+    .dual-panel .panel-right { width: 380px; flex-shrink: 0; }
+    
+    /* 任务表格 */
+    .task-table-wrap {
+        background: var(--card-bg); border: 1px solid var(--border-color);
+        border-radius: 8px; overflow: hidden;
+    }
+    .task-table-wrap .table-header {
+        padding: 0.5rem 0.75rem; font-size: 0.8rem; font-weight: 600;
+        border-bottom: 1px solid var(--border-color);
+        display: flex; align-items: center; gap: 0.5rem;
+    }
+    .task-table {
+        width: 100%; font-size: 0.75rem; border-collapse: collapse;
+    }
+    .task-table th {
+        padding: 0.35rem 0.5rem; font-size: 0.7rem; font-weight: 600;
+        text-align: left; border-bottom: 1px solid var(--border-color);
+        opacity: 0.7; white-space: nowrap;
+    }
+    .task-table td {
+        padding: 0.3rem 0.5rem; border-bottom: 1px solid rgba(128,128,128,0.15);
+        white-space: nowrap;
+    }
+    .task-table tr:hover td { background: var(--detail-card-bg); }
+    .task-table .task-id { max-width: 120px; overflow: hidden; text-overflow: ellipsis; font-family: monospace; font-size: 0.7rem; }
+    .task-table .badge-dot {
+        display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px;
+    }
+    
+    /* 日志流 */
     .log-stream {
         background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
-        padding: 0.75rem; max-height: 40vh; overflow-y: auto;
-        font-family: 'SF Mono', monospace; font-size: 0.78rem;
-        color: #c9d1d9; line-height: 1.5;
+        padding: 0.6rem; height: 400px; overflow-y: auto;
+        font-family: 'SF Mono', monospace; font-size: 0.72rem;
+        color: #c9d1d9; line-height: 1.4;
     }
-    .log-stream .log-time { color: #8b949e; }
     .log-stream .log-load-in { color: #58a6ff; }
     .log-stream .log-load-out { color: #d2991d; }
     .log-stream .log-empty { color: #39d2c0; }
     .log-stream .log-done { color: #3fb950; }
     .log-stream .log-exec { color: #a371f7; }
+    
+    @media (max-width: 900px) {
+        .dual-panel { flex-direction: column; }
+        .dual-panel .panel-right { width: 100%; }
+        .log-stream { height: 250px; }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="test-container">
-    <div class="alert alert-warning border-warning d-flex align-items-center gap-2 small mb-3" role="alert">
+    <div class="alert alert-warning border-warning d-flex align-items-center gap-2 small mb-2 py-2" role="alert">
         <span>🎮</span>
-        <div>
-            <strong>彩蛋功能 · 仅供开发调试使用</strong><br>
-            <span class="opacity-75">此页面为隐藏彩蛋，用于模拟AGV自动驾驶测试。生产环境请勿使用，以免影响正常业务数据。</span>
-        </div>
+        <div><strong>彩蛋功能 · 仅供开发调试使用</strong> · 生产环境请勿使用</div>
     </div>
     <div class="test-header">
         <span class="status-dot" id="statusDot"></span>
         <strong id="statusText">就绪</strong>
         <span class="text-muted small" id="elapsedText"></span>
         <div class="ms-auto d-flex gap-2">
-            <button class="btn btn-success btn-sm" id="btnStart" onclick="startTest()">▶ 开始测试</button>
+            <button class="btn btn-success btn-sm" id="btnStart" onclick="startTest()">▶ 开始</button>
             <button class="btn btn-danger btn-sm" id="btnStop" onclick="stopTest()" disabled>⏹ 停止</button>
         </div>
     </div>
     
-    <details class="mb-3">
+    <details class="mb-2">
         <summary class="small text-muted" style="cursor:pointer;">参数设置</summary>
         <div class="param-grid mt-2">
-            <div class="param-item"><label>设备池大小</label><input id="poolSize" value="20" type="number" min="5" max="200"></div>
-            <div class="param-item"><label>上报最小间隔(s)</label><input id="loadIntMin" value="1" type="number" step="0.5" min="0.5"></div>
-            <div class="param-item"><label>上报最大间隔(s)</label><input id="loadIntMax" value="20" type="number" step="0.5" min="1"></div>
-            <div class="param-item"><label>负载任务最小(s)</label><input id="loadDurMin" value="30" type="number" min="5"></div>
-            <div class="param-item"><label>负载任务最大(s)</label><input id="loadDurMax" value="120" type="number" min="10"></div>
-            <div class="param-item"><label>空车任务最小(s)</label><input id="emptyDurMin" value="30" type="number" min="5"></div>
-            <div class="param-item"><label>空车任务最大(s)</label><input id="emptyDurMax" value="120" type="number" min="10"></div>
-            <div class="param-item"><label>运行时长(s, 0=无限)</label><input id="duration" value="0" type="number" min="0"></div>
+            <div class="param-item"><label>设备池</label><input id="poolSize" value="20" type="number" min="5" max="200"></div>
+            <div class="param-item"><label>上报间隔(s)</label><input id="loadIntMin" value="1" type="number" step="0.5">~<input id="loadIntMax" value="20" type="number" step="0.5" style="margin-top:0.15rem;"></div>
+            <div class="param-item"><label>负载任务(s)</label><input id="loadDurMin" value="30" type="number">~<input id="loadDurMax" value="120" type="number" style="margin-top:0.15rem;"></div>
+            <div class="param-item"><label>空车任务(s)</label><input id="emptyDurMin" value="30" type="number">~<input id="emptyDurMax" value="120" type="number" style="margin-top:0.15rem;"></div>
+            <div class="param-item"><label>运行时长(0=无限)</label><input id="duration" value="0" type="number" min="0"></div>
         </div>
     </details>
     
@@ -97,13 +130,34 @@
         <div class="stat-card"><div class="val text-warning" id="sLoadOut">0</div><div class="lbl">负载回</div></div>
         <div class="stat-card"><div class="val text-success" id="sDoneLoad">0</div><div class="lbl">负载完成</div></div>
         <div class="stat-card"><div class="val text-info" id="sDoneEmpty">0</div><div class="lbl">空车完成</div></div>
-        <div class="stat-card"><div class="val text-purple" id="sExec">0</div><div class="lbl">执行计算</div></div>
+        <div class="stat-card"><div class="val" style="color:#a371f7;" id="sExec">0</div><div class="lbl">执行</div></div>
         <div class="stat-card"><div class="val text-muted" id="sPool">-</div><div class="lbl">设备池</div></div>
         <div class="stat-card"><div class="val text-muted" id="sPending">0</div><div class="lbl">进行中</div></div>
     </div>
     
-    <div class="log-stream" id="logStream">
-        <span class="text-muted">等待测试开始...</span>
+    <div class="dual-panel">
+        <div class="panel-left">
+            <div class="task-table-wrap">
+                <div class="table-header">
+                    📋 任务列表 <span class="badge bg-secondary" id="taskCount" style="font-size:0.65rem;">0</span>
+                </div>
+                <div style="max-height:400px;overflow-y:auto;">
+                    <table class="task-table">
+                        <thead><tr>
+                            <th>任务ID</th><th>模板</th><th>设备</th><th>方向</th><th>类型</th><th>状态</th><th>剩余</th>
+                        </tr></thead>
+                        <tbody id="taskTableBody">
+                            <tr><td colspan="7" class="text-center text-muted py-3">等待测试开始...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="panel-right">
+            <div class="log-stream" id="logStream">
+                <span class="text-muted">等待测试开始...</span>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -112,6 +166,16 @@
 <script>
 let pollTimer = null;
 let testStartTime = null;
+let taskMap = {};  // order_id → task info
+
+const TASK_COLORS = {
+    'load_in': '#0d6efd', 'load_out': '#fd7e14',
+    'empty_in': '#6ea8fe', 'empty_out': '#feb272'
+};
+const TASK_LABELS = {
+    'load_in': '来负载', 'load_out': '回负载',
+    'empty_in': '来空车', 'empty_out': '回空车'
+};
 
 // 页面加载时检查测试状态
 fetch('/api/dispatch/test/status').then(r => r.json()).then(data => {
@@ -121,6 +185,7 @@ fetch('/api/dispatch/test/status').then(r => r.json()).then(data => {
         document.getElementById('btnStop').disabled = false;
         document.getElementById('statusDot').classList.add('running');
         document.getElementById('statusText').textContent = '运行中';
+        parseTasksFromLogs(data.logs || []);
         updateDisplay(data);
         pollTimer = setInterval(pollStatus, 1000);
     }
@@ -142,9 +207,9 @@ function getParams() {
 function startTest() {
     document.getElementById('btnStart').disabled = true;
     document.getElementById('statusText').textContent = '启动中...';
+    taskMap = {};
     fetch('/api/dispatch/test/start', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(getParams())
     }).then(r => r.json()).then(data => {
         if (data.success) {
@@ -184,8 +249,126 @@ function pollStatus() {
             document.getElementById('statusDot').classList.remove('running');
             document.getElementById('statusText').textContent = '已停止';
         }
+        parseTasksFromLogs(data.logs || []);
         updateDisplay(data);
     });
+}
+
+function parseTasksFromLogs(logs) {
+    // 实际日志格式（子进程输出被 _test_log 包裹后有两个时间戳）:
+    // [13:49:02] [13:49:02]   [区域1] 来负载 Fcome DJC14 (池→任务, 56.0s后完成)
+    // [13:49:37] [13:49:37]   [区域1] 完成来负载 Fcome DJC8 → 到达区域 (执行35.5s)
+    // [13:49:47] [13:49:47]   [区域1] 回空车 Kback DJC8 status=6已上报 (54.2s后完成)
+    
+    const now = Date.now();
+    
+    logs.forEach(line => {
+        // 匹配任务开始: 来负载/回负载 (池→任务, XXs后完成)
+        let m = line.match(/(来负载|回负载)\s+(\S+)\s+(\S+)\s+\(池→任务,\s*([\d.]+)s后完成\)/);
+        if (m) {
+            const taskType = m[1] === '来负载' ? 'load_in' : 'load_out';
+            const remaining = parseFloat(m[4]);
+            const key = m[2] + '_' + m[3];  // template_device
+            if (!taskMap[key]) {
+                taskMap[key] = {
+                    template: m[2], device: m[3],
+                    task_type: taskType, status: 'running',
+                    remaining: remaining, start_ts: now
+                };
+            }
+            return;
+        }
+        
+        // 匹配空车任务开始: 来空车/回空车 xxx DJC5 status=6已上报 (XXs后完成)
+        m = line.match(/(来空车|回空车)\s+(\S+)\s+(\S+)\s+status=6已上报\s+\(([\d.]+)s后完成\)/);
+        if (m) {
+            const taskType = m[1] === '来空车' ? 'empty_in' : 'empty_out';
+            const remaining = parseFloat(m[4]);
+            const key = m[2] + '_' + m[3];
+            if (!taskMap[key]) {
+                taskMap[key] = {
+                    template: m[2], device: m[3],
+                    task_type: taskType, status: 'running',
+                    remaining: remaining, start_ts: now
+                };
+            }
+            return;
+        }
+        
+        // 匹配任务完成: 完成来负载/完成回负载 xxx DJC5 → 到达区域/回池
+        m = line.match(/完成(来负载|回负载|来空车|回空车)\s+(\S+)\s+(\S+)\s+→/);
+        if (m) {
+            const key = m[2] + '_' + m[3];
+            if (taskMap[key] && taskMap[key].status === 'running') {
+                taskMap[key].status = 'done';
+                taskMap[key].done_ts = now;
+            }
+        }
+    });
+    
+    // 清理超过120s的已完成任务
+    for (const [oid, task] of Object.entries(taskMap)) {
+        if (task.status === 'done' && task.done_ts && now - task.done_ts > 120000) {
+            delete taskMap[oid];
+        }
+    }
+    
+    renderTaskTable();
+}
+
+function renderTaskTable() {
+    const tbody = document.getElementById('taskTableBody');
+    const tasks = Object.values(taskMap);
+    
+    // 排序：运行中的在前，按剩余时间排序
+    tasks.sort((a, b) => {
+        if (a.status === 'running' && b.status !== 'running') return -1;
+        if (a.status !== 'running' && b.status === 'running') return 1;
+        return (a.remaining || 999) - (b.remaining || 999);
+    });
+    
+    document.getElementById('taskCount').textContent = tasks.length;
+    
+    if (tasks.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-2">暂无任务</td></tr>';
+        return;
+    }
+    
+    const now = Date.now();
+    
+    tbody.innerHTML = tasks.map(t => {
+        const color = TASK_COLORS[t.task_type] || '#6c757d';
+        const label = TASK_LABELS[t.task_type] || t.task_type;
+        const isRunning = t.status === 'running';
+        
+        // 计算剩余时间
+        let remaining;
+        if (isRunning && t.start_ts) {
+            const elapsed = Math.floor((now - t.start_ts) / 1000);
+            remaining = Math.max(0, (t.remaining || 0) - elapsed);
+        } else {
+            remaining = t.remaining || 0;
+        }
+        
+        const statusHtml = isRunning
+            ? `<span style="color:${color};">🔄 执行中</span>`
+            : '<span style="color:#28a745;">✅ 完成</span>';
+        
+        const remainHtml = isRunning
+            ? `<span style="color:${color};font-weight:600;">${remaining}s</span>`
+            : '<span class="text-muted">-</span>';
+        
+        const oid = (t.template + '_' + t.device).slice(0, 20);
+        return `<tr>
+            <td class="task-id" title="${oid}">${oid}</td>
+            <td><code>${t.template}</code></td>
+            <td><span style="color:${color};font-weight:600;">${t.device}</span></td>
+            <td>${t.task_type.includes('in') ? '⬇来' : '⬆回'}</td>
+            <td><span class="badge-dot" style="background:${color};"></span>${label}</td>
+            <td>${statusHtml}</td>
+            <td>${remainHtml}</td>
+        </tr>`;
+    }).join('');
 }
 
 function updateDisplay(data) {
@@ -198,10 +381,8 @@ function updateDisplay(data) {
     document.getElementById('sPool').textContent = data.pool_stats || '-';
     document.getElementById('sPending').textContent = data.pending_count || 0;
     
-    // 前端自己计算 elapsed（避免后端更新延迟导致卡顿）
     const elapsed = testStartTime ? Math.floor((Date.now() - testStartTime.getTime()) / 1000) : (data.elapsed || 0);
-    document.getElementById('elapsedText').textContent =
-        '已运行: ' + elapsed + 's';
+    document.getElementById('elapsedText').textContent = '已运行: ' + elapsed + 's';
     
     // 日志
     const logs = data.logs || [];
@@ -220,6 +401,16 @@ function updateDisplay(data) {
         logEl.innerHTML = '<span class="text-muted">初始化中...</span>';
     }
     logEl.scrollTop = logEl.scrollHeight;
+    
+    // 每秒更新任务表格倒计时
+    renderTaskTable();
 }
+
+// 每秒刷新倒计时
+setInterval(() => {
+    if (document.getElementById('statusDot').classList.contains('running')) {
+        renderTaskTable();
+    }
+}, 1000);
 </script>
 {% endblock %}

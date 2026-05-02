@@ -1717,7 +1717,8 @@ def _run_test_thread(params):
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            cwd=BASE_DIR
+            cwd=BASE_DIR,
+            env={**os.environ, 'PYTHONUNBUFFERED': '1'}
         )
         
         with _test_state_lock:
