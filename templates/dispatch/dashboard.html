@@ -106,29 +106,34 @@
         border-color: #28a745;
         background: rgba(40, 167, 69, 0.06);
     }
+    .agv-icon.idle .dev-num { color: #28a745; }
     /* 来负载 */
     .agv-icon.load-in {
         border-color: #0d6efd;
         background: rgba(13, 110, 253, 0.06);
     }
+    .agv-icon.load-in .dev-num { color: #0d6efd; }
     .agv-icon.load-in .agv-sprite { animation: agvPulse 1.5s ease-in-out infinite; }
     /* 回负载 */
     .agv-icon.load-out {
         border-color: #fd7e14;
         background: rgba(253, 126, 20, 0.06);
     }
+    .agv-icon.load-out .dev-num { color: #fd7e14; }
     .agv-icon.load-out .agv-sprite { animation: agvPulse 1.5s ease-in-out infinite; }
     /* 来空车 */
     .agv-icon.empty-in {
         border-color: #6ea8fe;
         background: rgba(110, 168, 254, 0.06);
     }
+    .agv-icon.empty-in .dev-num { color: #6ea8fe; }
     .agv-icon.empty-in .agv-sprite { animation: agvPulse 1.5s ease-in-out infinite; }
     /* 回空车 */
     .agv-icon.empty-out {
         border-color: #feb272;
         background: rgba(254, 178, 114, 0.06);
     }
+    .agv-icon.empty-out .dev-num { color: #feb272; }
     .agv-icon.empty-out .agv-sprite { animation: agvPulse 1.5s ease-in-out infinite; }
     @keyframes agvPulse {
         0%, 100% { opacity: 1; }
@@ -316,6 +321,9 @@
             </div>
             <div id="logContainer" style="max-height:300px;overflow-y:auto;padding:0.5rem 1rem;">
                 <div class="text-center text-muted py-3">加载中...</div>
+                <div class="text-center py-2" style="opacity:0.15;cursor:default;user-select:none;"
+                     onclick="if(this.parentElement.scrollTop + this.parentElement.clientHeight >= this.parentElement.scrollHeight - 10) window.location.href='/dispatch/test'"
+                     title="彩蛋：滚动到底部点击进入测试">© CEM Auto Pilot</div>
             </div>
         </div>
     </div>
@@ -724,7 +732,7 @@ function renderAreas(areas) {
                                     ${renderChartLegend(area.templates?.incoming || [], 'in')}
                                 </div>
                             </div>
-                            <div class="template-section-title text-success"><i class="bi bi-box-arrow-in-down"></i> 来区域 <button class="btn btn-sm btn-outline-success ms-2" onclick="manualDispatch('${area.region_key}','in','${area.enabled}')" title="手动发空车来"><i class="bi bi-truck"></i> 发空车</button></div>
+                            <div class="template-section-title" style="color:#0d6efd;"><i class="bi bi-box-arrow-in-down"></i> 来区域 <button class="btn btn-sm ms-2" style="border-color:#0d6efd;color:#0d6efd;" onclick="manualDispatch('${area.region_key}','in','${area.enabled}')" title="手动发空车来"><i class="bi bi-truck"></i> 发空车</button></div>
                             <table class="template-table" style="width:100%;">
                                 <thead><tr><th>模板</th><th>名称</th><th class="text-center">数量</th></tr></thead>
                                 <tbody>${incomingRows}</tbody>
@@ -743,7 +751,7 @@ function renderAreas(areas) {
                                     ${renderChartLegend(area.templates?.outgoing || [], 'out')}
                                 </div>
                             </div>
-                            <div class="template-section-title text-danger"><i class="bi bi-box-arrow-up"></i> 离开 <button class="btn btn-sm btn-outline-danger ms-2" onclick="manualDispatch('${area.region_key}','out','${area.enabled}')" title="手动发空车回"><i class="bi bi-truck"></i> 发空车</button></div>
+                            <div class="template-section-title" style="color:#fd7e14;"><i class="bi bi-box-arrow-up"></i> 离开 <button class="btn btn-sm ms-2" style="border-color:#fd7e14;color:#fd7e14;" onclick="manualDispatch('${area.region_key}','out','${area.enabled}')" title="手动发空车回"><i class="bi bi-truck"></i> 发空车</button></div>
                             <table class="template-table" style="width:100%;">
                                 <thead><tr><th>模板</th><th>名称</th><th class="text-center">数量</th></tr></thead>
                                 <tbody>${outgoingRows}</tbody>
@@ -870,9 +878,9 @@ function initDualCharts(area) {
     const inCols = [];
     (area.templates?.incoming || []).forEach((t, i) => {
         if (t.count > 0) {
-            inLabels.push(t.code);
+            inLabels.push(t.name || t.code);
             inData.push(t.count);
-            inCols.push(CHART_COLORS.in[i % 5]);
+            inCols.push(getChartColor(t));
         }
     });
     if (chartInstances['in-' + rk]) chartInstances['in-' + rk].destroy();
@@ -884,9 +892,9 @@ function initDualCharts(area) {
     const outCols = [];
     (area.templates?.outgoing || []).forEach((t, i) => {
         if (t.count > 0) {
-            outLabels.push(t.code);
+            outLabels.push(t.name || t.code);
             outData.push(t.count);
-            outCols.push(CHART_COLORS.out[i % 5]);
+            outCols.push(getChartColor(t));
         }
     });
     if (chartInstances['out-' + rk]) chartInstances['out-' + rk].destroy();
@@ -902,9 +910,9 @@ function updateDualCharts(area) {
     const inCols = [];
     (area.templates?.incoming || []).forEach((t, i) => {
         if (t.count > 0) {
-            inLabels.push(t.code);
+            inLabels.push(t.name || t.code);
             inData.push(t.count);
-            inCols.push(CHART_COLORS.in[i % 5]);
+            inCols.push(getChartColor(t));
         }
     });
     let chart = chartInstances['in-' + rk];
@@ -924,9 +932,9 @@ function updateDualCharts(area) {
     const outCols = [];
     (area.templates?.outgoing || []).forEach((t, i) => {
         if (t.count > 0) {
-            outLabels.push(t.code);
+            outLabels.push(t.name || t.code);
             outData.push(t.count);
-            outCols.push(CHART_COLORS.out[i % 5]);
+            outCols.push(getChartColor(t));
         }
     });
     chart = chartInstances['out-' + rk];
@@ -1056,42 +1064,64 @@ function updateTableCounts(tbody, templates) {
             const badge = rows[idx].querySelector('.count-badge');
             if (badge) {
                 badge.textContent = t.count;
-                const is_empty = (t.task_type === 'empty_in' || t.task_type === 'empty_out');
-                badge.className = 'badge count-badge ' + (t.count > 0 ? (is_empty ? 'bg-warning text-dark' : 'bg-info text-dark') : 'bg-secondary');
+                const taskType = t.task_type || '';
+                const badgeStyle = getBadgeStyle(taskType, t.count);
+                badge.setAttribute('style', badgeStyle);
             }
         }
     });
 }
 
+function getBadgeStyle(taskType, count) {
+    const color = TASK_TYPE_COLORS[taskType] || '#6c757d';
+    if (count === 0) return `background:#6c757d;color:#fff;`;
+    return `background:${color};color:#fff;`;
+}
+
+function getTypeLabel(taskType) {
+    const map = {
+        'load_in': '<span class="badge small me-1" style="background:#0d6efd;color:#fff;">来负载</span>',
+        'load_out': '<span class="badge small me-1" style="background:#fd7e14;color:#fff;">回负载</span>',
+        'empty_in': '<span class="badge small me-1" style="background:#6ea8fe;color:#000;">来空车</span>',
+        'empty_out': '<span class="badge small me-1" style="background:#feb272;color:#000;">回空车</span>'
+    };
+    return map[taskType] || '';
+}
+
 function renderTemplateRows(templates) {
     if (!templates || templates.length === 0) return '<tr><td colspan="3" class="text-center text-muted">无配置</td></tr>';
     return templates.map(t => {
-        const is_empty = (t.task_type === 'empty_in' || t.task_type === 'empty_out');
+        const taskType = t.task_type || '';
+        const is_empty = (taskType === 'empty_in' || taskType === 'empty_out');
         const icon = is_empty ? 'bi-truck' : 'bi-box-seam';
-        const badgeClass = is_empty ? (t.count > 0 ? 'bg-warning text-dark' : 'bg-secondary') : (t.count > 0 ? 'bg-info text-dark' : 'bg-secondary');
-        const label = is_empty ? '<span class="badge bg-warning bg-opacity-25 text-warning small me-1">空车</span>' : '<span class="badge bg-info bg-opacity-25 text-info small me-1">负载</span>';
-        // name 字段实际是 display_name（后端已做兼容处理），code 是模板代码
+        const badgeStyle = getBadgeStyle(taskType, t.count);
+        const label = getTypeLabel(taskType);
         const displayName = t.name || t.code;
         return `<tr><td><code>${t.code}</code></td><td>${label}<i class="${icon} me-1 small opacity-50"></i><span class="tpl-name">${displayName}</span></td>
-            <td class="text-center"><span class="badge count-badge ${badgeClass}">${t.count}</span></td></tr>`;
+            <td class="text-center"><span class="badge count-badge" style="${badgeStyle}">${t.count}</span></td></tr>`;
     }).join('');
 }
 
-// 颜色配置：高对比度色板
-const CHART_COLORS = {
-    in: ['#059669', '#2563eb', '#7c3aed', '#d97706', '#0891b2'],  // 翠绿/蓝/紫/橙/青
-    out: ['#dc2626', '#db2777', '#ea580c', '#9333ea', '#0d9488']  // 正红/玫红/橙红/紫/青绿
+// task_type → 颜色映射（与设备图标CSS一致）
+const TASK_TYPE_COLORS = {
+    'load_in': '#0d6efd',
+    'load_out': '#fd7e14',
+    'empty_in': '#6ea8fe',
+    'empty_out': '#feb272'
 };
+
+function getChartColor(t) {
+    return TASK_TYPE_COLORS[t.task_type] || '#6c757d';
+}
 
 function renderChartLegend(templates, direction) {
     if (!templates || templates.length === 0) return '<div class="text-muted">无任务</div>';
-    const colors = CHART_COLORS[direction] || CHART_COLORS.in;
     return templates.map((t, i) => {
-        const color = colors[i % colors.length];
+        const color = getChartColor(t);
         const count = t.count || 0;
         return `<div style="display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
             <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;"></span>
-            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${t.code}</span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${t.name || t.code}</span>
             <span style="font-weight:600;flex-shrink:0;">${count}</span>
         </div>`;
     }).join('');

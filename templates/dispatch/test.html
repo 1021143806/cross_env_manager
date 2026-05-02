@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}调车自动驾驶测试{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-dispatch.png?v=1">
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .test-container { max-width: 900px; margin: 0 auto; }
+    .test-header {
+        display: flex; align-items: center; gap: 1rem;
+        padding: 1rem; background: var(--card-bg);
+        border: 1px solid var(--border-color); border-radius: 12px;
+        margin-bottom: 1rem;
+    }
+    .test-header .status-dot {
+        width: 12px; height: 12px; border-radius: 50%;
+        background: #6c757d; flex-shrink: 0;
+    }
+    .test-header .status-dot.running {
+        background: #28a745; animation: pulse 1s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    
+    .param-grid {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 0.75rem; margin-bottom: 1rem;
+    }
+    .param-item label { font-size: 0.78rem; opacity: 0.7; display: block; margin-bottom: 0.2rem; }
+    .param-item input {
+        width: 100%; padding: 0.35rem 0.5rem; border-radius: 6px;
+        border: 1px solid var(--border-color); background: var(--detail-card-bg);
+        color: var(--text-color); font-size: 0.85rem;
+    }
+    
+    .stats-grid {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 0.5rem; margin-bottom: 1rem;
+    }
+    .stat-card {
+        background: var(--card-bg); border: 1px solid var(--border-color);
+        border-radius: 8px; padding: 0.6rem; text-align: center;
+    }
+    .stat-card .val { font-size: 1.3rem; font-weight: 700; }
+    .stat-card .lbl { font-size: 0.7rem; opacity: 0.6; }
+    
+    .log-stream {
+        background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+        padding: 0.75rem; max-height: 40vh; overflow-y: auto;
+        font-family: 'SF Mono', monospace; font-size: 0.78rem;
+        color: #c9d1d9; line-height: 1.5;
+    }
+    .log-stream .log-time { color: #8b949e; }
+    .log-stream .log-load-in { color: #58a6ff; }
+    .log-stream .log-load-out { color: #d2991d; }
+    .log-stream .log-empty { color: #39d2c0; }
+    .log-stream .log-done { color: #3fb950; }
+    .log-stream .log-exec { color: #a371f7; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="test-container">
+    <div class="test-header">
+        <span class="status-dot" id="statusDot"></span>
+        <strong id="statusText">就绪</strong>
+        <span class="text-muted small" id="elapsedText"></span>
+        <div class="ms-auto d-flex gap-2">
+            <button class="btn btn-success btn-sm" id="btnStart" onclick="startTest()">▶ 开始测试</button>
+            <button class="btn btn-danger btn-sm" id="btnStop" onclick="stopTest()" disabled>⏹ 停止</button>
+        </div>
+    </div>
+    
+    <details class="mb-3">
+        <summary class="small text-muted" style="cursor:pointer;">参数设置</summary>
+        <div class="param-grid mt-2">
+            <div class="param-item"><label>设备池大小</label><input id="poolSize" value="20" type="number" min="5" max="200"></div>
+            <div class="param-item"><label>上报最小间隔(s)</label><input id="loadIntMin" value="1" type="number" step="0.5" min="0.5"></div>
+            <div class="param-item"><label>上报最大间隔(s)</label><input id="loadIntMax" value="20" type="number" step="0.5" min="1"></div>
+            <div class="param-item"><label>负载任务最小(s)</label><input id="loadDurMin" value="30" type="number" min="5"></div>
+            <div class="param-item"><label>负载任务最大(s)</label><input id="loadDurMax" value="120" type="number" min="10"></div>
+            <div class="param-item"><label>空车任务最小(s)</label><input id="emptyDurMin" value="30" type="number" min="5"></div>
+            <div class="param-item"><label>空车任务最大(s)</label><input id="emptyDurMax" value="120" type="number" min="10"></div>
+            <div class="param-item"><label>运行时长(s, 0=无限)</label><input id="duration" value="0" type="number" min="0"></div>
+        </div>
+    </details>
+    
+    <div class="stats-grid" id="statsGrid">
+        <div class="stat-card"><div class="val text-primary" id="sLoadIn">0</div><div class="lbl">负载来</div></div>
+        <div class="stat-card"><div class="val text-warning" id="sLoadOut">0</div><div class="lbl">负载回</div></div>
+        <div class="stat-card"><div class="val text-success" id="sDoneLoad">0</div><div class="lbl">负载完成</div></div>
+        <div class="stat-card"><div class="val text-info" id="sDoneEmpty">0</div><div class="lbl">空车完成</div></div>
+        <div class="stat-card"><div class="val text-purple" id="sExec">0</div><div class="lbl">执行计算</div></div>
+        <div class="stat-card"><div class="val text-muted" id="sPool">-</div><div class="lbl">设备池</div></div>
+        <div class="stat-card"><div class="val text-muted" id="sPending">0</div><div class="lbl">进行中</div></div>
+    </div>
+    
+    <div class="log-stream" id="logStream">
+        <span class="text-muted">等待测试开始...</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let pollTimer = null;
+
+function getParams() {
+    return {
+        pool_size: parseInt(document.getElementById('poolSize').value) || 20,
+        load_interval_min: parseFloat(document.getElementById('loadIntMin').value) || 1,
+        load_interval_max: parseFloat(document.getElementById('loadIntMax').value) || 20,
+        load_dur_min: parseFloat(document.getElementById('loadDurMin').value) || 30,
+        load_dur_max: parseFloat(document.getElementById('loadDurMax').value) || 120,
+        empty_dur_min: parseFloat(document.getElementById('emptyDurMin').value) || 30,
+        empty_dur_max: parseFloat(document.getElementById('emptyDurMax').value) || 120,
+        duration: parseInt(document.getElementById('duration').value) || 0
+    };
+}
+
+function startTest() {
+    fetch('/api/dispatch/test/start', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(getParams())
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            document.getElementById('btnStart').disabled = true;
+            document.getElementById('btnStop').disabled = false;
+            document.getElementById('statusDot').classList.add('running');
+            document.getElementById('statusText').textContent = '运行中';
+            pollTimer = setInterval(pollStatus, 1000);
+        } else {
+            alert('启动失败: ' + (data.error || '未知错误'));
+        }
+    });
+}
+
+function stopTest() {
+    fetch('/api/dispatch/test/stop', {method: 'POST'}).then(r => r.json()).then(() => {
+        clearInterval(pollTimer);
+        document.getElementById('btnStart').disabled = false;
+        document.getElementById('btnStop').disabled = true;
+        document.getElementById('statusDot').classList.remove('running');
+        document.getElementById('statusText').textContent = '已停止';
+    });
+}
+
+function pollStatus() {
+    fetch('/api/dispatch/test/status').then(r => r.json()).then(data => {
+        if (!data.running) {
+            clearInterval(pollTimer);
+            document.getElementById('btnStart').disabled = false;
+            document.getElementById('btnStop').disabled = true;
+            document.getElementById('statusDot').classList.remove('running');
+            document.getElementById('statusText').textContent = '已停止';
+        }
+        
+        const ops = data.total_ops || {};
+        document.getElementById('sLoadIn').textContent = ops.load_in || 0;
+        document.getElementById('sLoadOut').textContent = ops.load_out || 0;
+        document.getElementById('sDoneLoad').textContent = ops.done_load || 0;
+        document.getElementById('sDoneEmpty').textContent = ops.done_empty || 0;
+        document.getElementById('sExec').textContent = ops.exec || 0;
+        document.getElementById('sPool').textContent = data.pool_stats || '-';
+        document.getElementById('sPending').textContent = data.pending_count || 0;
+        
+        const elapsed = data.elapsed || 0;
+        document.getElementById('elapsedText').textContent = 
+            '已运行: ' + Math.floor(elapsed) + 's';
+        
+        // 日志
+        const logs = data.logs || [];
+        const logEl = document.getElementById('logStream');
+        logEl.innerHTML = logs.map(l => {
+            let cls = '';
+            if (l.includes('来负载')) cls = 'log-load-in';
+            else if (l.includes('回负载')) cls = 'log-load-out';
+            else if (l.includes('空车')) cls = 'log-empty';
+            else if (l.includes('完成')) cls = 'log-done';
+            else if (l.includes('执行')) cls = 'log-exec';
+            return '<div class="' + cls + '">' + l + '</div>';
+        }).join('');
+        logEl.scrollTop = logEl.scrollHeight;
+    });
+}
+</script>
+{% endblock %}

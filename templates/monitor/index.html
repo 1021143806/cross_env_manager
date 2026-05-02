@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}CEM 系统监控{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-monitor.png?v=1">
+{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -58,7 +61,7 @@
     /* 表头 */
     .monitor-thead {
         display: grid;
-        grid-template-columns: 50px 100px 80px 1fr 60px;
+        grid-template-columns: 50px 100px 80px 1fr 60px 50px;
         padding: 0.4rem 1rem;
         background: var(--monitor-card);
         border-bottom: 1px solid var(--monitor-border);
@@ -71,7 +74,7 @@
     /* 行 */
     .monitor-row {
         display: grid;
-        grid-template-columns: 50px 100px 80px 1fr 60px;
+        grid-template-columns: 50px 100px 80px 1fr 60px 50px;
         padding: 0.45rem 1rem;
         font-size: 0.8rem;
         border-bottom: 1px solid rgba(48,54,61,0.5);
@@ -129,10 +132,97 @@
     .mini-bar .fill.yellow { background: var(--monitor-yellow); }
     .mini-bar .fill.red { background: var(--monitor-red); }
 
+    /* 详情按钮 */
+    .monitor-detail-btn {
+        background: none;
+        border: 1px solid var(--monitor-border);
+        border-radius: 4px;
+        color: var(--monitor-dim);
+        cursor: pointer;
+        padding: 0.1rem 0.35rem;
+        font-size: 0.75rem;
+        transition: all 0.2s;
+    }
+    .monitor-detail-btn:hover {
+        background: var(--monitor-border);
+        color: var(--monitor-text);
+    }
+
+    /* Modal */
+    .monitor-modal-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    }
+    .monitor-modal {
+        background: var(--monitor-card);
+        border: 1px solid var(--monitor-border);
+        border-radius: 12px;
+        width: 90%;
+        max-width: 700px;
+        max-height: 80vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+    }
+    .monitor-modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--monitor-border);
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: var(--monitor-text);
+    }
+    .monitor-modal-close {
+        background: none;
+        border: none;
+        color: var(--monitor-dim);
+        cursor: pointer;
+        font-size: 1.1rem;
+        padding: 0.2rem 0.4rem;
+        border-radius: 4px;
+    }
+    .monitor-modal-close:hover { background: var(--monitor-border); color: var(--monitor-red); }
+    .monitor-modal-body {
+        padding: 1rem;
+        overflow-y: auto;
+        flex: 1;
+    }
+    .monitor-modal-meta {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 0.4rem 1rem;
+        margin-bottom: 1rem;
+        font-size: 0.82rem;
+    }
+    .monitor-modal-meta .meta-label {
+        color: var(--monitor-dim);
+        font-weight: 600;
+    }
+    .monitor-modal-raw {
+        background: var(--monitor-bg);
+        border: 1px solid var(--monitor-border);
+        border-radius: 8px;
+        padding: 0.75rem;
+    }
+    .monitor-modal-raw .raw-title {
+        font-size: 0.78rem;
+        color: var(--monitor-dim);
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+    }
+
     /* 响应式 */
     @media (max-width: 768px) {
         .monitor-thead, .monitor-row {
-            grid-template-columns: 40px 70px 60px 1fr 40px;
+            grid-template-columns: 40px 70px 60px 1fr 40px 40px;
             font-size: 0.7rem;
         }
         .monitor-topbar { gap: 0.8rem; font-size: 0.7rem; }
@@ -183,6 +273,7 @@
         <span>区域</span>
         <span>详情</span>
         <span style="text-align:right;">计数</span>
+        <span style="text-align:center;">操作</span>
     </div>
 
     <!-- 日志流 -->
@@ -288,12 +379,13 @@ function renderLogStream(logs) {
     // 取最近 50 条
     const recent = logs.slice(0, 50);
     
-    container.innerHTML = recent.map(log => {
+    container.innerHTML = recent.map((log, idx) => {
         const time = (log.time || '').length > 16 ? log.time.slice(11, 19) : (log.time || '');
         const action = log.action || '';
         const region = log.region_key || '';
         const detail = log.detail || '';
         const dupCount = log.dup_count || 0;
+        const hasRaw = log.raw_data && Object.keys(log.raw_data).length > 0;
         
         // 操作类型样式
         let actionCls = '';
@@ -310,14 +402,75 @@ function renderLogStream(logs) {
         const count = dupCount > 1 ? dupCount : 1;
         const countDisplay = dupCount > 1 ? `<span style="color:var(--monitor-yellow);">×${dupCount}</span>` : '';
         
-        return `<div class="monitor-row">
+        // 详情按钮（仅当有 raw_data 时显示）
+        const detailBtn = hasRaw
+            ? `<button class="monitor-detail-btn" onclick="showLogDetail(${idx})" title="查看详情">📋</button>`
+            : '<span style="color:var(--monitor-dim);text-align:center;">·</span>';
+        
+        return `<div class="monitor-row" data-log-idx="${idx}">
             <span class="col-time">${time}</span>
             <span class="col-action ${actionCls}">${action}</span>
             <span class="col-region">${region}</span>
             <span class="col-detail" title="${detail}">${shortDetail}</span>
             <span class="col-count">${countDisplay || '·'}</span>
+            <span style="text-align:center;">${detailBtn}</span>
         </div>`;
     }).join('');
+    
+    // 将日志数据存到全局变量供详情弹窗使用
+    window._monitorLogs = recent;
+}
+
+function showLogDetail(idx) {
+    const logs = window._monitorLogs || [];
+    const log = logs[idx];
+    if (!log || !log.raw_data) return;
+    
+    const raw = log.raw_data;
+    const time = (log.time || '').length > 16 ? log.time.slice(0, 19) : (log.time || '');
+    const action = log.action || '';
+    const region = log.region_key || '';
+    const detail = log.detail || '';
+    
+    // 格式化 raw_data
+    let rawHtml = '';
+    if (typeof raw === 'object') {
+        rawHtml = '<pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-size:0.78rem;max-height:50vh;overflow-y:auto;">'
+            + JSON.stringify(raw, null, 2).replace(/</g, '<').replace(/>/g, '>')
+            + '</pre>';
+    } else {
+        rawHtml = '<pre style="margin:0;">' + String(raw).replace(/</g, '<') + '</pre>';
+    }
+    
+    // 构建 modal
+    const modal = document.createElement('div');
+    modal.className = 'monitor-modal-overlay';
+    modal.innerHTML = `
+        <div class="monitor-modal">
+            <div class="monitor-modal-header">
+                <span>📋 日志详情</span>
+                <button class="monitor-modal-close" onclick="this.closest('.monitor-modal-overlay').remove()">✕</button>
+            </div>
+            <div class="monitor-modal-body">
+                <div class="monitor-modal-meta">
+                    <div><span class="meta-label">时间</span><span>${time}</span></div>
+                    <div><span class="meta-label">操作</span><span class="col-action ${action === 'report_status' ? 'report' : action.startsWith('execute') ? 'execute' : ''}">${action}</span></div>
+                    <div><span class="meta-label">区域</span><span>${region}</span></div>
+                    <div><span class="meta-label">详情</span><span>${detail}</span></div>
+                </div>
+                <div class="monitor-modal-raw">
+                    <div class="raw-title">原始数据 (raw_data)</div>
+                    ${rawHtml}
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    
+    // 点击遮罩关闭
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) modal.remove();
+    });
 }
 </script>
 {% endblock %}
