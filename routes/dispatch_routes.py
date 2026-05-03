@@ -1369,7 +1369,7 @@ def _execute_dispatch(region_key, region, balance):
     simulated = not balance.get('effective_enabled', enabled)
     
     now_dt = datetime.now()
-    date_str = now_dt.strftime('%Y-%m-%d %H:%M:%S')
+    date_str = now_dt.strftime('%Y-%m-%d_%H:%M:%S')
     ms = now_dt.microsecond // 1000
     rand = _random.randint(0, 9999)
     order_id = f"CEM_auto_{date_str}.{ms:03d}__{rand:04d}"
