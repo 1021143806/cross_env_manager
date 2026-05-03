@@ -1598,7 +1598,14 @@ def _cancel_empty_task(order_id, server_ip):
 
 
 def _get_task_server_info(order_id):
-    """通过跨环境任务查询获取子任务 order_id 和服务器地址"""
+    """通过跨环境任务查询获取子任务信息，检查子任务状态后决定是否允许取消
+    
+    流程：
+    1. 用主订单号查跨环境任务（LIKE 模糊匹配子任务）
+    2. 找到 _1 子任务（第一个子任务）
+    3. 检查 task_status：执行中(status=6)则不允许取消
+    4. 返回子任务 order_id 和服务器 IP
+    """
     try:
         from modules.query.task_query_extended import get_cross_task_info
         result = get_cross_task_info(order_id)
@@ -1607,9 +1614,13 @@ def _get_task_server_info(order_id):
         details = result.get('cross_task_details', [])
         if not details:
             return None, '未找到任务详情'
-        # 取第一个子任务
+        # 找到 _1 子任务（第一个子任务）
         detail = details[0]
         sub_order_id = detail.get('order_id', '')
+        task_status = detail.get('task_status')
+        # 检查子任务状态：执行中(status=6)不允许取消
+        if task_status == 6:
+            return None, f'子任务 {sub_order_id} 正在执行中(status=6)，无法取消'
         # 从 related_tasks 获取服务器地址
         related = result.get('related_tasks', [])
         server_ip = ''
