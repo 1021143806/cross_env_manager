@@ -703,10 +703,36 @@ function viewLogRawData(logId) {
         }
         contentEl.textContent = display;
     } else {
-        // 上报日志：显示原始报文
+        // 上报日志：显示请求+响应报文
         titleEl.innerHTML = '<i class="bi bi-file-code me-2"></i>上报报文内容';
-        document.getElementById('rawDataStatus').style.display = 'none';
-        contentEl.textContent = JSON.stringify(log.raw_data, null, 2);
+        const statusEl = document.getElementById('rawDataStatus');
+        const rd = log.raw_data;
+        // 响应状态条
+        if (rd.response_body) {
+            const respCode = rd.response_body.code;
+            const respDesc = rd.response_body.desc || '';
+            statusEl.style.display = 'block';
+            statusEl.style.background = '#064e3b';
+            statusEl.style.color = '#6ee7b7';
+            statusEl.style.border = '1px solid #065f46';
+            statusEl.innerHTML = '<span style="opacity:0.7;">响应:</span> code=<strong>' + respCode + '</strong>' +
+                (respDesc ? ' <span style="opacity:0.7;">desc=</span><strong>' + respDesc + '</strong>' : '');
+        } else {
+            statusEl.style.display = 'none';
+        }
+        // 构造显示内容：请求报文 + 响应报文
+        let display = '';
+        display += '═══════ 请求报文 ═══════\n';
+        const requestData = {};
+        for (const [k, v] of Object.entries(rd)) {
+            if (k !== 'response_body') requestData[k] = v;
+        }
+        display += JSON.stringify(requestData, null, 2);
+        if (rd.response_body) {
+            display += '\n\n═══════ 响应报文 ═══════\n';
+            display += JSON.stringify(rd.response_body, null, 2);
+        }
+        contentEl.textContent = display;
     }
     new bootstrap.Modal(document.getElementById('rawDataModal')).show();
 }
@@ -1243,8 +1269,8 @@ function renderTemplateRows(templates) {
         const badgeStyle = getBadgeStyle(taskType, t.count);
         const label = getTypeLabel(taskType);
         const displayName = t.name || t.code;
-        return `<tr><td>${label}<i class="${icon} me-1 small opacity-50"></i><span class="tpl-name">${displayName}</span><br><small class="text-muted"><code>${t.code}</code></small></td>
-            <td class="text-center"><span class="badge count-badge" style="${badgeStyle}">${t.count}</span></td></tr>`;
+        return `<tr><td style="word-break:break-all;overflow-wrap:break-word;">${label}<br><small class="text-muted"><code>${t.code}</code></small><br><span class="tpl-name">${displayName}</span></td>
+            <td class="text-center" style="width:50px;white-space:nowrap;"><span class="badge count-badge" style="${badgeStyle}">${t.count}</span></td></tr>`;
     }).join('');
 }
 

@@ -917,8 +917,11 @@ def api_report_status():
             if oid:
                 detail += f' orderId={oid}'
             detail += f': {message}'
+            # 将返回报文也写入 raw_data，供前端详情展示
+            log_data = dict(data) if isinstance(data, dict) else {}
+            log_data['response_body'] = {'code': 1000, 'desc': 'success'}
             write_global_log('report_status', rk, detail,
-                           'info' if matched else 'warning', raw_data=data)
+                           'info' if matched else 'warning', raw_data=log_data)
         except:
             pass
         
