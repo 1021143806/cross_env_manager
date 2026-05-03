@@ -676,6 +676,10 @@ def handle_status_report(data):
     
     now = datetime.now().isoformat()
     
+    # status=7 且无设备号：任务异常（如货架未初始化），任务从未开始执行，直接忽略
+    if status == 7 and not device_code and not device_num:
+        return True, f"异常上报(status=7)无设备号: {data.get('errorDesc', '')}", True
+    
     if status == 6:
         # 任务开始（运行中）：记录到模板 JSON
         tasks = _load_json(template_file)
@@ -1274,7 +1278,11 @@ def _execute_dispatch(region_key, region, balance):
     # 空车下发配置：优先使用 empty_dispatch，回退到旧 server 拼接
     empty_dispatch = region.get('empty_dispatch', {})
     template_code = target_template.get('code') or target_template.get('name', '')
-    dispatch_template = empty_dispatch.get('template', '') or template_code
+    # 根据方向选择对应模板：template_in（空车来）或 template_out（空车回）
+    if direction == 'in':
+        dispatch_template = empty_dispatch.get('template_in', '') or template_code
+    else:
+        dispatch_template = empty_dispatch.get('template_out', '') or template_code
     dispatch_url = empty_dispatch.get('url', '')
     if not dispatch_url:
         server = region.get('server', '')

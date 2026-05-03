@@ -306,9 +306,11 @@ function renderVisualEditor(data) {
             <hr class="my-2">
             <details class="mb-2"><summary class="form-label small fw-bold" style="cursor:pointer;display:inline;">🚛 空车下发配置</summary>
             <div class="row g-2 mt-1">
-                <div class="col-md-5"><label class="form-label small">下发模板代码</label>
-                    <input class="form-control form-control-sm" value="${(region.empty_dispatch||{}).template||''}" placeholder="如 EmptyCarstoHY1_503" onchange="updateEmptyDispatch('${key}','template',this.value)"></div>
-                <div class="col-md-7"><label class="form-label small">下发地址 (URL)</label>
+                <div class="col-md-6"><label class="form-label small">空车来模板 (template_in)</label>
+                    <input class="form-control form-control-sm" value="${(region.empty_dispatch||{}).template_in||''}" placeholder="如 EmptyCarstoHY1_503" onchange="updateEmptyDispatch('${key}','template_in',this.value)"></div>
+                <div class="col-md-6"><label class="form-label small">空车回模板 (template_out)</label>
+                    <input class="form-control form-control-sm" value="${(region.empty_dispatch||{}).template_out||''}" placeholder="如 EmptyCarsfromHY1_503" onchange="updateEmptyDispatch('${key}','template_out',this.value)"></div>
+                <div class="col-md-12"><label class="form-label small">下发地址 (URL)</label>
                     <input class="form-control form-control-sm" value="${(region.empty_dispatch||{}).url||''}" placeholder="http://10.68.2.40:7000/ics/taskOrder/addTask" onchange="updateEmptyDispatch('${key}','url',this.value)"></div>
             </div></details>
             <details class="mb-2"><summary class="form-label small fw-bold" style="cursor:pointer;display:inline;">🩺 自恢复配置</summary>
