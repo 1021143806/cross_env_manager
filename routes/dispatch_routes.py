@@ -692,17 +692,26 @@ def handle_status_report(data):
     
     if status == 6:
         # 任务开始（运行中）：记录到模板 JSON
+        # 匹配策略（两级）：
+        #   1. 先按 deviceCode 匹配（负载任务）
+        #   2. 没匹配到 → 按 order_id 匹配 deviceCode 为空的记录（空车任务，下发时无设备号）
         tasks = _load_json(template_file)
-        # 查找是否已有该设备的记录，有则覆盖，无则新增
         existing = None
         for t in tasks:
             if t.get('deviceCode') == device_code and t.get('status') == 6:
                 existing = t
                 break
+        # 第2级：空车任务覆盖更新（下发时 deviceCode 为空，上报时填充）
+        if not existing and order_id:
+            for t in tasks:
+                if t.get('order_id') == order_id and not t.get('deviceCode') and t.get('status') == 6:
+                    existing = t
+                    break
         
         if existing:
             # 覆盖更新
             existing['deviceNum'] = device_num
+            existing['deviceCode'] = device_code
             existing['order_id'] = order_id
             existing['shelfNumber'] = data.get('shelfNumber', '')
             existing['shelfCurrPosition'] = data.get('shelfCurrPosition', '')
