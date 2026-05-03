@@ -923,9 +923,14 @@ def api_device_check():
         api_path = sh.get('device_query_api', SELF_HEAL_DEFAULTS['device_query_api'])
         area_id = region.get('areaId', '0')
         
+        # 构造请求报文
+        request_body = {"areaId": str(area_id), "deviceType": "0", "deviceCode": device_code}
+        request_url = api_path if (api_path.startswith('http://') or api_path.startswith('https://')) else f"http://{api_path}"
+        
         # 查询设备实时状态
         device_info = _query_device_status('', api_path, area_id, device_code)
         state = device_info.get('state', '查询失败') if device_info else '查询失败'
+        response_body = device_info if device_info else None
         
         cleaned = False
         if _should_clean_device(device_info):
@@ -950,7 +955,10 @@ def api_device_check():
             'device_num': device_num,
             'state': state,
             'cleaned': cleaned,
-            'message': f'设备 {device_num} 状态: {state}' + ('，已自动清理' if cleaned else '，在线保留')
+            'message': f'设备 {device_num} 状态: {state}' + ('，已自动清理' if cleaned else '，在线保留'),
+            'request_url': request_url,
+            'request_body': request_body,
+            'response_body': response_body
         })
     except Exception as e:
         return jsonify({'error': f'检查失败: {str(e)}'}), 500

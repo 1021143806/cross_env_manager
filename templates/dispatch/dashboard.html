@@ -2394,7 +2394,14 @@ function checkDevice(regionKey, deviceCode, deviceNum) {
             return;
         }
         const color = data.cleaned ? 'warning' : 'success';
-        if (resultEl) resultEl.innerHTML = '<div class="text-' + color + '"><i class="bi ' + (data.cleaned ? 'bi-check-circle' : 'bi-info-circle') + ' me-1"></i>' + data.message + '</div>';
+        let html = '<div class="text-' + color + ' mb-2"><i class="bi ' + (data.cleaned ? 'bi-check-circle' : 'bi-info-circle') + ' me-1"></i>' + data.message + '</div>';
+        // 显示请求/响应报文
+        html += '<div class="small" style="max-height:200px;overflow-y:auto;background:var(--detail-card-bg);padding:0.5rem;border-radius:4px;font-family:monospace;white-space:pre-wrap;word-break:break-all;">';
+        html += '<strong>请求 URL:</strong> ' + escapeHtml(data.request_url || '') + '\n\n';
+        html += '<strong>请求报文:</strong>\n' + JSON.stringify(data.request_body, null, 2);
+        html += '\n\n<strong>响应报文:</strong>\n' + (data.response_body ? JSON.stringify(data.response_body, null, 2) : '(无响应)');
+        html += '</div>';
+        if (resultEl) resultEl.innerHTML = html;
         if (data.cleaned) refreshData();
     })
     .catch(err => {
