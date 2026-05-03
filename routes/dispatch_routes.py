@@ -1,4 +1,4 @@
-w#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 调车管理路由蓝图 - 空车调车模块
