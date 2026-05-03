@@ -726,21 +726,21 @@ def handle_status_report(data):
     else:
         # 非 6 的状态（包括 8=完成 及其他状态）：执行清理逻辑
         # 从模板 JSON 中删除该设备记录
-        # 匹配策略：
-        #   1. 优先按 deviceCode 精确匹配（负载任务场景，下发时已知设备）
-        #   2. 如果模板中存在 deviceCode 为空的记录，按 order_id 匹配（空车任务场景）
+        # 匹配策略（三级，按优先级）：
+        #   1. deviceCode + order_id 精确匹配（负载任务，同一设备可能有多个子任务）
+        #   2. order_id 匹配（空车任务，deviceCode 为空）
+        #   3. deviceCode 匹配（兜底）
         tasks = _load_json(template_file)
         old_count = len(tasks)
-        # 检查模板中是否有 deviceCode 为空的 status=6 记录（空车下发特征）
-        has_empty_device = any(
-            t.get('status') == 6 and not t.get('deviceCode')
-            for t in tasks
-        )
-        if has_empty_device and order_id:
-            # 空车任务：按 order_id 匹配
+        # 第1级：deviceCode + order_id 精确匹配
+        matched = [t for t in tasks if t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') == 6]
+        if matched:
+            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') == 6)]
+        elif order_id:
+            # 第2级：order_id 匹配（空车任务，deviceCode 为空）
             tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') == 6)]
         else:
-            # 负载任务：按 deviceCode 匹配
+            # 第3级：deviceCode 匹配（兜底）
             tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') == 6)]
         _save_json(template_file, tasks)
         template_removed = old_count - len(tasks)
