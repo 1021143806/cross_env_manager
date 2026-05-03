@@ -935,6 +935,7 @@ def api_device_check():
         response_body = None
         if 'XX' not in api_path:
             try:
+                import urllib.request
                 req = urllib.request.Request(request_url,
                     data=json.dumps(request_body).encode('utf-8'),
                     headers={'Content-Type': 'application/json'})
