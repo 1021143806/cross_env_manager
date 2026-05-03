@@ -85,6 +85,16 @@ def _is_in_direction(task_type):
     return task_type in ('empty_in', 'load_in')
 
 
+def _normalize_order_id(order_id):
+    """规范化 order_id：去掉跨环境子任务的后缀 _N_XXXX
+    例如: DHB2-7E0FCFD938794DF0BA6A4561FF8B67BD_1_5554 -> DHB2-7E0FCFD938794DF0BA6A4561FF8B67BD
+    """
+    if not order_id:
+        return order_id
+    import re
+    return re.sub(r'_\d+_\d+$', '', order_id)
+
+
 def _get_template_file_path(region_key, t):
     """获取模板文件路径，支持共享模板"""
     # 兼容 code 和 name 字段
@@ -608,8 +618,8 @@ def handle_status_report(data):
     device_num = data.get('deviceNum', '')
     
     # 4. 解析 order_id
-    # 兼容 orderId 和 order_id
-    order_id = data.get('orderId') or data.get('order_id', '')
+    # 兼容 orderId 和 order_id，并规范化去掉跨环境子任务后缀 _N_XXXX
+    order_id = _normalize_order_id(data.get('orderId') or data.get('order_id', ''))
     
     # 5. 解析 template_name
     # 兼容 modelProcessCode 和 template_name
