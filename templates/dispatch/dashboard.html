@@ -186,7 +186,7 @@
     .template-table tr:hover td { background: var(--detail-card-bg); }
     .template-table .tpl-name {
         word-break: break-all;
-        max-width: 140px;
+        max-width: 200px;
         display: inline-block;
         vertical-align: middle;
     }
@@ -815,7 +815,7 @@ function renderAreas(areas) {
                             </div>
                             <div class="template-section-title" style="color:#0d6efd;"><i class="bi bi-box-arrow-in-down"></i> 来区域 <button class="btn btn-sm ms-2" style="border-color:#0d6efd;color:#0d6efd;" onclick="manualDispatch('${area.region_key}','in','${area.enabled}')" title="手动发空车来"><i class="bi bi-truck"></i> 发空车</button></div>
                             <table class="template-table" style="width:100%;">
-                                <thead><tr><th>模板</th><th>名称</th><th class="text-center">数量</th></tr></thead>
+                                <thead><tr><th>模板</th><th class="text-center">数量</th></tr></thead>
                                 <tbody>${incomingRows}</tbody>
                             </table>
                         </div>
@@ -834,7 +834,7 @@ function renderAreas(areas) {
                             </div>
                             <div class="template-section-title" style="color:#fd7e14;"><i class="bi bi-box-arrow-up"></i> 离开 <button class="btn btn-sm ms-2" style="border-color:#fd7e14;color:#fd7e14;" onclick="manualDispatch('${area.region_key}','out','${area.enabled}')" title="手动发空车回"><i class="bi bi-truck"></i> 发空车</button></div>
                             <table class="template-table" style="width:100%;">
-                                <thead><tr><th>模板</th><th>名称</th><th class="text-center">数量</th></tr></thead>
+                                <thead><tr><th>模板</th><th class="text-center">数量</th></tr></thead>
                                 <tbody>${outgoingRows}</tbody>
                             </table>
                         </div>
@@ -1235,7 +1235,7 @@ function getTypeLabel(taskType) {
 }
 
 function renderTemplateRows(templates) {
-    if (!templates || templates.length === 0) return '<tr><td colspan="3" class="text-center text-muted">无配置</td></tr>';
+    if (!templates || templates.length === 0) return '<tr><td colspan="2" class="text-center text-muted">无配置</td></tr>';
     return templates.map(t => {
         const taskType = t.task_type || '';
         const is_empty = (taskType === 'empty_in' || taskType === 'empty_out');
@@ -1243,7 +1243,7 @@ function renderTemplateRows(templates) {
         const badgeStyle = getBadgeStyle(taskType, t.count);
         const label = getTypeLabel(taskType);
         const displayName = t.name || t.code;
-        return `<tr><td><code>${t.code}</code></td><td>${label}<i class="${icon} me-1 small opacity-50"></i><span class="tpl-name">${displayName}</span></td>
+        return `<tr><td>${label}<i class="${icon} me-1 small opacity-50"></i><span class="tpl-name">${displayName}</span><br><small class="text-muted"><code>${t.code}</code></small></td>
             <td class="text-center"><span class="badge count-badge" style="${badgeStyle}">${t.count}</span></td></tr>`;
     }).join('');
 }
@@ -1286,7 +1286,11 @@ function cancelEmptyTasks(regionKey) {
         .then(r => r.json())
         .then(data => {
             if (data.success) {
-                showToast(data.message, 'success');
+                let msg = data.message;
+                if (data.errors && data.errors.length > 0) {
+                    msg += '\n\n失败详情:\n' + data.errors.map((e, i) => `  ${i + 1}. ${e}`).join('\n');
+                }
+                showToast(msg, data.errors?.length ? 'warning' : 'success');
                 refreshData();
             } else {
                 showToast(data.error || '取消失败', 'danger');

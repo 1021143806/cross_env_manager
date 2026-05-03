@@ -953,8 +953,8 @@ def api_report_status():
                         threading.Thread(target=_auto_dispatch, daemon=True).start()
             except: pass
         
-        # 始终返回 1000，额外返回 matched 标识是否匹配到模板
-        return jsonify({'code': 1000, 'desc': 'success', 'matched': matched})
+        # 始终返回 1000
+        return jsonify({'code': 1000, 'desc': 'success'})
     except Exception as e:
         # 即使异常也返回 1000，避免服务器重试
         print(f"[Dispatch] report_status 异常: {e}")
