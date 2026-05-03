@@ -1294,9 +1294,6 @@ def _execute_dispatch(region_key, region, balance):
     else:
         dispatch_template = empty_dispatch.get('template_out', '') or template_code
     dispatch_url = empty_dispatch.get('url', '')
-    if not dispatch_url:
-        server = region.get('server', '')
-        dispatch_url = f"http://{server}/ics/taskOrder/addTask" if server else ''
     
     request_body = [{
         "modelProcessCode": dispatch_template,
@@ -1711,10 +1708,10 @@ _self_heal_status = {}  # {region_key: {last_check, cleaned_count, errors}}
 _self_heal_lock = threading.Lock()
 
 SELF_HEAL_DEFAULTS = {
-    'enabled': False,
+    'enabled': True,
     'check_interval': 300,       # 检查间隔（秒）
     'recover_timeout_minutes': 30,  # 异常超时恢复间隔（分钟）
-    'device_query_api': '/ics/out/device/list/deviceInfo'
+    'device_query_api': '10.68.2.XX:7000/ics/out/device/list/deviceInfo'
 }
 
 
@@ -1724,6 +1721,9 @@ def _query_device_status(server, api_path, area_id, device_code):
     - 相对路径: /ics/out/device/list/deviceInfo → 拼接 http://{server}{api_path}
     - 完整 URL: http://192.168.1.100:8080/ics/... → 直接使用
     """
+    # 含 XX 占位符视为未配置，直接返回 None（视为离线）
+    if 'XX' in api_path or 'XX' in server:
+        return None
     if api_path.startswith('http://') or api_path.startswith('https://'):
         url = api_path
     else:
@@ -1769,12 +1769,12 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
         return {'cleaned': 0, 'errors': [], 'steps': []}
     
     timeout_minutes = sh.get('recover_timeout_minutes', SELF_HEAL_DEFAULTS['recover_timeout_minutes'])
-    server = region.get('server', '')
     area_id = region.get('areaId', '0')
     api_path = sh.get('device_query_api', SELF_HEAL_DEFAULTS['device_query_api'])
     
-    if not server:
-        return {'cleaned': 0, 'errors': ['无服务器配置'], 'steps': []}
+    # 未配置查询API或含 XX 占位符则跳过
+    if not api_path or 'XX' in api_path:
+        return {'cleaned': 0, 'errors': [], 'steps': []}
     
     from datetime import timedelta
     threshold = (datetime.now() - timedelta(minutes=timeout_minutes)).isoformat()
@@ -1814,7 +1814,7 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
             if not device_code:
                 continue
             
-            device_info = _query_device_status(server, api_path, area_id, device_code)
+            device_info = _query_device_status('', api_path, area_id, device_code)
             state = device_info.get('state', '查询失败') if device_info else '查询失败'
             
             if _should_clean_device(device_info):

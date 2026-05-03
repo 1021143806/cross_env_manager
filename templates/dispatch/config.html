@@ -290,8 +290,8 @@ function renderVisualEditor(data) {
                     <input class="form-control form-control-sm" value="${region.areaId||''}" onchange="updateRegionField('${key}','areaId',this.value)"></div>
                 <div class="col-md-2"><label class="form-label small">id</label>
                     <input class="form-control form-control-sm" type="number" value="${region.id||0}" onchange="updateRegionField('${key}','id',parseInt(this.value)||0)"></div>
-                <div class="col-md-4"><label class="form-label small">服务器</label>
-                    <input class="form-control form-control-sm" value="${region.server||''}" placeholder="10.68.2.31:7000" onchange="updateRegionField('${key}','server',this.value)"></div>
+                <div class="col-md-4"><label class="form-label small">服务器备注</label>
+                    <input class="form-control form-control-sm" value="${region.server||''}" placeholder="10.68.2.32（仅作展示）" onchange="updateRegionField('${key}','server',this.value)"></div>
                 <div class="col-md-2"><label class="form-label small">xmin</label>
                     <input class="form-control form-control-sm" type="number" value="${region.xmin||2}" onchange="updateRegionField('${key}','xmin',parseInt(this.value)||2)"></div>
                 <div class="col-md-2"><label class="form-label small">xmax</label>
@@ -311,21 +311,21 @@ function renderVisualEditor(data) {
                 <div class="col-md-6"><label class="form-label small">空车回模板 (template_out)</label>
                     <input class="form-control form-control-sm" value="${(region.empty_dispatch||{}).template_out||''}" placeholder="如 EmptyCarsfromHY1_503" onchange="updateEmptyDispatch('${key}','template_out',this.value)"></div>
                 <div class="col-md-12"><label class="form-label small">下发地址 (URL)</label>
-                    <input class="form-control form-control-sm" value="${(region.empty_dispatch||{}).url||''}" placeholder="http://10.68.2.40:7000/ics/taskOrder/addTask" onchange="updateEmptyDispatch('${key}','url',this.value)"></div>
+                    <input class="form-control form-control-sm" value="${(region.empty_dispatch||{}).url||''}" placeholder="http://10.68.2.32:7000/ics/taskOrder/addTask" onchange="updateEmptyDispatch('${key}','url',this.value)"></div>
             </div></details>
             <details class="mb-2"><summary class="form-label small fw-bold" style="cursor:pointer;display:inline;">🩺 自恢复配置</summary>
             <div class="row g-2 mt-1">
                 <div class="col-md-3"><label class="form-label small">启用</label>
                     <select class="form-select form-select-sm" onchange="updateRegionField('${key}','self_heal',{...configData['${key}']?.self_heal||{},enabled:this.value==='true'})">
-                        <option value="false" ${(region.self_heal||{}).enabled?'':'selected'}>关闭</option>
-                        <option value="true" ${(region.self_heal||{}).enabled?'selected':''}>启用</option>
+                        <option value="false" ${(region.self_heal||{}).enabled===false?'selected':''}>关闭</option>
+                        <option value="true" ${(region.self_heal||{}).enabled!==false?'selected':''}>启用</option>
                     </select></div>
                 <div class="col-md-3"><label class="form-label small">检查间隔(秒)</label>
                     <input class="form-control form-control-sm" type="number" value="${(region.self_heal||{}).check_interval||300}" onchange="updateSelfHeal('${key}','check_interval',parseInt(this.value)||300)"></div>
                 <div class="col-md-3"><label class="form-label small">异常超时恢复间隔(分钟)</label>
                     <input class="form-control form-control-sm" type="number" value="${(region.self_heal||{}).recover_timeout_minutes||30}" onchange="updateSelfHeal('${key}','recover_timeout_minutes',parseInt(this.value)||30)"></div>
                 <div class="col-md-3"><label class="form-label small">查询API地址</label>
-                    <input class="form-control form-control-sm" placeholder="http://ip:port/ics/out/device/list/deviceInfo" value="${(region.self_heal||{}).device_query_api||'/ics/out/device/list/deviceInfo'}" onchange="updateSelfHeal('${key}','device_query_api',this.value)"></div>
+                    <input class="form-control form-control-sm" placeholder="10.68.2.XX:7000/ics/out/device/list/deviceInfo" value="${(region.self_heal||{}).device_query_api||'10.68.2.XX:7000/ics/out/device/list/deviceInfo'}" onchange="updateSelfHeal('${key}','device_query_api',this.value)"></div>
             </div></details></div>`;
         container.appendChild(card);
     });
