@@ -902,6 +902,60 @@ def api_device_info():
     return jsonify(device_info)
 
 
+@dispatch_bp.route('/api/dispatch/device_check', methods=['POST'])
+@login_required
+def api_device_check():
+    """设备检查：查询设备实时状态，离线/下线则自动清理"""
+    try:
+        data = request.get_json() or {}
+        region_key = data.get('region_key', '')
+        device_code = data.get('deviceCode', '')
+        device_num = data.get('deviceNum', '')
+        if not region_key or not device_code:
+            return jsonify({'error': '缺少 region_key 或 deviceCode'}), 400
+        
+        index = _load_cache_index()
+        region = index.get(region_key)
+        if not region:
+            return jsonify({'error': f'区域 {region_key} 不存在'}), 404
+        
+        sh = region.get('self_heal', {})
+        api_path = sh.get('device_query_api', SELF_HEAL_DEFAULTS['device_query_api'])
+        area_id = region.get('areaId', '0')
+        
+        # 查询设备实时状态
+        device_info = _query_device_status('', api_path, area_id, device_code)
+        state = device_info.get('state', '查询失败') if device_info else '查询失败'
+        
+        cleaned = False
+        if _should_clean_device(device_info):
+            # 清理：从所有模板 JSON 和 currentCount 中删除
+            for t in region.get('templates', []):
+                fpath = _get_template_file_path(region_key, t)
+                tasks = _load_json(fpath)
+                new_tasks = [task for task in tasks if not (task.get('deviceCode') == device_code and task.get('status') == 6)]
+                if len(new_tasks) < len(tasks):
+                    _save_json(fpath, new_tasks)
+            now_file = _get_region_file(region_key, 'currentCount.json')
+            now_devices = _load_json(now_file)
+            now_devices = [d for d in now_devices if d.get('deviceCode') != device_code]
+            _save_json(now_file, now_devices)
+            cleaned = True
+            write_global_log('device_check', region_key,
+                f'设备检查清理: {device_num}({device_code}) 状态={state}')
+        
+        return jsonify({
+            'success': True,
+            'device_code': device_code,
+            'device_num': device_num,
+            'state': state,
+            'cleaned': cleaned,
+            'message': f'设备 {device_num} 状态: {state}' + ('，已自动清理' if cleaned else '，在线保留')
+        })
+    except Exception as e:
+        return jsonify({'error': f'检查失败: {str(e)}'}), 500
+
+
 @dispatch_bp.route('/api/dispatch/report_status', methods=['POST'])
 def api_report_status():
     """任务状态上报接口（外部设备上报，无需登录）
@@ -1755,14 +1809,14 @@ def _query_device_status(server, api_path, area_id, device_code):
 
 
 def _should_clean_device(device_info):
-    """判断设备是否应该被清理"""
+    """判断设备是否应该被清理（仅离线/下线/查询失败才清理）"""
     if not device_info:
         return True  # 查询失败，保守清理
     state = device_info.get('state', '')
-    # 离线/下线/空闲/充电 → 清理
-    if state in ('Offline', 'Downlined', 'Idle', 'InCharging'):
+    # 仅离线/下线 → 清理
+    if state in ('Offline', 'Downlined'):
         return True
-    # 任务中/故障/升级中 → 保留
+    # 在线（空闲/充电/任务中/故障/升级中）→ 保留
     return False
 
 

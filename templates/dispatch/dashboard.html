@@ -883,7 +883,6 @@ function renderAreas(areas) {
                         <button class="btn btn-outline-purple btn-sm" onclick="toggleTimeSlotPanel('${area.region_key}', this)"><i class="bi bi-clock"></i> 分时配置</button>
                         <button class="btn btn-outline-success btn-sm" onclick="toggleSelfHealPanel('${area.region_key}', this)"><i class="bi bi-heart-pulse"></i> 自恢复</button>
                         <button class="btn btn-outline-danger btn-sm" onclick="cancelEmptyTasks('${area.region_key}')" title="取消该区域所有空车任务"><i class="bi bi-x-octagon"></i> 取消空车</button>
-                        <a href="/dispatch/config" class="btn btn-outline-secondary btn-sm"><i class="bi bi-gear"></i> 配置</a>
                     </div>
                 </div>
                 <!-- JSON 文件展开面板 -->
@@ -2366,11 +2365,41 @@ function showDeviceModal(deviceNum) {
                 html += '</div>';
             }
             
+            // 空闲设备：显示设备检查按钮
+            if (data.status === 'idle' && data.region_key && data.deviceCode) {
+                html += '<hr class="my-2">';
+                html += '<button class="btn btn-sm btn-outline-warning w-100" onclick="checkDevice(\'' + escapeHtml(data.region_key) + '\',\'' + escapeHtml(data.deviceCode) + '\',\'' + escapeHtml(data.deviceNum || deviceNum) + '\')"><i class="bi bi-search me-1"></i>设备检查</button>';
+                html += '<div id="deviceCheckResult" class="mt-2 small"></div>';
+            }
+            
             document.getElementById('dmBody').innerHTML = html;
         })
         .catch(err => {
             document.getElementById('dmBody').innerHTML = '<div class="text-danger text-center py-3">加载失败: ' + err.message + '</div>';
         });
+}
+
+function checkDevice(regionKey, deviceCode, deviceNum) {
+    const resultEl = document.getElementById('deviceCheckResult');
+    if (resultEl) resultEl.innerHTML = '<div class="text-info"><div class="spinner-border spinner-border-sm me-1"></div>检查中...</div>';
+    fetch('/api/dispatch/device_check', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({region_key: regionKey, deviceCode: deviceCode, deviceNum: deviceNum})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) {
+            if (resultEl) resultEl.innerHTML = '<div class="text-danger">' + data.error + '</div>';
+            return;
+        }
+        const color = data.cleaned ? 'warning' : 'success';
+        if (resultEl) resultEl.innerHTML = '<div class="text-' + color + '"><i class="bi ' + (data.cleaned ? 'bi-check-circle' : 'bi-info-circle') + ' me-1"></i>' + data.message + '</div>';
+        if (data.cleaned) refreshData();
+    })
+    .catch(err => {
+        if (resultEl) resultEl.innerHTML = '<div class="text-danger">请求失败: ' + err.message + '</div>';
+    });
 }
 
 function showToast(message, type) {
