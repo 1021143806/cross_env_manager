@@ -1322,11 +1322,23 @@ function cancelEmptyTasks(regionKey) {
         .then(r => r.json())
         .then(data => {
             if (data.success) {
-                let msg = data.message;
-                if (data.errors && data.errors.length > 0) {
-                    msg += '\n\n失败详情:\n' + data.errors.map((e, i) => `  ${i + 1}. ${e}`).join('\n');
+                // 弹窗显示详细结果
+                let html = '<div class="mb-2"><strong>' + data.message + '</strong></div>';
+                if (data.details && data.details.length > 0) {
+                    html += '<div style="max-height:300px;overflow-y:auto;font-size:0.8rem;">';
+                    html += '<table class="table table-sm table-borderless mb-0"><thead><tr><th>#</th><th>模板</th><th>订单号</th><th>结果</th></tr></thead><tbody>';
+                    data.details.forEach((d, i) => {
+                        const icon = d.success ? '✅' : '❌';
+                        const color = d.success ? 'text-success' : 'text-danger';
+                        html += '<tr><td>' + (i + 1) + '</td><td><code>' + escapeHtml(d.template) + '</code></td>';
+                        html += '<td><small><code>' + escapeHtml((d.order_id || '').slice(0, 30)) + '</code></small></td>';
+                        html += '<td class="' + color + '">' + icon + ' ' + escapeHtml(d.message) + '</td></tr>';
+                    });
+                    html += '</tbody></table></div>';
                 }
-                showToast(msg, data.errors?.length ? 'warning' : 'success');
+                document.getElementById('dmTitle').textContent = '取消空车任务 - ' + regionKey;
+                document.getElementById('dmBody').innerHTML = html;
+                new bootstrap.Modal(document.getElementById('deviceModal')).show();
                 refreshData();
             } else {
                 showToast(data.error || '取消失败', 'danger');

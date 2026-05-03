@@ -1735,6 +1735,7 @@ def api_cancel_empty_tasks(region_key):
         enabled = region.get('enabled', False)
         cancelled = 0
         errors = []
+        details = []
         
         for t in region.get('templates', []):
             task_type = _normalize_task_type(t)
@@ -1751,27 +1752,40 @@ def api_cancel_empty_tasks(region_key):
                 if not order_id:
                     continue
                 
+                detail = {'template': template_code, 'order_id': order_id, 'success': False, 'message': ''}
                 if enabled:
                     # 真实取消：查询子任务信息并调用 ICS 取消接口
                     info, err = _get_task_server_info(order_id)
                     if err:
+                        detail['message'] = err
                         errors.append(f'{template_code} {order_id}: {err}')
+                        details.append(detail)
                         continue
                     
                     sub_order_id = info['sub_order_id']
                     server_ip = info['server_ip']
+                    detail['sub_order_id'] = sub_order_id
+                    detail['server_ip'] = server_ip
                     
                     result, cancel_err = _cancel_empty_task(sub_order_id, server_ip)
                     if cancel_err:
+                        detail['message'] = f'ICS取消失败: {cancel_err}'
                         errors.append(f'{template_code} {sub_order_id}: {cancel_err}')
+                        details.append(detail)
                         continue
                     
                     cancelled += 1
+                    detail['success'] = True
+                    detail['message'] = f'已取消 (server={server_ip})'
+                    details.append(detail)
                     write_global_log('cancel_empty', region_key,
                         f'取消空车任务: {template_code} order={order_id} sub={sub_order_id} server={server_ip}')
                 else:
                     # 模拟取消：只清理本地数据
                     cancelled += 1
+                    detail['success'] = True
+                    detail['message'] = '模拟取消'
+                    details.append(detail)
                     write_global_log('cancel_empty', region_key,
                         f'模拟取消空车任务: {template_code} order={order_id}')
             
@@ -1784,6 +1798,7 @@ def api_cancel_empty_tasks(region_key):
             'success': True,
             'cancelled': cancelled,
             'errors': errors,
+            'details': details,
             'message': f'已取消 {cancelled} 个空车任务' + (f', {len(errors)} 个失败' if errors else '')
         })
     except Exception as e:
