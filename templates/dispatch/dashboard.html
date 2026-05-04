@@ -1402,7 +1402,7 @@ function renderDeviceIcon(d, isPending) {
         const devState = d.state || 'pending';
         cls = 'agv-icon ' + (devState === 'idle' ? 'idle' : 'pending');
         spriteCls = 'agv-sprite blue';
-        label = devState === 'idle' ? '空闲' : '待确认';
+        label = devState === 'idle' ? '空闲' : '可用';
     }
     return `<span class="${cls}" onclick="showDeviceModal('${dn}')" style="cursor:pointer;"
         onmouseenter="showAgvTooltip(event,'${escapeHtml(dc)}','${escapeHtml(label)}','${createTime}','${escapeHtml(tpl)}')"
@@ -2422,6 +2422,14 @@ function checkDevice(regionKey, deviceCode, deviceNum) {
         }
         const color = data.cleaned ? 'warning' : 'success';
         let html = '<div class="text-' + color + ' mb-2"><i class="bi ' + (data.cleaned ? 'bi-check-circle' : 'bi-info-circle') + ' me-1"></i>' + data.message + '</div>';
+        // 更新弹窗中的状态显示
+        const statusEl = document.querySelector('#dmBody td[style*="color"]');
+        if (statusEl && !data.cleaned) {
+            const stateLabel = data.state === 'InTask' ? '🟡 任务中' : data.state === 'Idle' ? '🟢 空闲' : '🟢 ' + data.state;
+            const stateColor = data.state === 'InTask' ? '#fd7e14' : '#28a745';
+            statusEl.style.color = stateColor;
+            statusEl.textContent = stateLabel;
+        }
         // 显示请求/响应报文
         html += '<div class="small" style="max-height:200px;overflow-y:auto;background:var(--detail-card-bg);padding:0.5rem;border-radius:4px;font-family:monospace;white-space:pre-wrap;word-break:break-all;">';
         html += '<strong>请求 URL:</strong> ' + escapeHtml(data.request_url || '') + '\n\n';
