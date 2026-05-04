@@ -2364,7 +2364,7 @@ function showDeviceModal(deviceNum) {
             html += '<table class="table table-sm table-borderless mb-3"><tbody>';
             html += '<tr><td class="text-muted" style="width:80px;">设备编号</td><td><strong>' + escapeHtml(data.deviceNum || '-') + '</strong></td></tr>';
             html += '<tr><td class="text-muted">序列号</td><td><code>' + escapeHtml(data.deviceCode || '-') + '</code></td></tr>';
-            html += '<tr><td class="text-muted">状态</td><td style="color:' + statusColor + ';font-weight:600;">' + statusLabel + '</td></tr>';
+            html += '<tr><td class="text-muted">状态</td><td id="dmStatus" style="color:' + statusColor + ';font-weight:600;">' + statusLabel + ' <span class="spinner-border spinner-border-sm ms-1" style="width:0.7rem;height:0.7rem;"></span></td></tr>';
             html += '<tr><td class="text-muted">区域</td><td>' + escapeHtml(data.region_key || '-') + '</td></tr>';
             if (data.shelfNumber) html += '<tr><td class="text-muted">货架</td><td>' + escapeHtml(data.shelfNumber) + '</td></tr>';
             html += '</tbody></table>';
@@ -2392,18 +2392,47 @@ function showDeviceModal(deviceNum) {
                 html += '</div>';
             }
             
-            // 空闲设备：显示设备检查按钮
-            if (data.status === 'idle' && data.region_key && data.deviceCode) {
+            // 所有设备显示强制检查按钮
+            if (data.region_key && data.deviceCode) {
                 html += '<hr class="my-2">';
-                html += '<button class="btn btn-sm btn-outline-warning w-100" onclick="checkDevice(\'' + escapeHtml(data.region_key) + '\',\'' + escapeHtml(data.deviceCode) + '\',\'' + escapeHtml(data.deviceNum || deviceNum) + '\')"><i class="bi bi-search me-1"></i>设备检查</button>';
+                html += '<button class="btn btn-sm btn-outline-warning w-100" onclick="forceCheckDevice(\'' + escapeHtml(data.region_key) + '\',\'' + escapeHtml(data.deviceCode) + '\',\'' + escapeHtml(data.deviceNum || deviceNum) + '\')"><i class="bi bi-search me-1"></i>强制检查</button>';
                 html += '<div id="deviceCheckResult" class="mt-2 small"></div>';
             }
             
             document.getElementById('dmBody').innerHTML = html;
+            
+            // 自动触发设备检查更新实时状态
+            if (data.region_key && data.deviceCode) {
+                autoCheckDevice(data.region_key, data.deviceCode, data.deviceNum || deviceNum);
+            }
         })
         .catch(err => {
             document.getElementById('dmBody').innerHTML = '<div class="text-danger text-center py-3">加载失败: ' + err.message + '</div>';
         });
+}
+
+function autoCheckDevice(regionKey, deviceCode, deviceNum) {
+    fetch('/api/dispatch/device_check', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({region_key: regionKey, deviceCode: deviceCode, deviceNum: deviceNum})
+    })
+    .then(r => r.json())
+    .then(data => {
+        const statusEl = document.getElementById('dmStatus');
+        if (!statusEl) return;
+        if (data.error) return;
+        const stateLabel = data.state === 'InTask' ? '🟡 任务中' : data.state === 'Idle' ? '🟢 空闲' : '🟢 ' + data.state;
+        const stateColor = data.state === 'InTask' ? '#fd7e14' : '#28a745';
+        statusEl.style.color = stateColor;
+        statusEl.textContent = stateLabel;
+    })
+    .catch(() => {});
+}
+
+function forceCheckDevice(regionKey, deviceCode, deviceNum) {
+    if (!confirm('强制检查设备 ' + deviceNum + '？\n\n将查询设备实时状态，离线/下线设备将被自动清理。')) return;
+    checkDevice(regionKey, deviceCode, deviceNum);
 }
 
 function checkDevice(regionKey, deviceCode, deviceNum) {
