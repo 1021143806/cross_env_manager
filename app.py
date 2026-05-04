@@ -153,6 +153,9 @@ args = parse_arguments()
 # 加载配置
 config = load_config(args.config)
 
+# 应用版本号
+APP_VERSION = '2.0.0'
+
 # 初始化Flask应用
 app = Flask(__name__)
 
@@ -166,6 +169,10 @@ app.secret_key = flask_secret_key
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 # 支持 JSON 响应中的中文
 app.json.ensure_ascii = False
+
+@app.context_processor
+def inject_version():
+    return {'app_version': APP_VERSION}
 
 # 启动内存追踪（监控页面使用）
 tracemalloc.start()
