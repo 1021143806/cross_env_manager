@@ -1384,8 +1384,9 @@ function getSpriteClass(taskType) {
 
 function filterCurrentDevices(currentDevices, pendingDevices) {
     if (!pendingDevices || pendingDevices.length === 0) return currentDevices;
-    const pendingNums = new Set(pendingDevices.map(d => d.deviceNum));
-    return currentDevices.filter(d => !pendingNums.has(d.deviceNum));
+    const pendingNums = new Set(pendingDevices.map(d => d.deviceNum).filter(Boolean));
+    const pendingCodes = new Set(pendingDevices.map(d => d.deviceCode).filter(Boolean));
+    return currentDevices.filter(d => !pendingNums.has(d.deviceNum) && !pendingCodes.has(d.deviceCode));
 }
 
 function renderDeviceIcon(d, isPending) {
