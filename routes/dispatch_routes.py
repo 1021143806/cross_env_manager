@@ -508,7 +508,7 @@ def calculate_area_balance(region_key, region_config):
         "currentCount": currentCount,
         "current_devices": [
             {"deviceNum": d.get('deviceNum', ''), "deviceCode": d.get('deviceCode', ''),
-             "create_time": d.get('create_time', '')}
+             "create_time": d.get('create_time', ''), "state": d.get('state', 'pending')}
             for d in now_devices
         ],
         "pending_devices": pending_devices,
@@ -578,6 +578,7 @@ def _clean_by_order_id_across_all_regions(order_id, device_code):
     """当 status=8 无法匹配模板时，遍历所有区域所有模板按 order_id 清理"""
     index = _load_cache_index()
     cleaned = 0
+    print(f"[Dispatch] _clean_by_order_id_across_all_regions: order_id={order_id}, device_code={device_code}")
     for rk, region in index.items():
         if not isinstance(region, dict) or 'templates' not in region:
             continue
@@ -585,22 +586,32 @@ def _clean_by_order_id_across_all_regions(order_id, device_code):
             fpath = _get_template_file_path(rk, t)
             tasks = _load_json(fpath)
             old_count = len(tasks)
-            # 按 order_id 匹配删除（空车任务 deviceCode 为空）
-            tasks = [task for task in tasks if not (task.get('order_id') == order_id and task.get('status') == 6)]
-            if len(tasks) < old_count:
-                _save_json(fpath, tasks)
-                cleaned += old_count - len(tasks)
-            # 也按 deviceCode 匹配删除（负载任务）
+            # 按 order_id 匹配删除
+            new_tasks = [task for task in tasks if not (task.get('order_id') == order_id and task.get('status') == 6)]
+            if len(new_tasks) < old_count:
+                _save_json(fpath, new_tasks)
+                removed = old_count - len(new_tasks)
+                cleaned += removed
+                print(f"[Dispatch] _clean_by_order_id: 按order_id清理 {rk}/{t.get('code', t.get('name', ''))} 删除了{removed}条")
+            tasks = new_tasks
+            # 也按 deviceCode 匹配删除
             if device_code:
-                tasks = [task for task in tasks if not (task.get('deviceCode') == device_code and task.get('status') == 6)]
-                if len(tasks) < old_count:
-                    _save_json(fpath, tasks)
+                new_tasks2 = [task for task in tasks if not (task.get('deviceCode') == device_code and task.get('status') == 6)]
+                if len(new_tasks2) < len(tasks):
+                    _save_json(fpath, new_tasks2)
+                    removed2 = len(tasks) - len(new_tasks2)
+                    cleaned += removed2
+                    print(f"[Dispatch] _clean_by_order_id: 按deviceCode清理 {rk}/{t.get('code', t.get('name', ''))} 删除了{removed2}条")
         # 清理 currentCount
         if device_code:
             now_file = _get_region_file(rk, 'currentCount.json')
             now_devices = _load_json(now_file)
+            old_cc = len(now_devices)
             now_devices = [d for d in now_devices if d.get('deviceCode') != device_code]
-            _save_json(now_file, now_devices)
+            if len(now_devices) < old_cc:
+                _save_json(now_file, now_devices)
+                print(f"[Dispatch] _clean_by_order_id: 清理currentCount {rk} 删除了{old_cc - len(now_devices)}条")
+    print(f"[Dispatch] _clean_by_order_id_across_all_regions: 共清理{cleaned}条")
     return cleaned
 
 
@@ -805,7 +816,8 @@ def handle_status_report(data):
                     "deviceNum": device_num,
                     "order_id": order_id,
                     "shelfNumber": data.get('shelfNumber', ''),
-                    "create_time": now
+                    "create_time": now,
+                    "state": "pending"
                 })
                 cc_change = f', currentCount +1 (共{len(now_devices)}条)'
         else:
@@ -1003,6 +1015,15 @@ def api_device_check():
             cleaned = True
             write_global_log('device_check', region_key,
                 f'设备检查清理: {device_num}({device_code}) 状态={state}')
+        elif device_info and state == 'Idle':
+            # 设备在线且空闲：更新 currentCount 中的 state 为 idle
+            now_file = _get_region_file(region_key, 'currentCount.json')
+            now_devices = _load_json(now_file)
+            for d in now_devices:
+                if d.get('deviceCode') == device_code:
+                    d['state'] = 'idle'
+                    break
+            _save_json(now_file, now_devices)
         
         return jsonify({
             'success': True,
@@ -2167,9 +2188,10 @@ def api_self_heal_force_check(region_key):
                 'errors': result['errors']
             }
         
-        if result['cleaned'] > 0:
-            write_global_log('self_heal', region_key,
-                f'强制检查 {template_code}: 清理 {result["cleaned"]} 个, 保留 {len(result["steps"]) - result["cleaned"]} 个, 耗时 {elapsed}s')
+        # 记录详细日志
+        steps_detail = '; '.join([f"{s['device_num']}({s['device_code'][-8:]}) {s['state']}→{s['action']}" for s in result['steps']])
+        write_global_log('self_heal', region_key,
+            f'强制检查 {template_code}: 清理 {result["cleaned"]} 个, 保留 {len(result["steps"]) - result["cleaned"]} 个, 耗时 {elapsed}s | {steps_detail}')
         
         return jsonify({
             'success': True,

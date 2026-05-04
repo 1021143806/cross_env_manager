@@ -107,6 +107,12 @@
         background: rgba(40, 167, 69, 0.06);
     }
     .agv-icon.idle .dev-num { color: #28a745; }
+    /* 待确认（刚完成任务，等待设备检查确认） */
+    .agv-icon.pending {
+        border-color: #1a8e71;
+        background: rgba(26, 142, 113, 0.06);
+    }
+    .agv-icon.pending .dev-num { color: #1a8e71; }
     /* 来负载 */
     .agv-icon.load-in {
         border-color: #0d6efd;
@@ -1386,9 +1392,18 @@ function renderDeviceIcon(d, isPending) {
     const tpl = d.template || '';
     const taskType = d.task_type || '';
     const createTime = d.create_time ? d.create_time.slice(11, 19) : '';
-    const cls = isPending ? 'agv-icon ' + getDeviceClass(taskType) : 'agv-icon idle';
-    const spriteCls = 'agv-sprite ' + (isPending ? getSpriteClass(taskType) : 'blue');
-    const label = isPending ? getTaskTypeLabel(taskType) : '空闲';
+    let cls, spriteCls, label;
+    if (isPending) {
+        cls = 'agv-icon ' + getDeviceClass(taskType);
+        spriteCls = 'agv-sprite ' + getSpriteClass(taskType);
+        label = getTaskTypeLabel(taskType);
+    } else {
+        // 空闲设备：根据 state 区分 pending/idle
+        const devState = d.state || 'pending';
+        cls = 'agv-icon ' + (devState === 'idle' ? 'idle' : 'pending');
+        spriteCls = 'agv-sprite blue';
+        label = devState === 'idle' ? '空闲' : '待确认';
+    }
     return `<span class="${cls}" onclick="showDeviceModal('${dn}')" style="cursor:pointer;"
         onmouseenter="showAgvTooltip(event,'${escapeHtml(dc)}','${escapeHtml(label)}','${createTime}','${escapeHtml(tpl)}')"
         onmouseleave="hideAgvTooltip()"><span class="${spriteCls}"></span><span class="dev-num">${dn}</span></span>`;
@@ -2458,7 +2473,7 @@ function loadSelfHealStatus(regionKey) {
         const st = statusData.status[regionKey];
         const regionConfig = configData[regionKey] || {};
         const selfHealConfig = regionConfig.self_heal || {};
-        const healEnabled = selfHealConfig.enabled || false;
+        const healEnabled = selfHealConfig.enabled === true || selfHealConfig.enabled === 'true';
         
         let html = '<div class="small">';
         
