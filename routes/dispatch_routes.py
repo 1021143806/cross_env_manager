@@ -1040,6 +1040,63 @@ def api_device_check():
         return jsonify({'error': f'检查失败: {str(e)}'}), 500
 
 
+@dispatch_bp.route('/api/dispatch/template_detail')
+@login_required
+def api_template_detail():
+    """获取模板详情（任务列表 + 最近日志）"""
+    region_key = request.args.get('region_key', '')
+    template_code = request.args.get('template_code', '')
+    if not region_key or not template_code:
+        return jsonify({'error': '缺少参数'}), 400
+    
+    index = _load_cache_index()
+    region = index.get(region_key)
+    if not region:
+        return jsonify({'error': f'区域 {region_key} 不存在'}), 404
+    
+    template_config = None
+    for t in region.get('templates', []):
+        if (t.get('code') or t.get('name', '')) == template_code:
+            template_config = t
+            break
+    if not template_config:
+        return jsonify({'error': f'模板 {template_code} 不存在'}), 404
+    
+    fpath = _get_template_file_path(region_key, template_config)
+    tasks = _load_json(fpath)
+    task_type = _normalize_task_type(template_config)
+    display_name = template_config.get('display_name') or template_config.get('name', '')
+    
+    # 当前执行中任务
+    running_tasks = [task for task in tasks if task.get('status') == 6]
+    
+    # 最近日志（从全局日志筛选该模板相关）
+    logs = _load_json(GLOBAL_LOG_PATH)
+    template_logs = []
+    for log in reversed(logs):
+        detail = log.get('detail', '')
+        if template_code in detail:
+            template_logs.append({
+                'time': log.get('time', ''),
+                'action': log.get('action', ''),
+                'detail': detail,
+                'level': log.get('level', 'info')
+            })
+        if len(template_logs) >= 30:
+            break
+    
+    return jsonify({
+        'region_key': region_key,
+        'template_code': template_code,
+        'display_name': display_name,
+        'task_type': task_type,
+        'total_tasks': len(tasks),
+        'running_count': len(running_tasks),
+        'running_tasks': running_tasks,
+        'logs': template_logs
+    })
+
+
 @dispatch_bp.route('/api/dispatch/report_status', methods=['POST'])
 def api_report_status():
     """任务状态上报接口（外部设备上报，无需登录）

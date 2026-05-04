@@ -778,8 +778,8 @@ function renderAreas(areas) {
     let html = '<div class="row">';
     areas.forEach(area => {
         const dirBadge = getDirectionBadge(area);
-        const incomingRows = renderTemplateRows(area.templates.incoming);
-        const outgoingRows = renderTemplateRows(area.templates.outgoing);
+        const incomingRows = renderTemplateRows(area.templates.incoming, area.region_key);
+        const outgoingRows = renderTemplateRows(area.templates.outgoing, area.region_key);
         html += `
         <div class="col-lg-6">
             <div class="area-card">
@@ -1276,7 +1276,7 @@ function getTypeLabel(taskType) {
     return map[taskType] || '';
 }
 
-function renderTemplateRows(templates) {
+function renderTemplateRows(templates, regionKey) {
     if (!templates || templates.length === 0) return '<tr><td colspan="2" class="text-center text-muted">无配置</td></tr>';
     return templates.map(t => {
         const taskType = t.task_type || '';
@@ -1285,7 +1285,9 @@ function renderTemplateRows(templates) {
         const badgeStyle = getBadgeStyle(taskType, t.count);
         const label = getTypeLabel(taskType);
         const displayName = t.name || t.code;
-        return `<tr><td style="word-break:break-all;overflow-wrap:break-word;">${label}<br><small class="text-muted"><code>${t.code}</code></small><br><span class="tpl-name">${displayName}</span></td>
+        const tplCode = t.code || '';
+        return `<tr style="cursor:pointer;" onclick="showTemplateDetail('${regionKey}','${tplCode}')" title="点击查看模板详情">
+            <td style="word-break:break-all;overflow-wrap:break-word;">${label}<br><small class="text-muted"><code>${tplCode}</code></small><br><span class="tpl-name">${displayName}</span></td>
             <td class="text-center" style="width:50px;white-space:nowrap;"><span class="badge count-badge" style="${badgeStyle}">${t.count}</span></td></tr>`;
     }).join('');
 }
@@ -2471,6 +2473,58 @@ function checkDevice(regionKey, deviceCode, deviceNum) {
     .catch(err => {
         if (resultEl) resultEl.innerHTML = '<div class="text-danger">请求失败: ' + err.message + '</div>';
     });
+}
+
+function showTemplateDetail(regionKey, templateCode) {
+    const modal = new bootstrap.Modal(document.getElementById('deviceModal'));
+    document.getElementById('dmTitle').textContent = '模板详情 - ' + templateCode;
+    document.getElementById('dmBody').innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>加载中...</div>';
+    modal.show();
+    
+    fetch('/api/dispatch/template_detail?region_key=' + encodeURIComponent(regionKey) + '&template_code=' + encodeURIComponent(templateCode))
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('dmBody').innerHTML = '<div class="text-danger text-center py-3">' + data.error + '</div>';
+                return;
+            }
+            const taskTypeLabel = getTaskTypeLabel(data.task_type);
+            let html = '<div class="mb-3"><strong style="color:var(--primary-color);">基本信息</strong></div>';
+            html += '<table class="table table-sm table-borderless mb-3"><tbody>';
+            html += '<tr><td class="text-muted" style="width:80px;">模板代码</td><td><code>' + escapeHtml(data.template_code) + '</code></td></tr>';
+            html += '<tr><td class="text-muted">显示名称</td><td>' + escapeHtml(data.display_name || '-') + '</td></tr>';
+            html += '<tr><td class="text-muted">任务类型</td><td>' + taskTypeLabel + '</td></tr>';
+            html += '<tr><td class="text-muted">总任务数</td><td>' + data.total_tasks + '</td></tr>';
+            html += '<tr><td class="text-muted">执行中</td><td><strong>' + data.running_count + '</strong></td></tr>';
+            html += '</tbody></table>';
+            
+            if (data.running_tasks && data.running_tasks.length > 0) {
+                html += '<div class="mb-2"><strong style="color:var(--primary-color);">执行中任务</strong></div>';
+                html += '<div style="max-height:200px;overflow-y:auto;font-size:0.75rem;">';
+                html += '<table class="table table-sm table-borderless mb-0"><thead><tr><th>设备</th><th>订单号</th><th>开始时间</th></tr></thead><tbody>';
+                data.running_tasks.forEach(t => {
+                    const time = t.create_time ? t.create_time.slice(11, 19) : '';
+                    html += '<tr><td>' + escapeHtml(t.deviceNum || '-') + '</td><td><small><code>' + escapeHtml((t.order_id || '').slice(0, 25)) + '</code></small></td><td>' + time + '</td></tr>';
+                });
+                html += '</tbody></table></div>';
+            }
+            
+            if (data.logs && data.logs.length > 0) {
+                html += '<div class="mb-2 mt-3"><strong style="color:var(--primary-color);">最近日志</strong></div>';
+                html += '<div style="max-height:200px;overflow-y:auto;font-size:0.75rem;">';
+                data.logs.forEach(h => {
+                    const icon = h.level === 'warning' ? '⚠️' : h.level === 'error' ? '❌' : '📌';
+                    const time = h.time ? h.time.slice(11, 19) : '';
+                    html += '<div class="py-1 border-bottom border-secondary">' + icon + ' <span class="text-muted">' + time + '</span> ' + escapeHtml(h.detail) + '</div>';
+                });
+                html += '</div>';
+            }
+            
+            document.getElementById('dmBody').innerHTML = html;
+        })
+        .catch(err => {
+            document.getElementById('dmBody').innerHTML = '<div class="text-danger text-center py-3">加载失败: ' + err.message + '</div>';
+        });
 }
 
 function showToast(message, type) {
