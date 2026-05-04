@@ -1,6 +1,6 @@
-# 跨环境任务模板管理系统
+# 跨环境任务管理系统 v2.0.0
 
-基于Python Flask的Web应用，用于管理AGV跨环境任务模板。支持查询、修改、复制跨环境任务模板及其子任务。
+基于Python Flask的Web应用，用于管理AGV跨环境任务模板与空车调车调度。支持查询、修改、复制跨环境任务模板及其子任务。
 
 ## 功能特性
 
@@ -9,9 +9,13 @@
 - ✏️ **模板编辑**: 修改模板配置信息
 - 📝 **子任务管理**: 编辑子任务详细信息
 - 📋 **模板复制**: 基于现有模板创建新模板，自动生成ID后缀
+- 🚛 **空车调车调度**: 区域设备平衡监控，自动/手动下发调车任务
+- 🩺 **自恢复机制**: 设备状态检查、死锁检测、异常任务自动清理
+- 📊 **设备网格**: AGV设备实时状态可视化，支持设备详情与强制检查
+- 📋 **操作日志**: 全局操作日志，支持搜索筛选和报文详情查看
 - 🎨 **用户友好界面**: 响应式设计，操作直观
 - 🌙 **统一主题管理**: 全页面统一的暗黑/亮色主题切换，状态自动保存
-- 📊 **数据可视化**: 清晰的表格和卡片展示
+- 📊 **数据可视化**: 图表、表格和卡片展示
 
 ## 系统要求
 
@@ -338,7 +342,7 @@ graph TB
 
 ```
 cross_env_manager/
-├── app.py              # 主应用文件，Flask应用入口
+├── app.py              # 主应用文件，Flask应用入口 (v2.0.0)
 ├── requirements.txt    # Python依赖包列表
 ├── README.md          # 项目文档
 ├── skill.md           # 项目技能指导文档
@@ -346,40 +350,49 @@ cross_env_manager/
 │   ├── env.toml       # 当前环境配置文件
 │   ├── old/           # 历史配置文件备份
 │   └── template/      # 配置文件模板
+├── dao/               # 数据访问层
+│   ├── detail_dao.py  # 子任务数据访问
+│   └── template_dao.py # 模板数据访问
+├── middleware/         # 中间件
+│   ├── cache.py       # 缓存中间件
+│   └── error_handler.py # 错误处理中间件
 ├── modules/           # 功能模块包
-│   ├── __init__.py    # 模块包初始化
 │   ├── database/      # 数据库访问模块
 │   │   ├── connection.py    # 数据库连接管理
 │   │   └── helpers.py       # 数据库操作辅助函数
 │   └── query/         # 查询功能模块
 │       ├── task_query.py           # 任务查询功能
+│       ├── task_query_extended.py  # 扩展任务查询（跨环境）
 │       ├── cross_model_query.py    # 跨环境模板查询
 │       ├── device_validation.py    # 设备验证
 │       ├── agv_status.py           # AGV状态查询
-│       └── ...其他查询模块
+│       └── ...
+├── routes/            # 路由蓝图
+│   ├── dispatch_routes.py  # 空车调车路由（核心）
+│   ├── task_routes.py      # 任务查询路由
+│   ├── template_routes.py  # 模板管理路由
+│   ├── config_routes.py    # 配置路由
+│   ├── monitor_routes.py   # 系统监控路由
+│   └── ...
+├── services/          # 服务层
+│   ├── template_service.py # 模板服务
+│   ├── config_service.py   # 配置服务
+│   └── ...
 ├── templates/         # HTML模板文件
 │   ├── base.html              # 基础布局模板
-│   ├── index.html             # 首页
-│   ├── search_results.html    # 搜索结果页
-│   ├── template_detail.html   # 模板详情页
-│   ├── edit_template.html     # 编辑模板页
-│   ├── copy_template.html     # 复制模板页
-│   ├── task_query_home.html   # 任务查询首页
-│   ├── task_query_result.html # 任务查询结果页
-│   ├── config_editor.html     # 配置编辑器页面
+│   ├── dispatch/              # 调车模块模板
+│   │   ├── dashboard.html     # 主看板
+│   │   ├── config.html        # 配置管理
+│   │   └── test.html          # 自动驾驶测试
 │   ├── addTask/               # 任务下发相关模板
-│   └── query/                 # 查询功能相关模板
+│   ├── query/                 # 查询功能相关模板
+│   ├── monitor/               # 系统监控模板
+│   └── ...
 ├── static/            # 静态资源文件
 │   ├── css/          # 样式表
 │   ├── js/           # JavaScript文件
-│   ├── backups/      # 配置备份文件
-│   └── images/       # 图片资源
-├── test/             # 测试脚本目录
-│   ├── test_new_features.py      # 新功能测试
-│   ├── test_web_access.py        # Web访问测试
-│   ├── test_production_task_query.py # 生产环境测试
-│   ├── test_syntax_highlight.py  # 语法高亮测试
-│   └── ...其他测试脚本
+│   └── img/agv/      # AGV图标资源
+├── data/dispatch/    # 调车模块数据文件（运行时生成）
 ├── deploy_iraypleos/ # 离线部署脚本
 │   └── deploy_iraypleos.sh      # 一键部署脚本
 ├── venv/             # Python虚拟环境（.gitignore）

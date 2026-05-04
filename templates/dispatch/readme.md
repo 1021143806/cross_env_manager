@@ -89,8 +89,9 @@ data/dispatch/
       {"code": "F2", "display_name": "负载回",   "file": "F2.json", "task_type": "load_out",  "shared": false}
     ],
     "empty_dispatch": {
-      "url": "http://10.68.2.31:7000/ics/taskOrder/addTask",
-      "template": "DKCqu"
+      "url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+      "template_in": "EmptyCarstoHY1_503",
+      "template_out": "EmptyCarsfromHY1_503"
     },
     "time_slots": {
       "enabled": false,
@@ -100,10 +101,10 @@ data/dispatch/
       ]
     },
     "self_heal": {
-      "enabled": false,
+      "enabled": true,
       "check_interval": 300,
       "recover_timeout_minutes": 30,
-      "device_query_api": "/ics/out/device/list/deviceInfo"
+      "device_query_api": "10.68.2.XX:7000/ics/out/device/list/deviceInfo"
     }
   }
 }
@@ -130,14 +131,15 @@ data/dispatch/
 | `xmax` | int | `4` | 保留设备数上限 |
 | `max_dispatch_once` | int | `3` | 单次最大调车数（容量管控） |
 | `auto_dispatch_debounce` | int | `5` | 自动调度防抖秒数（顶层配置） |
-| `empty_dispatch.url` | string | — | 空车下发 URL，支持完整 `http://` 地址 |
-| `empty_dispatch.template` | string | — | 空车下发模板代码，为空时使用空车模板的 `code` |
+| `empty_dispatch.url` | string | — | 空车下发 URL，默认 `http://10.68.2.32:7000/ics/taskOrder/addTask` |
+| `empty_dispatch.template_in` | string | — | 空车来模板代码，为空时使用空车模板的 `code` |
+| `empty_dispatch.template_out` | string | — | 空车回模板代码，为空时使用空车模板的 `code` |
 | `time_slots.enabled` | bool | `false` | 分时段配置开关 |
 | `time_slots.slots` | array | `[]` | 时段列表，支持跨天（如 `20:00~08:00`），`xmin=-1,xmax=-1` 表示禁用 |
-| `self_heal.enabled` | bool | `false` | 自恢复开关 |
+| `self_heal.enabled` | bool | `true` | 自恢复开关，默认启用 |
 | `self_heal.check_interval` | int | `300` | 自恢复检查间隔（秒） |
 | `self_heal.recover_timeout_minutes` | int | `30` | 异常任务超时阈值（分钟） |
-| `self_heal.device_query_api` | string | — | 设备状态查询 API，支持相对路径或完整 `http://` URL |
+| `self_heal.device_query_api` | string | `10.68.2.XX:7000/...` | 设备状态查询 API，含 `XX` 占位符时跳过检查 |
 
 ### task_type 四种类型
 
