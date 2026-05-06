@@ -145,6 +145,59 @@
         0%, 100% { opacity: 1; }
         50% { opacity: 0.4; }
     }
+    /* 电池指示器 */
+    .battery-indicator {
+        display: inline-block;
+        width: 18px; height: 9px;
+        border: 1px solid #666;
+        border-radius: 2px;
+        position: relative;
+        margin-left: 2px;
+        vertical-align: middle;
+        background: #333;
+    }
+    .battery-indicator::after {
+        content: '';
+        position: absolute;
+        right: -3px; top: 2px;
+        width: 2px; height: 5px;
+        background: #666;
+        border-radius: 0 1px 1px 0;
+    }
+    .battery-indicator::before {
+        content: '';
+        position: absolute;
+        left: 1px; top: 1px;
+        bottom: 1px;
+        border-radius: 1px;
+    }
+    .battery-indicator.battery-high::before {
+        background: #28a745;
+        right: 1px;
+    }
+    .battery-indicator.battery-mid::before {
+        background: #ffc107;
+        right: 40%;
+    }
+    .battery-indicator.battery-low::before {
+        background: #dc3545;
+        right: 70%;
+        animation: batteryBlink 1s ease-in-out infinite;
+    }
+    @keyframes batteryBlink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+    }
+    /* 低电量回空车 badge */
+    .low-battery-badge {
+        background: #6f42c1 !important;
+        color: #fff !important;
+        font-size: 0.65rem;
+        padding: 1px 5px;
+        border-radius: 10px;
+        margin-left: 2px;
+        vertical-align: middle;
+    }
     .agv-icon.entering {
         animation: agvEnter 0.4s ease-out;
     }
@@ -833,8 +886,8 @@ function renderAreas(areas) {
                         </div>
                     </div>
                     <div class="device-grid" id="devices-${area.region_key}">
-                        ${renderDeviceIcons(filterCurrentDevices(area.current_devices || [], area.pending_devices || []), false)}
-                        ${renderDeviceIcons(area.pending_devices || [], true)}
+                        ${renderDeviceIcons(filterCurrentDevices(area.current_devices || [], area.pending_devices || []), false, area.low_battery_threshold)}
+                        ${renderDeviceIcons(area.pending_devices || [], true, area.low_battery_threshold)}
                     </div>
                     <div class="formula-row" id="formula-${area.region_key}" style="font-size:0.8rem;padding:0.25rem 0;opacity:0.8;">
                         ${getFormulaText(area)}
@@ -1266,6 +1319,27 @@ function updateTableCounts(tbody, templates) {
                 const badgeStyle = getBadgeStyle(taskType, t.count);
                 badge.setAttribute('style', badgeStyle);
             }
+            // 更新低电量 badge
+            const lbBadge = rows[idx].querySelector('.low-battery-badge');
+            const lbCount = t.low_battery_count || 0;
+            if (lbCount > 0 && (t.task_type === 'empty_out')) {
+                if (lbBadge) {
+                    lbBadge.textContent = '+' + lbCount;
+                    lbBadge.style.display = '';
+                } else {
+                    // 动态添加低电量 badge
+                    const td = rows[idx].querySelector('td:last-child');
+                    if (td) {
+                        const newLb = document.createElement('span');
+                        newLb.className = 'badge low-battery-badge';
+                        newLb.title = '低电量回空车';
+                        newLb.textContent = '+' + lbCount;
+                        td.appendChild(newLb);
+                    }
+                }
+            } else if (lbBadge) {
+                lbBadge.style.display = 'none';
+            }
         }
     });
 }
@@ -1296,9 +1370,16 @@ function renderTemplateRows(templates, regionKey) {
         const label = getTypeLabel(taskType);
         const displayName = t.name || t.code;
         const tplCode = t.code || '';
+        // 低电量回空车计数（仅空车回模板显示）
+        const lbCount = t.low_battery_count || 0;
+        let countHtml = `<span class="badge count-badge" style="${badgeStyle}">${t.count}</span>`;
+        if (lbCount > 0 && taskType === 'empty_out') {
+            countHtml = `<span class="badge count-badge" style="${badgeStyle}">${t.count}</span>
+                <span class="badge low-battery-badge" title="低电量回空车">+${lbCount}</span>`;
+        }
         return `<tr style="cursor:pointer;" onclick="showTemplateDetail('${regionKey}','${tplCode}')" title="点击查看模板详情">
             <td style="word-break:break-all;overflow-wrap:break-word;">${label}<br><small class="text-muted"><code>${tplCode}</code></small><br><span class="tpl-name">${displayName}</span></td>
-            <td class="text-center" style="width:50px;white-space:nowrap;"><span class="badge count-badge" style="${badgeStyle}">${t.count}</span></td></tr>`;
+            <td class="text-center" style="width:50px;white-space:nowrap;">${countHtml}</td></tr>`;
     }).join('');
 }
 
@@ -1399,13 +1480,27 @@ function filterCurrentDevices(currentDevices, pendingDevices) {
     return currentDevices.filter(d => !pendingNums.has(d.deviceNum) && !pendingCodes.has(d.deviceCode));
 }
 
-function renderDeviceIcon(d, isPending) {
+function getBatteryClass(battery, threshold) {
+    // 三段式：<T 红, T~mid 黄, >=mid 绿, 未知不显示
+    if (!battery && battery !== 0) return '';
+    const b = parseInt(battery);
+    if (isNaN(b)) return '';
+    const T = parseInt(threshold) || 30;
+    const mid = T + (100 - T) / 2;
+    if (b < T) return 'battery-low';
+    if (b < mid) return 'battery-mid';
+    return 'battery-high';
+}
+
+function renderDeviceIcon(d, isPending, lowBatteryThreshold) {
     const dn = d.deviceNum || '?';
     const dc = d.deviceCode || '';
     const tpl = d.template || '';
     const taskType = d.task_type || '';
     const createTime = d.create_time ? d.create_time.slice(11, 19) : '';
     const hasDeviceNum = d.deviceNum && d.deviceNum.trim();
+    const battery = d.battery || '';
+    const threshold = lowBatteryThreshold || 30;
     let cls, spriteCls, label;
     if (isPending) {
         cls = 'agv-icon ' + getDeviceClass(taskType);
@@ -1418,20 +1513,28 @@ function renderDeviceIcon(d, isPending) {
         spriteCls = 'agv-sprite blue';
         label = devState === 'idle' ? '空闲' : '可用';
     }
+    // 电池图标（仅空闲设备且有电量数据时显示）
+    let batteryHtml = '';
+    if (!isPending && battery) {
+        const batCls = getBatteryClass(battery, threshold);
+        if (batCls) {
+            batteryHtml = `<span class="battery-indicator ${batCls}" title="电量: ${battery}%"></span>`;
+        }
+    }
     const clickAttr = hasDeviceNum ? `onclick="showDeviceModal('${dn}')" style="cursor:pointer;"` : '';
     return `<span class="${cls}" ${clickAttr}
-        onmouseenter="showAgvTooltip(event,'${escapeHtml(dc)}','${escapeHtml(label)}','${createTime}','${escapeHtml(tpl)}')"
-        onmouseleave="hideAgvTooltip()"><span class="${spriteCls}"></span><span class="dev-num">${dn}</span></span>`;
+        onmouseenter="showAgvTooltip(event,'${escapeHtml(dc)}','${escapeHtml(label)}','${createTime}','${escapeHtml(tpl)}','${battery}')"
+        onmouseleave="hideAgvTooltip()"><span class="${spriteCls}"></span><span class="dev-num">${dn}</span>${batteryHtml}</span>`;
 }
 
-function renderDeviceIcons(devices, isPending) {
+function renderDeviceIcons(devices, isPending, lowBatteryThreshold) {
     if (!devices || devices.length === 0) return '';
     const sorted = [...devices].sort((a, b) => (a.create_time || '').localeCompare(b.create_time || ''));
-    return sorted.map(d => renderDeviceIcon(d, isPending)).join('');
+    return sorted.map(d => renderDeviceIcon(d, isPending, lowBatteryThreshold)).join('');
 }
 
 let agvTooltipEl = null;
-function showAgvTooltip(e, code, label, time, tpl) {
+function showAgvTooltip(e, code, label, time, tpl, battery) {
     if (!agvTooltipEl) {
         agvTooltipEl = document.createElement('div');
         agvTooltipEl.className = 'agv-tooltip';
@@ -1442,6 +1545,7 @@ function showAgvTooltip(e, code, label, time, tpl) {
     if (tpl) html += `<div class="tt-label">${tpl} · ${label}</div>`;
     else html += `<div class="tt-label">${label}</div>`;
     if (time) html += `<div class="tt-time">🕐 ${time}</div>`;
+    if (battery) html += `<div class="tt-battery">🔋 电量: ${battery}%</div>`;
     agvTooltipEl.innerHTML = html;
     agvTooltipEl.style.display = 'block';
     const rect = e.target.closest('.agv-icon')?.getBoundingClientRect() || e.target.getBoundingClientRect();

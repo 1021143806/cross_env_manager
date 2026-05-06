@@ -436,22 +436,28 @@ def calculate_area_balance(region_key, region_config):
     for t in region_config.get('templates', []):
         fpath = _get_template_file_path(region_key, t)
         tasks = _load_json(fpath)
-        count = len([task for task in tasks if task.get('status') == 6])
+        # 普通任务（不含 _low_battery）
+        normal_tasks = [task for task in tasks if task.get('status') == 6 and not task.get('_low_battery')]
+        # 低电量任务
+        low_battery_tasks = [task for task in tasks if task.get('status') == 6 and task.get('_low_battery')]
+        count = len(normal_tasks)
+        low_battery_count = len(low_battery_tasks)
         task_type = _normalize_task_type(t)
         
         # code: 模板代码（计算用），display_name: 看板显示名称（可自定义中文名）
         template_code = t.get('code') or t.get('name', '')
         display_name = t.get('display_name') or t.get('name', '')
-        item = {"code": template_code, "name": display_name, "count": count, "task_type": task_type}
+        item = {"code": template_code, "name": display_name, "count": count,
+                "low_battery_count": low_battery_count, "task_type": task_type}
         if _is_in_direction(task_type):
-            a += count
+            a += count  # 低电量不计入 a
             incoming_templates.append(item)
         else:
             outgoing_templates.append(item)
         
-        # 收集执行中设备（status=6 且有 deviceCode）
-        for task in tasks:
-            if task.get('status') == 6 and task.get('deviceCode'):
+        # 收集执行中设备（status=6 且有 deviceCode，不含低电量任务）
+        for task in normal_tasks:
+            if task.get('deviceCode'):
                 pending_devices.append({
                     "deviceNum": task.get('deviceNum', ''),
                     "deviceCode": task.get('deviceCode', ''),
@@ -461,7 +467,7 @@ def calculate_area_balance(region_key, region_config):
                     "create_time": task.get('create_time', '')
                 })
     
-    # 统计 b: 离开模板中 status=6 的任务数
+    # 统计 b: 离开模板中 status=6 的任务数（不含低电量）
     b = sum(t['count'] for t in outgoing_templates)
     
     # currentCount: currentCount.json 中的设备数
@@ -507,7 +513,7 @@ def calculate_area_balance(region_key, region_config):
                 continue
             fpath = _get_template_file_path(region_key, t)
             tasks = _load_json(fpath)
-            pending = [task for task in tasks if task.get('status') == 6]
+            pending = [task for task in tasks if task.get('status') == 6 and not task.get('_low_battery')]
             if pending:
                 # 如果要下发去空车(in)，但存在未完成的回空车(out)任务
                 # 如果要下发回空车(out)，但存在未完成的去空车(in)任务
@@ -534,7 +540,8 @@ def calculate_area_balance(region_key, region_config):
         "currentCount": currentCount,
         "current_devices": [
             {"deviceNum": d.get('deviceNum', ''), "deviceCode": d.get('deviceCode', ''),
-             "create_time": d.get('create_time', ''), "state": d.get('state', 'pending')}
+             "create_time": d.get('create_time', ''), "state": d.get('state', 'pending'),
+             "battery": d.get('battery', '')}
             for d in now_devices
         ],
         "pending_devices": pending_devices,
@@ -555,6 +562,7 @@ def calculate_area_balance(region_key, region_config):
         "time_slot_all_matched": time_slot_all_matched,
         "time_slot_remaining": time_slot_remaining,
         "last_calc_info": last_calc_info,
+        "low_battery_threshold": _get_low_battery_threshold(region_config.get('self_heal', {})),
         "poll_dispatch_interval": _load_cache_index().get('poll_dispatch_interval', _POLL_DISPATCH_DEFAULT_INTERVAL),
         "poll_dispatch_last": _poll_dispatch_last.get(region_key, 0),
         "templates": {
@@ -1982,7 +1990,8 @@ SELF_HEAL_DEFAULTS = {
     'enabled': True,
     'check_interval': 300,       # 检查间隔（秒）
     'recover_timeout_minutes': 30,  # 异常超时恢复间隔（分钟）
-    'device_query_api': '10.68.2.XX:7000/ics/out/device/list/deviceInfo'
+    'device_query_api': '10.68.2.XX:7000/ics/out/device/list/deviceInfo',
+    'low_battery_threshold': 30,  # 默认低电量阈值（百分比），区域可覆盖
 }
 
 
@@ -2027,6 +2036,177 @@ def _should_clean_device(device_info):
         return True
     # 在线（空闲/充电/任务中/故障/升级中/查询失败）→ 保留
     return False
+
+
+def _get_low_battery_threshold(sh):
+    """获取低电量阈值：区域配置优先，-1 则使用全局默认"""
+    t = sh.get('low_battery_threshold', -1)
+    if t == -1 or t is None:
+        t = SELF_HEAL_DEFAULTS['low_battery_threshold']
+    return int(t)
+
+
+def _check_low_battery_return(region_key, region, sh):
+    """检查低电量设备并下发回空车（仅自动轮询调用）
+    
+    Returns:
+        {'dispatched': bool, 'device_code': '', 'device_num': '', 'battery': '', 'threshold': 0}
+    """
+    result = {'dispatched': False, 'device_code': '', 'device_num': '', 'battery': '', 'threshold': 0}
+    
+    # 检查开关
+    if not sh.get('low_battery_enabled', False):
+        return result
+    
+    threshold = _get_low_battery_threshold(sh)
+    result['threshold'] = threshold
+    
+    # 读取 currentCount.json
+    now_file = _get_region_file(region_key, 'currentCount.json')
+    now_devices = _load_json(now_file)
+    
+    # 收集所有 pending 中的 deviceCode（任何模板 status=6 且有 deviceCode）
+    pending_codes = set()
+    for t in region.get('templates', []):
+        fpath = _get_template_file_path(region_key, t)
+        tasks = _load_json(fpath)
+        for task in tasks:
+            if task.get('status') == 6 and task.get('deviceCode'):
+                pending_codes.add(task['deviceCode'])
+    
+    # 遍历在线设备，找低电量且不在 pending 中的
+    for d in now_devices:
+        device_code = d.get('deviceCode', '')
+        device_num = d.get('deviceNum', '')
+        battery_str = d.get('battery', '')
+        if not device_code or not battery_str:
+            continue
+        try:
+            battery = int(battery_str)
+        except (ValueError, TypeError):
+            continue
+        
+        if battery >= threshold:
+            continue  # 电量足够
+        
+        if device_code in pending_codes:
+            continue  # 已在执行任务
+        
+        # 找到低电量空闲设备，下发回空车
+        dispatch_result = _execute_low_battery_return(region_key, region, device_code, device_num, battery)
+        result['dispatched'] = True
+        result['device_code'] = device_code
+        result['device_num'] = device_num
+        result['battery'] = battery_str
+        return result  # 每次只处理一台
+    
+    return result
+
+
+def _execute_low_battery_return(region_key, region, device_code, device_num, battery):
+    """执行低电量回空车下发（指定设备，使用 template_out，不检查互斥）"""
+    import random as _random
+    
+    # 找到空车回模板
+    target_template = None
+    for t in region.get('templates', []):
+        task_type = _normalize_task_type(t)
+        if _is_empty_task(task_type) and not _is_in_direction(task_type):
+            target_template = t
+            break
+    if not target_template:
+        print(f"[LowBattery] 区域 {region_key} 没有空车回模板")
+        return {'success': False, 'error': '没有空车回模板'}
+    
+    empty_dispatch = region.get('empty_dispatch', {})
+    dispatch_template = empty_dispatch.get('template_out', '') or target_template.get('code') or target_template.get('name', '')
+    dispatch_url = empty_dispatch.get('url', '')
+    
+    now_dt = datetime.now()
+    date_str = now_dt.strftime('%Y-%m-%d_%H:%M:%S')
+    ms = now_dt.microsecond // 1000
+    rand = _random.randint(0, 9999)
+    order_id = f"CEM_low_battery_{date_str}.{ms:03d}__{rand:04d}"
+    
+    request_body = [{
+        "modelProcessCode": dispatch_template,
+        "priority": 6,
+        "orderId": order_id,
+        "fromSystem": "CEM_low_battery",
+        "taskOrderDetail": {
+            "taskPath": "",
+            "deviceCode": device_code,
+            "deviceNum": "",
+            "shelfNumber": ""
+        }
+    }]
+    
+    simulated = not region.get('enabled', False)
+    result = 'simulated'
+    response_body = None
+    
+    if not simulated and dispatch_url:
+        try:
+            import urllib.request
+            req = urllib.request.Request(dispatch_url,
+                data=json.dumps(request_body).encode('utf-8'),
+                headers={'Content-Type': 'application/json'})
+            resp = urllib.request.urlopen(req, timeout=10)
+            resp_raw = resp.read().decode('utf-8')
+            response_body = json.loads(resp_raw)
+            result = 'success' if response_body.get('code') == 1000 else f'code={response_body.get("code")}'
+        except Exception as e:
+            result = f'请求失败: {str(e)}'
+            response_body = {"error": str(e)}
+    
+    # 写入模板 JSON（标记 _low_battery: true）
+    template_file = _get_template_file_path(region_key, target_template)
+    tasks = _load_json(template_file)
+    now = datetime.now().isoformat()
+    tasks.append({
+        "deviceCode": device_code, "deviceNum": device_num,
+        "status": 6, "_simulated": True if simulated else False,
+        "_low_battery": True,
+        "order_id": order_id, "create_time": now, "update_time": now
+    })
+    _save_json(template_file, tasks)
+    
+    # 记录日志
+    template_code = target_template.get('code') or target_template.get('name', '')
+    log_url = dispatch_url if not simulated else f'(模拟-未实际请求)\n真实地址: {dispatch_url}'
+    try:
+        write_dispatch_log(
+            region_key=region_key, template_name=template_code,
+            direction='out', dispatch_url=log_url, request_body=request_body,
+            simulated=simulated, device_code=device_code,
+            device_num=device_num, result=result, response_body=response_body,
+            reason='low_battery'
+        )
+    except Exception as e:
+        print(f"[LowBattery] 写入下发记录失败: {e}")
+    
+    try:
+        dispatch_raw = {
+            'dispatch_url': dispatch_url,
+            'request_body': request_body,
+            'response_body': response_body,
+            'simulated': simulated,
+            'result': result,
+            'dispatch_count': 1,
+            'template_code': template_code,
+            'direction': 'out',
+            'reason': 'low_battery',
+            'battery': battery
+        }
+        write_global_log('low_battery_return', region_key,
+            f'低电量回空车: {device_num}({device_code[-8:]}), 电量{battery}% < 阈值{_get_low_battery_threshold(region.get("self_heal", {}))}%, '
+            f'{"模拟" if simulated else "真实"}下发',
+            raw_data=dispatch_raw)
+    except Exception as e:
+        print(f"[LowBattery] 写入操作日志失败: {e}")
+    
+    print(f"[LowBattery] 下发完成: region={region_key}, device={device_num}({device_code[-8:]}), battery={battery}%, simulated={simulated}, result={result}")
+    return {'success': True, 'simulated': simulated, 'result': result}
 
 
 def _self_heal_check_region(region_key, region, force=False, template_code=None):
@@ -2075,6 +2255,10 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
                 continue
             device_info = _query_device_status('', api_path, area_id, device_code)
             state = device_info.get('state', '查询失败') if device_info else '查询失败'
+            battery = device_info.get('battery', '') if device_info else ''
+            # 更新 currentCount.json 中的 battery 和 state
+            d['state'] = 'idle' if state not in ('查询失败', 'Offline', 'Downlined') else state
+            d['battery'] = battery
             if _should_clean_device(device_info):
                 now_devices = [nd for nd in now_devices if nd.get('deviceCode') != device_code]
                 cleaned += 1
@@ -2093,7 +2277,18 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
     
     # 自动定时检查只检查当前设备，不检查模板任务（避免查询执行中的负载设备）
     if template_code is None and not force:
-        return {'cleaned': cleaned, 'errors': errors, 'steps': steps}
+        # [低电量检查] 仅自动轮询时触发
+        low_battery_result = _check_low_battery_return(region_key, region, sh)
+        if low_battery_result.get('dispatched'):
+            steps.append({
+                'device_code': low_battery_result.get('device_code', ''),
+                'device_num': low_battery_result.get('device_num', ''),
+                'state': f'电量{low_battery_result.get("battery", "?")}%',
+                'action': '低电量回空车',
+                'reason': f'电量{low_battery_result.get("battery", "?")}% < 阈值{low_battery_result.get("threshold", "?")}%'
+            })
+        return {'cleaned': cleaned, 'errors': errors, 'steps': steps,
+                'low_battery': low_battery_result}
     
     # 如果只检查当前设备，跳过模板检查
     if check_current_devices:

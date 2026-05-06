@@ -326,6 +326,15 @@ function renderVisualEditor(data) {
                     <input class="form-control form-control-sm" type="number" value="${(region.self_heal||{}).recover_timeout_minutes||30}" onchange="updateSelfHeal('${key}','recover_timeout_minutes',parseInt(this.value)||30)"></div>
                 <div class="col-md-3"><label class="form-label small">查询API地址</label>
                     <input class="form-control form-control-sm" placeholder="10.68.2.XX:7000/ics/out/device/list/deviceInfo" value="${(region.self_heal||{}).device_query_api||'10.68.2.XX:7000/ics/out/device/list/deviceInfo'}" onchange="updateSelfHeal('${key}','device_query_api',this.value)"></div>
+            </div>
+            <div class="row g-2 mt-1">
+                <div class="col-md-3"><label class="form-label small">🔋 低电量回空车</label>
+                    <select class="form-select form-select-sm" onchange="updateSelfHeal('${key}','low_battery_enabled',this.value==='true')">
+                        <option value="false" ${(region.self_heal||{}).low_battery_enabled!==true?'selected':''}>关闭</option>
+                        <option value="true" ${(region.self_heal||{}).low_battery_enabled===true?'selected':''}>启用</option>
+                    </select></div>
+                <div class="col-md-3"><label class="form-label small">低电量阈值(%) <small class="text-muted">-1=全局默认30%</small></label>
+                    <input class="form-control form-control-sm" type="number" min="-1" max="100" value="${(region.self_heal||{}).low_battery_threshold??-1}" onchange="updateSelfHeal('${key}','low_battery_threshold',parseInt(this.value)??-1)"></div>
             </div></details></div>`;
         container.appendChild(card);
     });
