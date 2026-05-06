@@ -845,7 +845,7 @@ function renderAreas(areas) {
                     <div class="daily-stats-row" style="font-size:0.72rem;padding:0.2rem 0;opacity:0.75;border-top:1px dashed var(--border-color);margin-top:0.25rem;">
                         ${getDailyStatsText(area)}
                     </div>
-                    <canvas id="spark-${area.region_key}" width="300" height="70" style="width:100%;height:70px;margin-top:0.15rem;"></canvas>
+                    <canvas id="spark-${area.region_key}" width="600" height="70" style="width:100%;max-width:600px;height:70px;margin-top:0.15rem;"></canvas>
                     <div class="row g-3">
                         <div class="col-md-6">
                             <div class="d-flex align-items-start gap-2 mb-2">
@@ -1579,8 +1579,8 @@ function renderSparkline(area) {
         if (r) fields.forEach(f => { maxVal = Math.max(maxVal, r[f.key] || 0); });
     });
     
-    // Y轴留空间，X轴留空间
-    const padLeft = 28, padRight = 5, padTop = 3, padBottom = 14;
+    // 边距：左边小右边留给Y轴标注
+    const padLeft = 5, padRight = 28, padTop = 3, padBottom = 14;
     const plotW = w - padLeft - padRight;
     const plotH = h - padTop - padBottom;
     
@@ -1589,16 +1589,16 @@ function renderSparkline(area) {
     const yStepVal = Math.ceil(maxVal / ySteps);
     const yMax = yStepVal * ySteps;
     
-    // 绘制Y轴网格线和标签
+    // 绘制Y轴网格线和标签（右侧）
     ctx.fillStyle = '#6b7280';
     ctx.font = '8px sans-serif';
-    ctx.textAlign = 'right';
+    ctx.textAlign = 'left';
     ctx.strokeStyle = '#374151';
     ctx.lineWidth = 0.5;
     for (let i = 0; i <= ySteps; i++) {
         const val = yStepVal * i;
         const y = padTop + plotH - (val / yMax) * plotH;
-        ctx.fillText(val, padLeft - 3, y + 3);
+        ctx.fillText(val, w - padRight + 3, y + 3);
         if (i > 0) {
             ctx.beginPath();
             ctx.moveTo(padLeft, y);
@@ -2687,7 +2687,8 @@ function loadSelfHealStatus(regionKey) {
         const st = statusData.status[regionKey];
         const regionConfig = configData[regionKey] || {};
         const selfHealConfig = regionConfig.self_heal || {};
-        const healEnabled = selfHealConfig.enabled === true || selfHealConfig.enabled === 'true';
+        // 默认启用：enabled 字段不存在或为 true/'true' 时视为启用，仅明确 false/'false' 时关闭
+        const healEnabled = selfHealConfig.enabled !== false && selfHealConfig.enabled !== 'false';
         
         let html = '<div class="small">';
         

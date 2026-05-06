@@ -1992,8 +1992,10 @@ def _query_device_status(server, api_path, area_id, device_code):
     - 相对路径: /ics/out/device/list/deviceInfo → 拼接 http://{server}{api_path}
     - 完整 URL: http://192.168.1.100:8080/ics/... → 直接使用
     """
-    # 含 XX 占位符视为未配置，直接返回 None（视为离线）
+    import urllib.request as _urllib
+    # 含 XX 占位符视为未配置
     if 'XX' in api_path or 'XX' in server:
+        print(f"[Dispatch] _query_device_status 跳过(含XX占位符): api_path={api_path}, server={server}, device={device_code}")
         return None
     if api_path.startswith('http://') or api_path.startswith('https://'):
         url = api_path
@@ -2001,15 +2003,17 @@ def _query_device_status(server, api_path, area_id, device_code):
         url = f"http://{server}{api_path}"
     body = {"areaId": str(area_id), "deviceType": "0", "deviceCode": device_code}
     try:
-        req = urllib.request.Request(url,
+        req = _urllib.Request(url,
             data=json.dumps(body).encode('utf-8'),
             headers={'Content-Type': 'application/json'})
-        resp = urllib.request.urlopen(req, timeout=10)
+        resp = _urllib.urlopen(req, timeout=10)
         data = json.loads(resp.read().decode('utf-8'))
         if data.get('code') == 1000 and data.get('data'):
             return data['data'][0]
+        print(f"[Dispatch] _query_device_status 响应异常: url={url}, code={data.get('code')}, device={device_code}")
         return None
     except Exception as e:
+        print(f"[Dispatch] _query_device_status 请求失败: url={url}, error={e}, device={device_code}")
         return None
 
 
