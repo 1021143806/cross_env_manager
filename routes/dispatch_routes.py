@@ -51,6 +51,7 @@ DATA_DIR = os.path.join(BASE_DIR, 'data', 'dispatch')
 CACHE_INDEX_PATH = os.path.join(DATA_DIR, 'cache_index.json')
 BACKUP_DIR = os.path.join(DATA_DIR, 'backups')
 GLOBAL_LOG_PATH = os.path.join(DATA_DIR, 'global_log.json')
+DAILY_STATS_PATH = os.path.join(DATA_DIR, 'daily_stats.json')
 SHARED_DIR = os.path.join(DATA_DIR, '_shared')  # 跨区域共享模板目录
 
 # 线程锁
@@ -248,6 +249,29 @@ def write_global_log(action, region_key, detail='', level='info', raw_data=None)
 
 # 调车采样计数器
 _dispatch_sample_counter = [0]
+
+
+def _update_daily_stats(region_key, field):
+    """更新每日统计（非重复事件才计数）
+    field: 'empty_in' | 'empty_out' | 'load_in' | 'load_out' | 'dispatch_in' | 'dispatch_out'
+    """
+    today = datetime.now().strftime('%Y-%m-%d')
+    stats = _load_json(DAILY_STATS_PATH)
+    if not isinstance(stats, dict):
+        stats = {}
+    if today not in stats:
+        stats[today] = {}
+    if region_key not in stats[today]:
+        stats[today][region_key] = {
+            'empty_in': 0, 'empty_out': 0, 'load_in': 0, 'load_out': 0,
+            'dispatch_in': 0, 'dispatch_out': 0
+        }
+    stats[today][region_key][field] = stats[today][region_key].get(field, 0) + 1
+    # 只保留最近7天
+    from datetime import timedelta
+    cutoff = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+    stats = {k: v for k, v in stats.items() if k >= cutoff}
+    _save_json(DAILY_STATS_PATH, stats)
 
 
 @dispatch_bp.route('/api/dispatch/global_log')
@@ -534,7 +558,9 @@ def calculate_area_balance(region_key, region_config):
         "templates": {
             "incoming": incoming_templates,
             "outgoing": outgoing_templates
-        }
+        },
+        "daily_stats": (_load_json(DAILY_STATS_PATH) or {}).get(datetime.now().strftime('%Y-%m-%d'), {}).get(region_key, {}),
+        "daily_stats_history": _load_json(DAILY_STATS_PATH) or {}
     }
 
 
@@ -829,6 +855,9 @@ def handle_status_report(data):
         
         _save_json(now_file, now_devices)
         change_summary = f'模板-{template_name} -{template_removed}{cc_change}'
+        # 更新每日统计（status=8 完成时）
+        if status == 8:
+            _update_daily_stats(region_key, task_type)
     
     return True, change_summary, True
 
@@ -1577,6 +1606,9 @@ def _execute_dispatch(region_key, region, balance):
         write_global_log('execute', region_key,
             f'{"模拟" if simulated else "真实"}下发 {dispatch_count} 台, 模板:{template_code}, 方向:{direction}, 原因:{reason}',
             raw_data=dispatch_raw)
+        # 更新每日统计（下发时）
+        dispatch_field = 'dispatch_in' if direction == 'in' else 'dispatch_out'
+        _update_daily_stats(region_key, dispatch_field)
     except Exception as e:
         print(f"[Dispatch] 写入操作日志失败: {e}")
     
