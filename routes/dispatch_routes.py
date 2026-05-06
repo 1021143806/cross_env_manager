@@ -2027,7 +2027,8 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
     
     Args:
         force: 强制模式，忽略超时判断，检查所有 status=6 任务
-        template_code: 指定模板 code，为空则检查所有模板
+        template_code: 指定模板 code，为空则检查所有模板；
+                      特殊值 '__current_devices__' 表示检查 currentCount.json 中的空闲设备
     Returns:
         {'cleaned': int, 'errors': list, 'steps': list}
         steps: [{device_code, device_num, state, action, reason}]
@@ -2050,6 +2051,43 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
     errors = []
     steps = []
     
+    check_current_devices = (template_code == '__current_devices__')
+    
+    # 检查 currentCount.json 中的空闲设备（自动定时检查 + 强制检查"当前设备"）
+    if template_code is None or check_current_devices:
+        now_file = _get_region_file(region_key, 'currentCount.json')
+        now_devices = _load_json(now_file)
+        # 过滤掉 deviceCode 为空的无效记录
+        valid_devices = [d for d in now_devices if d.get('deviceCode')]
+        max_cc_check = 20 if force else 10
+        for d in valid_devices[:max_cc_check]:
+            device_code = d.get('deviceCode', '')
+            device_num = d.get('deviceNum', '')
+            if not device_code:
+                continue
+            device_info = _query_device_status('', api_path, area_id, device_code)
+            state = device_info.get('state', '查询失败') if device_info else '查询失败'
+            if _should_clean_device(device_info):
+                now_devices = [nd for nd in now_devices if nd.get('deviceCode') != device_code]
+                cleaned += 1
+                steps.append({
+                    'device_code': device_code, 'device_num': device_num,
+                    'state': state, 'action': '清理',
+                    'reason': f'当前设备离线: {state}'
+                })
+            else:
+                steps.append({
+                    'device_code': device_code, 'device_num': device_num,
+                    'state': state, 'action': '保留',
+                    'reason': f'当前设备在线: {state}'
+                })
+        _save_json(now_file, now_devices)
+    
+    # 如果只检查当前设备，跳过模板检查
+    if check_current_devices:
+        return {'cleaned': cleaned, 'errors': errors, 'steps': steps}
+    
+    # 检查模板 JSON 中的 status=6 任务
     for t in region.get('templates', []):
         tpl_code = t.get('code') or t.get('name', '')
         # 如果指定了模板，只检查该模板
