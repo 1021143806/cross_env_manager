@@ -835,10 +835,25 @@ def handle_status_report(data):
         cc_change = ''
         if _is_in_direction(task_type):
             # 来区域完成：写入 currentCount.json
-            if not any(d.get('deviceCode') == device_code for d in now_devices):
+            # 数据完整性校验：如果上报的 deviceNum/deviceCode 为空，从模板 JSON 回填
+            _device_code = device_code
+            _device_num = device_num
+            if not _device_code or not _device_num:
+                # 从模板 JSON 中查找 status=6 时已填充的设备信息
+                for t in tasks:
+                    if t.get('order_id') == order_id and t.get('status') == 6:
+                        if not _device_code and t.get('deviceCode'):
+                            _device_code = t['deviceCode']
+                        if not _device_num and t.get('deviceNum'):
+                            _device_num = t['deviceNum']
+                        break
+            # 如果仍然没有有效设备信息，跳过写入（避免产生空数据）
+            if not _device_code and not _device_num:
+                cc_change = ', currentCount 跳过(无设备信息)'
+            elif not any(d.get('deviceCode') == _device_code for d in now_devices):
                 now_devices.append({
-                    "deviceCode": device_code,
-                    "deviceNum": device_num,
+                    "deviceCode": _device_code,
+                    "deviceNum": _device_num,
                     "order_id": order_id,
                     "shelfNumber": data.get('shelfNumber', ''),
                     "create_time": now,

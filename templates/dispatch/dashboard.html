@@ -1405,6 +1405,7 @@ function renderDeviceIcon(d, isPending) {
     const tpl = d.template || '';
     const taskType = d.task_type || '';
     const createTime = d.create_time ? d.create_time.slice(11, 19) : '';
+    const hasDeviceNum = d.deviceNum && d.deviceNum.trim();
     let cls, spriteCls, label;
     if (isPending) {
         cls = 'agv-icon ' + getDeviceClass(taskType);
@@ -1417,7 +1418,8 @@ function renderDeviceIcon(d, isPending) {
         spriteCls = 'agv-sprite blue';
         label = devState === 'idle' ? '空闲' : '可用';
     }
-    return `<span class="${cls}" onclick="showDeviceModal('${dn}')" style="cursor:pointer;"
+    const clickAttr = hasDeviceNum ? `onclick="showDeviceModal('${dn}')" style="cursor:pointer;"` : '';
+    return `<span class="${cls}" ${clickAttr}
         onmouseenter="showAgvTooltip(event,'${escapeHtml(dc)}','${escapeHtml(label)}','${createTime}','${escapeHtml(tpl)}')"
         onmouseleave="hideAgvTooltip()"><span class="${spriteCls}"></span><span class="dev-num">${dn}</span></span>`;
 }

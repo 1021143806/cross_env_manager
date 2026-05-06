@@ -276,7 +276,7 @@ function renderVisualEditor(data) {
         const enabledChecked = region.enabled ? 'checked' : '';
         const regionId = region.id !== undefined ? region.id : '-';
         card.innerHTML = `<div class="region-header">
-            <span><span class="badge bg-secondary me-2">#${regionId}</span><strong>${key}</strong> <small class="text-muted ms-2">areaId: ${region.areaId||''}</small></span>
+            <span><span class="badge bg-secondary me-2">#${regionId}</span><strong>${key}</strong> <small class="text-muted ms-2">areaId（父）: ${region.areaId||''}</small></span>
             <div class="form-check form-switch d-inline-block">
                 <input class="form-check-input" type="checkbox" ${enabledChecked} onchange="updateRegionField('${key}','enabled',this.checked)">
                 <label class="form-check-label small">启用</label>
@@ -286,7 +286,7 @@ function renderVisualEditor(data) {
             <div class="row g-2 mb-3">
                 <div class="col-md-3"><label class="form-label small">区域标识</label>
                     <input class="form-control form-control-sm" value="${key}" onchange="updateRegionKey('${key}',this.value)"></div>
-                <div class="col-md-1"><label class="form-label small">areaId</label>
+                <div class="col-md-1"><label class="form-label small">areaId（父）</label>
                     <input class="form-control form-control-sm" value="${region.areaId||''}" onchange="updateRegionField('${key}','areaId',this.value)"></div>
                 <div class="col-md-2"><label class="form-label small">id</label>
                     <input class="form-control form-control-sm" type="number" value="${region.id||0}" onchange="updateRegionField('${key}','id',parseInt(this.value)||0)"></div>
