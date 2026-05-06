@@ -1563,13 +1563,12 @@ function renderSparkline(area) {
     canvas.style.display = 'block';
     
     const w = canvas.width, h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
     
     const fields = [
-        {key: 'empty_in', color: '#6ea8fe'},
-        {key: 'empty_out', color: '#feb272'},
-        {key: 'load_in', color: '#0d6efd'},
-        {key: 'load_out', color: '#fd7e14'}
+        {key: 'empty_in', color: '#6ea8fe', label: '🚛空车来'},
+        {key: 'empty_out', color: '#feb272', label: '🚛空车回'},
+        {key: 'load_in', color: '#0d6efd', label: '📦负载来'},
+        {key: 'load_out', color: '#fd7e14', label: '📦负载回'}
     ];
     
     // 计算全局最大值
@@ -1579,66 +1578,146 @@ function renderSparkline(area) {
         if (r) fields.forEach(f => { maxVal = Math.max(maxVal, r[f.key] || 0); });
     });
     
-    // 边距：左边小右边留给Y轴标注
+    // 边距
     const padLeft = 5, padRight = 28, padTop = 3, padBottom = 14;
     const plotW = w - padLeft - padRight;
     const plotH = h - padTop - padBottom;
     
-    // Y轴刻度（自动计算，最多4档）
+    // Y轴刻度
     const ySteps = 4;
     const yStepVal = Math.ceil(maxVal / ySteps);
     const yMax = yStepVal * ySteps;
     
-    // 绘制Y轴网格线和标签（右侧）
-    ctx.fillStyle = '#6b7280';
-    ctx.font = '8px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.strokeStyle = '#374151';
-    ctx.lineWidth = 0.5;
-    for (let i = 0; i <= ySteps; i++) {
-        const val = yStepVal * i;
-        const y = padTop + plotH - (val / yMax) * plotH;
-        ctx.fillText(val, w - padRight + 3, y + 3);
-        if (i > 0) {
-            ctx.beginPath();
-            ctx.moveTo(padLeft, y);
-            ctx.lineTo(w - padRight, y);
-            ctx.stroke();
+    // 预计算所有数据点坐标
+    const points = dates.map((d, i) => {
+        const x = padLeft + (i / Math.max(dates.length - 1, 1)) * plotW;
+        const r = history[d][area.region_key] || {};
+        const vals = {};
+        fields.forEach(f => { vals[f.key] = r[f.key] || 0; });
+        return { date: d, x: x, vals: vals };
+    });
+    
+    // 绘制函数
+    function draw(highlightIdx) {
+        ctx.clearRect(0, 0, w, h);
+        
+        // Y轴网格线和标签
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '8px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.strokeStyle = '#374151';
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i <= ySteps; i++) {
+            const val = yStepVal * i;
+            const y = padTop + plotH - (val / yMax) * plotH;
+            ctx.fillText(val, w - padRight + 3, y + 3);
+            if (i > 0) {
+                ctx.beginPath();
+                ctx.moveTo(padLeft, y);
+                ctx.lineTo(w - padRight, y);
+                ctx.stroke();
+            }
         }
+        
+        // 折线
+        fields.forEach(field => {
+            ctx.beginPath();
+            ctx.strokeStyle = field.color;
+            ctx.lineWidth = 1.2;
+            let first = true;
+            points.forEach((p, i) => {
+                const y = padTop + plotH - (p.vals[field.key] / yMax) * plotH;
+                if (first) { ctx.moveTo(p.x, y); first = false; }
+                else ctx.lineTo(p.x, y);
+            });
+            ctx.stroke();
+        });
+        
+        // 高亮十字线
+        if (highlightIdx !== undefined && highlightIdx >= 0 && highlightIdx < points.length) {
+            const hp = points[highlightIdx];
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.lineWidth = 0.8;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(hp.x, padTop);
+            ctx.lineTo(hp.x, padTop + plotH);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // 高亮数据点
+            fields.forEach(field => {
+                const y = padTop + plotH - (hp.vals[field.key] / yMax) * plotH;
+                ctx.fillStyle = field.color;
+                ctx.beginPath();
+                ctx.arc(hp.x, y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+        
+        // X轴标签
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '8px sans-serif';
+        ctx.textAlign = 'center';
+        let lastHour = -1;
+        points.forEach((p, i) => {
+            const d = p.date;
+            const hour = parseInt(d.slice(11, 13)) || parseInt(d.slice(8, 10)) || 0;
+            const minute = d.slice(14, 16) || '00';
+            if (minute === '00' && hour !== lastHour) {
+                lastHour = hour;
+                ctx.fillText(hour + ':00', p.x, h - 2);
+            }
+        });
     }
     
-    // 绘制折线
-    fields.forEach(field => {
-        ctx.beginPath();
-        ctx.strokeStyle = field.color;
-        ctx.lineWidth = 1.2;
-        let first = true;
-        dates.forEach((d, i) => {
-            const r = history[d][area.region_key];
-            const val = r ? (r[field.key] || 0) : 0;
-            const x = padLeft + (i / Math.max(dates.length - 1, 1)) * plotW;
-            const y = padTop + plotH - (val / yMax) * plotH;
-            if (first) { ctx.moveTo(x, y); first = false; }
-            else ctx.lineTo(x, y);
-        });
-        ctx.stroke();
-    });
+    // 初始绘制
+    draw(undefined);
     
-    // 绘制 X 轴标签（每1小时标注 HH:00）
-    ctx.fillStyle = '#6b7280';
-    ctx.font = '8px sans-serif';
-    ctx.textAlign = 'center';
-    let lastHour = -1;
-    dates.forEach((d, i) => {
-        const hour = parseInt(d.slice(11, 13)) || parseInt(d.slice(8, 10)) || 0;
-        const minute = d.slice(14, 16) || '00';
-        // 只在整点（分钟为00）且小时变化时标注
-        if (minute === '00' && hour !== lastHour) {
-            lastHour = hour;
-            const x = padLeft + (i / Math.max(dates.length - 1, 1)) * plotW;
-            ctx.fillText(hour + ':00', x, h - 2);
+    // 创建/获取 tooltip 元素
+    let tip = document.getElementById('spark-tip-' + area.region_key);
+    if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'spark-tip-' + area.region_key;
+        tip.style.cssText = 'position:absolute;display:none;background:rgba(0,0,0,0.85);color:#fff;padding:4px 8px;border-radius:4px;font-size:11px;line-height:1.5;pointer-events:none;z-index:999;white-space:nowrap;';
+        canvas.parentNode.appendChild(tip);
+    }
+    
+    // hover 事件
+    canvas.onmousemove = function(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = w / rect.width;
+        const mx = (e.clientX - rect.left) * scaleX;
+        
+        // 找最近的数据点
+        let minDist = Infinity, idx = -1;
+        points.forEach((p, i) => {
+            const dist = Math.abs(p.x - mx);
+            if (dist < minDist) { minDist = dist; idx = i; }
+        });
+        
+        if (idx >= 0 && minDist < 30) {
+            draw(idx);
+            const hp = points[idx];
+            const timeStr = hp.date.slice(11, 16);
+            let html = '<div style="font-weight:600;margin-bottom:2px;">' + timeStr + '</div>';
+            fields.forEach(f => {
+                html += '<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + f.color + ';margin-right:4px;"></span>' + f.label + ': ' + hp.vals[f.key] + '</div>';
+            });
+            tip.innerHTML = html;
+            tip.style.display = 'block';
+            tip.style.left = (e.clientX + 12) + 'px';
+            tip.style.top = (e.clientY - 10) + 'px';
+        } else {
+            draw(undefined);
+            tip.style.display = 'none';
         }
-    });
+    };
+    
+    canvas.onmouseleave = function() {
+        draw(undefined);
+        tip.style.display = 'none';
+    };
 }
 
 function toggleRegion(regionKey, enabled) {
