@@ -251,24 +251,27 @@ _dispatch_sample_counter = [0]
 
 
 def _update_daily_stats(region_key, field):
-    """更新每小时统计
+    """更新每20分钟统计
     field: 'empty_in' | 'empty_out' | 'load_in' | 'load_out' | 'dispatch_in' | 'dispatch_out'
     """
-    hour_key = datetime.now().strftime('%Y-%m-%dT%H')
+    now = datetime.now()
+    # 分钟取整到 0/20/40
+    minute_block = (now.minute // 20) * 20
+    slot_key = now.strftime('%Y-%m-%dT%H:') + f'{minute_block:02d}'
     stats = _load_json(DAILY_STATS_PATH)
     if not isinstance(stats, dict):
         stats = {}
-    if hour_key not in stats:
-        stats[hour_key] = {}
-    if region_key not in stats[hour_key]:
-        stats[hour_key][region_key] = {
+    if slot_key not in stats:
+        stats[slot_key] = {}
+    if region_key not in stats[slot_key]:
+        stats[slot_key][region_key] = {
             'empty_in': 0, 'empty_out': 0, 'load_in': 0, 'load_out': 0,
             'dispatch_in': 0, 'dispatch_out': 0
         }
-    stats[hour_key][region_key][field] = stats[hour_key][region_key].get(field, 0) + 1
+    stats[slot_key][region_key][field] = stats[slot_key][region_key].get(field, 0) + 1
     # 只保留最近24小时
     from datetime import timedelta
-    cutoff = (datetime.now() - timedelta(hours=24)).strftime('%Y-%m-%dT%H')
+    cutoff = (now - timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M')
     stats = {k: v for k, v in stats.items() if k >= cutoff}
     _save_json(DAILY_STATS_PATH, stats)
 
@@ -558,7 +561,7 @@ def calculate_area_balance(region_key, region_config):
             "incoming": incoming_templates,
             "outgoing": outgoing_templates
         },
-        "daily_stats": (_load_json(DAILY_STATS_PATH) or {}).get(datetime.now().strftime('%Y-%m-%dT%H'), {}).get(region_key, {}),
+        "daily_stats": (_load_json(DAILY_STATS_PATH) or {}).get(datetime.now().strftime('%Y-%m-%dT%H:') + f'{(datetime.now().minute // 20) * 20:02d}', {}).get(region_key, {}),
         "daily_stats_history": _load_json(DAILY_STATS_PATH) or {}
     }
 
@@ -2061,8 +2064,7 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
         now_devices = _load_json(now_file)
         # 过滤掉 deviceCode 为空的无效记录
         valid_devices = [d for d in now_devices if d.get('deviceCode')]
-        max_cc_check = 20 if force else 10
-        for d in valid_devices[:max_cc_check]:
+        for d in valid_devices:
             device_code = d.get('deviceCode', '')
             device_num = d.get('deviceNum', '')
             if not device_code:

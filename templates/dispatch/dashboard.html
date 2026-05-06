@@ -845,7 +845,7 @@ function renderAreas(areas) {
                     <div class="daily-stats-row" style="font-size:0.72rem;padding:0.2rem 0;opacity:0.75;border-top:1px dashed var(--border-color);margin-top:0.25rem;">
                         ${getDailyStatsText(area)}
                     </div>
-                    <canvas id="spark-${area.region_key}" width="300" height="50" style="width:100%;height:50px;margin-top:0.15rem;"></canvas>
+                    <canvas id="spark-${area.region_key}" width="300" height="70" style="width:100%;height:70px;margin-top:0.15rem;"></canvas>
                     <div class="row g-3">
                         <div class="col-md-6">
                             <div class="d-flex align-items-start gap-2 mb-2">
@@ -1579,8 +1579,33 @@ function renderSparkline(area) {
         if (r) fields.forEach(f => { maxVal = Math.max(maxVal, r[f.key] || 0); });
     });
     
-    const padX = 5, padY = 5;
-    const plotW = w - padX * 2, plotH = h - padY * 2;
+    // Y轴留空间，X轴留空间
+    const padLeft = 28, padRight = 5, padTop = 3, padBottom = 14;
+    const plotW = w - padLeft - padRight;
+    const plotH = h - padTop - padBottom;
+    
+    // Y轴刻度（自动计算，最多4档）
+    const ySteps = 4;
+    const yStepVal = Math.ceil(maxVal / ySteps);
+    const yMax = yStepVal * ySteps;
+    
+    // 绘制Y轴网格线和标签
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '8px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.strokeStyle = '#374151';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= ySteps; i++) {
+        const val = yStepVal * i;
+        const y = padTop + plotH - (val / yMax) * plotH;
+        ctx.fillText(val, padLeft - 3, y + 3);
+        if (i > 0) {
+            ctx.beginPath();
+            ctx.moveTo(padLeft, y);
+            ctx.lineTo(w - padRight, y);
+            ctx.stroke();
+        }
+    }
     
     // 绘制折线
     fields.forEach(field => {
@@ -1591,24 +1616,27 @@ function renderSparkline(area) {
         dates.forEach((d, i) => {
             const r = history[d][area.region_key];
             const val = r ? (r[field.key] || 0) : 0;
-            const x = padX + (i / Math.max(dates.length - 1, 1)) * plotW;
-            const y = padY + plotH - (val / maxVal) * plotH;
+            const x = padLeft + (i / Math.max(dates.length - 1, 1)) * plotW;
+            const y = padTop + plotH - (val / yMax) * plotH;
             if (first) { ctx.moveTo(x, y); first = false; }
             else ctx.lineTo(x, y);
         });
         ctx.stroke();
     });
     
-    // 绘制 X 轴标签（HH:00 格式，最多显示6个）
+    // 绘制 X 轴标签（每1小时标注 HH:00）
     ctx.fillStyle = '#6b7280';
-    ctx.font = '9px sans-serif';
+    ctx.font = '8px sans-serif';
     ctx.textAlign = 'center';
-    const labelStep = Math.max(1, Math.floor(dates.length / 5));
+    let lastHour = -1;
     dates.forEach((d, i) => {
-        if (i % labelStep === 0 || i === dates.length - 1) {
-            const hour = d.slice(11, 13) || d.slice(8, 10);
-            const x = padX + (i / Math.max(dates.length - 1, 1)) * plotW;
-            ctx.fillText(hour + ':00', x, h - 1);
+        const hour = parseInt(d.slice(11, 13)) || parseInt(d.slice(8, 10)) || 0;
+        const minute = d.slice(14, 16) || '00';
+        // 只在整点（分钟为00）且小时变化时标注
+        if (minute === '00' && hour !== lastHour) {
+            lastHour = hour;
+            const x = padLeft + (i / Math.max(dates.length - 1, 1)) * plotW;
+            ctx.fillText(hour + ':00', x, h - 2);
         }
     });
 }
