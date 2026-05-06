@@ -3,8 +3,9 @@ config/*.toml
 config/old/*
 config/env.toml
 
-# 测试文件
-test/
+# 测试文件（压力测试脚本除外）
+test/*
+!test/调车模块压力测试/
 test_*
 
 # SQL 文件
