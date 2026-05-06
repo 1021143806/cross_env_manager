@@ -130,14 +130,13 @@ def _save_cache_index(data):
 
 
 def _load_json(filepath):
-    """加载 JSON 文件，确保返回列表"""
+    """加载 JSON 文件，支持列表和字典"""
     if not os.path.exists(filepath):
         return []
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        # 如果不是列表，返回空列表
-        return data if isinstance(data, list) else []
+        return data
     except:
         return []
 
