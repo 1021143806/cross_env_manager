@@ -2314,14 +2314,15 @@ def api_self_heal_force_check(region_key):
         if not template_code:
             return jsonify({'error': '缺少 template_code 参数'}), 400
         
-        # 验证模板存在
-        tpl_found = False
-        for t in region.get('templates', []):
-            if (t.get('code') or t.get('name', '')) == template_code:
-                tpl_found = True
-                break
-        if not tpl_found:
-            return jsonify({'error': f'模板 {template_code} 不存在于区域 {region_key}'}), 404
+        # 验证模板存在（__current_devices__ 是特殊值，跳过验证）
+        if template_code != '__current_devices__':
+            tpl_found = False
+            for t in region.get('templates', []):
+                if (t.get('code') or t.get('name', '')) == template_code:
+                    tpl_found = True
+                    break
+            if not tpl_found:
+                return jsonify({'error': f'模板 {template_code} 不存在于区域 {region_key}'}), 404
         
         start_time = time.time()
         result = _self_heal_check_region(region_key, region, force=True, template_code=template_code)
