@@ -2479,8 +2479,8 @@ function showDeviceModal(deviceNum) {
             
             document.getElementById('dmBody').innerHTML = html;
             
-            // 自动触发设备检查更新实时状态
-            if (data.region_key && data.deviceCode) {
+            // 仅空闲设备自动触发检查（pending/执行中设备不自动查询，避免误清理）
+            if (data.status === 'idle' && data.region_key && data.deviceCode) {
                 autoCheckDevice(data.region_key, data.deviceCode, data.deviceNum || deviceNum);
             }
         })

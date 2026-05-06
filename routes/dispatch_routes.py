@@ -2011,14 +2011,14 @@ def _query_device_status(server, api_path, area_id, device_code):
 
 
 def _should_clean_device(device_info):
-    """判断设备是否应该被清理（仅离线/下线/查询失败才清理）"""
+    """判断设备是否应该被清理（仅明确离线/下线才清理，查询失败保留）"""
     if not device_info:
-        return True  # 查询失败，保守清理
+        return False  # 查询失败（车可能还没到），保留不清理
     state = device_info.get('state', '')
     # 仅离线/下线 → 清理
     if state in ('Offline', 'Downlined'):
         return True
-    # 在线（空闲/充电/任务中/故障/升级中）→ 保留
+    # 在线（空闲/充电/任务中/故障/升级中/查询失败）→ 保留
     return False
 
 
@@ -2053,7 +2053,9 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
     
     check_current_devices = (template_code == '__current_devices__')
     
-    # 检查 currentCount.json 中的空闲设备（自动定时检查 + 强制检查"当前设备"）
+    # 自动定时检查（template_code=None, force=False）：只检查 currentCount.json 中的空闲设备
+    # 强制检查"当前设备"（template_code='__current_devices__'）：只检查 currentCount.json
+    # 强制检查模板（template_code=具体模板, force=True）：只检查模板任务
     if template_code is None or check_current_devices:
         now_file = _get_region_file(region_key, 'currentCount.json')
         now_devices = _load_json(now_file)
@@ -2083,11 +2085,15 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
                 })
         _save_json(now_file, now_devices)
     
+    # 自动定时检查只检查当前设备，不检查模板任务（避免查询执行中的负载设备）
+    if template_code is None and not force:
+        return {'cleaned': cleaned, 'errors': errors, 'steps': steps}
+    
     # 如果只检查当前设备，跳过模板检查
     if check_current_devices:
         return {'cleaned': cleaned, 'errors': errors, 'steps': steps}
     
-    # 检查模板 JSON 中的 status=6 任务
+    # 强制检查模板 JSON 中的 status=6 任务（仅手动触发）
     for t in region.get('templates', []):
         tpl_code = t.get('code') or t.get('name', '')
         # 如果指定了模板，只检查该模板
