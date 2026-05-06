@@ -1532,10 +1532,23 @@ function getCalcInfoText(area) {
 }
 
 function getDailyStatsText(area) {
-    const ds = area.daily_stats || {};
-    const ei = ds.empty_in || 0, eo = ds.empty_out || 0;
-    const li = ds.load_in || 0, lo = ds.load_out || 0;
-    const di = ds.dispatch_in || 0, dout = ds.dispatch_out || 0;
+    // 汇总当天所有小时数据
+    const today = new Date().toISOString().slice(0, 10);
+    const history = area.daily_stats_history || {};
+    let ei = 0, eo = 0, li = 0, lo = 0, di = 0, dout = 0;
+    Object.keys(history).forEach(k => {
+        if (k.startsWith(today)) {
+            const r = history[k][area.region_key];
+            if (r) {
+                ei += r.empty_in || 0;
+                eo += r.empty_out || 0;
+                li += r.load_in || 0;
+                lo += r.load_out || 0;
+                di += r.dispatch_in || 0;
+                dout += r.dispatch_out || 0;
+            }
+        }
+    });
     if (!ei && !eo && !li && !lo && !di && !dout) return '<span class="text-muted">📊 今日暂无统计</span>';
     return `📊 今日: <span style="color:#6ea8fe;">🚛来${ei}</span> <span style="color:#feb272;">回${eo}</span> <span style="color:#0d6efd;">📦来${li}</span> <span style="color:#fd7e14;">回${lo}</span> | 下发 <span style="color:#6ea8fe;">来${di}</span> <span style="color:#feb272;">回${dout}</span>`;
 }
@@ -1547,14 +1560,6 @@ function renderSparkline(area) {
     const history = area.daily_stats_history || {};
     let dates = Object.keys(history).sort();
     if (dates.length < 1) { canvas.style.display = 'none'; return; }
-    // 只有1天数据时，复制一份作为"前一天"以显示折线图
-    if (dates.length === 1) {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yKey = yesterday.toISOString().slice(0, 10);
-        history[yKey] = history[dates[0]];  // 复制当天数据
-        dates = [yKey, dates[0]];
-    }
     canvas.style.display = 'block';
     
     const w = canvas.width, h = canvas.height;
@@ -1577,6 +1582,7 @@ function renderSparkline(area) {
     const padX = 5, padY = 5;
     const plotW = w - padX * 2, plotH = h - padY * 2;
     
+    // 绘制折线
     fields.forEach(field => {
         ctx.beginPath();
         ctx.strokeStyle = field.color;
@@ -1585,12 +1591,25 @@ function renderSparkline(area) {
         dates.forEach((d, i) => {
             const r = history[d][area.region_key];
             const val = r ? (r[field.key] || 0) : 0;
-            const x = padX + (i / (dates.length - 1)) * plotW;
+            const x = padX + (i / Math.max(dates.length - 1, 1)) * plotW;
             const y = padY + plotH - (val / maxVal) * plotH;
             if (first) { ctx.moveTo(x, y); first = false; }
             else ctx.lineTo(x, y);
         });
         ctx.stroke();
+    });
+    
+    // 绘制 X 轴标签（HH:00 格式，最多显示6个）
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    const labelStep = Math.max(1, Math.floor(dates.length / 5));
+    dates.forEach((d, i) => {
+        if (i % labelStep === 0 || i === dates.length - 1) {
+            const hour = d.slice(11, 13) || d.slice(8, 10);
+            const x = padX + (i / Math.max(dates.length - 1, 1)) * plotW;
+            ctx.fillText(hour + ':00', x, h - 1);
+        }
     });
 }
 

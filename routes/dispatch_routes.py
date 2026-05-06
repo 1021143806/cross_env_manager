@@ -251,24 +251,24 @@ _dispatch_sample_counter = [0]
 
 
 def _update_daily_stats(region_key, field):
-    """更新每日统计（非重复事件才计数）
+    """更新每小时统计
     field: 'empty_in' | 'empty_out' | 'load_in' | 'load_out' | 'dispatch_in' | 'dispatch_out'
     """
-    today = datetime.now().strftime('%Y-%m-%d')
+    hour_key = datetime.now().strftime('%Y-%m-%dT%H')
     stats = _load_json(DAILY_STATS_PATH)
     if not isinstance(stats, dict):
         stats = {}
-    if today not in stats:
-        stats[today] = {}
-    if region_key not in stats[today]:
-        stats[today][region_key] = {
+    if hour_key not in stats:
+        stats[hour_key] = {}
+    if region_key not in stats[hour_key]:
+        stats[hour_key][region_key] = {
             'empty_in': 0, 'empty_out': 0, 'load_in': 0, 'load_out': 0,
             'dispatch_in': 0, 'dispatch_out': 0
         }
-    stats[today][region_key][field] = stats[today][region_key].get(field, 0) + 1
-    # 只保留最近7天
+    stats[hour_key][region_key][field] = stats[hour_key][region_key].get(field, 0) + 1
+    # 只保留最近24小时
     from datetime import timedelta
-    cutoff = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+    cutoff = (datetime.now() - timedelta(hours=24)).strftime('%Y-%m-%dT%H')
     stats = {k: v for k, v in stats.items() if k >= cutoff}
     _save_json(DAILY_STATS_PATH, stats)
 
@@ -558,7 +558,7 @@ def calculate_area_balance(region_key, region_config):
             "incoming": incoming_templates,
             "outgoing": outgoing_templates
         },
-        "daily_stats": (_load_json(DAILY_STATS_PATH) or {}).get(datetime.now().strftime('%Y-%m-%d'), {}).get(region_key, {}),
+        "daily_stats": (_load_json(DAILY_STATS_PATH) or {}).get(datetime.now().strftime('%Y-%m-%dT%H'), {}).get(region_key, {}),
         "daily_stats_history": _load_json(DAILY_STATS_PATH) or {}
     }
 
