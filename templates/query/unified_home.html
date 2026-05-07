@@ -429,6 +429,21 @@
     </div>
 </div>
 
+<!-- 设备详情模态框 -->
+<div class="modal fade" id="deviceDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title"><i class="bi bi-truck me-2"></i><span id="ddmTitle">设备详情</span></h6>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-2" id="ddmBody">
+                <div class="text-center text-muted py-3">加载中...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- JSON详情模态框 -->
 <div class="modal fade" id="jsonModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -1027,7 +1042,7 @@
             return 'high';
         }
         
-        function renderDeviceIconForQuery(d, lowBatteryThreshold) {
+        function renderDeviceIconForQuery(d, lowBatteryThreshold, clickHandler) {
             const dn = d.device_num || d.deviceNum || '?';
             const dc = d.device_code || d.deviceCode || '';
             const state = d.state || '未知';
@@ -1044,7 +1059,8 @@
                     batteryHtml = `<span class="battery-indicator ${batCls}" title="电量: ${battery}%"></span>`;
                 }
             }
-            return `<span class="${cls}" title="${label} · ${dc}"
+            const clickAttr = clickHandler ? `onclick="${clickHandler}" style="cursor:pointer;"` : '';
+            return `<span class="${cls}" ${clickAttr} title="${label} · ${dc} (点击查看详情)"
                 onmouseenter="showAgvTooltipForQuery(event,'${escapeHtml(dc)}','${escapeHtml(label)}','','','${battery}')"
                 onmouseleave="hideAgvTooltipForQuery()"><span class="${spriteCls}"></span><span class="dev-num">${dn}</span>${batteryHtml}</span>`;
         }
@@ -1079,6 +1095,9 @@
             if (queryTooltipEl) queryTooltipEl.style.display = 'none';
         }
         
+        // 存储设备查询结果供模态框使用
+        let _deviceQueryResult = null;
+        
         function renderDeviceStatusCard(result) {
             const statuses = result.deviceStatuses || [];
             // 取第一个成功的设备状态
@@ -1086,20 +1105,33 @@
             const deviceCode = result.device_code || firstOk?.device_code || '';
             const deviceNum = result.device_num || firstOk?.device_num || '';
             
+            // 存储数据供模态框使用
+            _deviceQueryResult = {
+                deviceNum, deviceCode, statuses,
+                orderId: result.orderId,
+                mainTask: result.mainTask,
+                subTasks: result.subTasks
+            };
+            
             let html = `
                 <div class="query-card mb-3 animate__animated animate__fadeIn">
                     <div class="query-card-header bg-info bg-opacity-10 d-flex justify-content-between align-items-center">
                         <h5 class="mb-0"><i class="bi bi-truck me-2"></i>设备实时状态</h5>
-                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#deviceStatusBody" aria-expanded="true">
-                            <i class="bi bi-chevron-up collapse-icon"></i>
-                        </button>
+                        <div>
+                            <button class="btn btn-sm btn-outline-primary me-1" onclick="showDeviceDetailModal()" title="查看设备详情">
+                                <i class="bi bi-info-circle"></i> 详情
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#deviceStatusBody" aria-expanded="true">
+                                <i class="bi bi-chevron-up collapse-icon"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="collapse show" id="deviceStatusBody">
                         <div class="card-body">
                             <div class="row align-items-center">
                                 <div class="col-auto">
                                     <div class="device-grid" style="display:flex;flex-wrap:wrap;gap:6px;">
-                                        ${renderDeviceIconForQuery(firstOk, 30)}
+                                        ${renderDeviceIconForQuery(firstOk, 30, 'showDeviceDetailModal()')}
                                     </div>
                                 </div>
                                 <div class="col">
@@ -1138,6 +1170,61 @@
                     </div>
                 </div>`;
             return html;
+        }
+        
+        function showDeviceDetailModal() {
+            const data = _deviceQueryResult;
+            if (!data) return;
+            
+            const modal = new bootstrap.Modal(document.getElementById('deviceDetailModal'));
+            document.getElementById('ddmTitle').textContent = '设备详情 - ' + data.deviceNum;
+            
+            const statuses = data.statuses || [];
+            const firstOk = statuses.find(s => s.state && s.state !== '查询失败') || statuses[0] || {};
+            
+            let html = '<div class="mb-3"><strong style="color:var(--primary-color);">基本信息</strong></div>';
+            html += '<table class="table table-sm table-borderless mb-3"><tbody>';
+            html += '<tr><td class="text-muted" style="width:80px;">设备编号</td><td><strong>' + escapeHtml(data.deviceNum || '-') + '</strong></td></tr>';
+            html += '<tr><td class="text-muted">序列号</td><td><code>' + escapeHtml(data.deviceCode || '-') + '</code></td></tr>';
+            html += '<tr><td class="text-muted">状态</td><td><span class="badge bg-' + (firstOk.state === 'Idle' ? 'success' : firstOk.state === 'InTask' ? 'primary' : firstOk.state === 'Charging' ? 'warning' : 'secondary') + '">' + getDeviceStateLabel(firstOk.state) + '</span></td></tr>';
+            if (firstOk.battery) html += '<tr><td class="text-muted">电量</td><td>' + firstOk.battery + '%</td></tr>';
+            if (firstOk.area_id) html += '<tr><td class="text-muted">区域ID</td><td>' + firstOk.area_id + '</td></tr>';
+            html += '</tbody></table>';
+            
+            // 设备图标展示
+            html += '<div class="text-center mb-3"><div class="device-grid" style="display:inline-flex;">' + renderDeviceIconForQuery(firstOk, 30, '') + '</div></div>';
+            
+            // 各服务器查询详情
+            if (statuses.length > 0) {
+                html += '<div class="mb-2"><strong style="color:var(--primary-color);">各服务器查询结果</strong></div>';
+                html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-3"><thead><tr><th>服务器</th><th>状态</th><th>电量</th><th>区域</th><th>详情</th></tr></thead><tbody>';
+                statuses.forEach(s => {
+                    const stateColor = s.state === 'Idle' ? 'success' : s.state === 'InTask' ? 'primary' : s.state === 'Charging' ? 'warning' : 'secondary';
+                    html += '<tr>';
+                    html += '<td><code>' + escapeHtml(s.server_ip || s.service_url || '-') + '</code></td>';
+                    html += '<td><span class="badge bg-' + stateColor + '">' + getDeviceStateLabel(s.state) + '</span></td>';
+                    html += '<td>' + (s.battery || '-') + '</td>';
+                    html += '<td>' + (s.area_id || '-') + '</td>';
+                    html += '<td>' + (s.error ? '<span class="text-danger small">' + escapeHtml(s.error) + '</span>' : '-') + '</td>';
+                    html += '</tr>';
+                });
+                html += '</tbody></table></div>';
+            }
+            
+            // 关联任务信息
+            if (data.orderId) {
+                html += '<div class="mb-2"><strong style="color:var(--primary-color);">关联任务</strong></div>';
+                html += '<table class="table table-sm table-borderless small mb-0"><tbody>';
+                html += '<tr><td class="text-muted" style="width:80px;">任务单号</td><td><code>' + escapeHtml(data.orderId || '-') + '</code></td></tr>';
+                if (data.mainTask) {
+                    html += '<tr><td class="text-muted">模板</td><td>' + escapeHtml(data.mainTask.modelProcessName || data.mainTask.templateName || '-') + '</td></tr>';
+                }
+                html += '<tr><td class="text-muted">子任务数</td><td>' + (data.subTasks ? data.subTasks.length : 0) + '</td></tr>';
+                html += '</tbody></table>';
+            }
+            
+            document.getElementById('ddmBody').innerHTML = html;
+            modal.show();
         }
 
         // ---------- 渲染结果（每个子任务卡片化，默认展开详细信息） ----------
