@@ -703,3 +703,113 @@ def force_complete_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68
         }
     finally:
         conn.close()
+
+
+def get_order_id_by_device_num(device_num, server_ip="10.68.2.32"):
+    """
+    根据设备号(device_num)查询最近的任务单号(order_id)和设备序列号(device_code)
+    查询 fy_cross_task_detail 表，按 update_time DESC 取最近一条
+    """
+    conn = connect_to_production_db(server_ip)
+    try:
+        with conn.cursor() as cursor:
+            sql = """
+                SELECT order_id, device_code, device_num, template_code, template_name,
+                       service_url, status, update_time
+                FROM fy_cross_task_detail
+                WHERE device_num = %s
+                ORDER BY update_time DESC
+                LIMIT 1
+            """
+            cursor.execute(sql, (device_num,))
+            row = cursor.fetchone()
+            if not row:
+                return {"error": f"未找到设备 {device_num} 的任务记录"}
+            return {
+                "order_id": row['order_id'],
+                "device_code": row['device_code'],
+                "device_num": row['device_num'],
+                "template_code": row['template_code'],
+                "template_name": row['template_name'],
+                "service_url": row['service_url'],
+                "status": row['status'],
+                "update_time": str(row['update_time']) if row['update_time'] else ''
+            }
+    except Exception as e:
+        return {"error": f"查询设备任务失败: {str(e)}"}
+    finally:
+        conn.close()
+
+
+def get_device_area_from_server(server_ip, device_code):
+    """
+    从指定服务器的 agv_robot_ext 表查询设备的 DEVICE_AREA
+    """
+    conn = connect_to_production_db(server_ip)
+    try:
+        with conn.cursor() as cursor:
+            sql = "SELECT DEVICE_AREA, DEVICE_NUMBER, DEVICE_STATUS FROM agv_robot_ext WHERE DEVICE_CODE = %s"
+            cursor.execute(sql, (device_code,))
+            row = cursor.fetchone()
+            if not row:
+                return {"error": f"未在服务器 {server_ip} 找到设备 {device_code}"}
+            return {
+                "area_id": row['DEVICE_AREA'],
+                "device_num": row['DEVICE_NUMBER'],
+                "device_status": row['DEVICE_STATUS']
+            }
+    except Exception as e:
+        return {"error": f"查询设备区域失败({server_ip}): {str(e)}"}
+    finally:
+        conn.close()
+
+
+def query_device_status_via_service(service_url, area_id, device_code):
+    """
+    通过 service_url 调用设备查询接口 /ics/out/device/list/deviceInfo
+    获取设备实时状态（state、battery 等），同时返回请求/响应详情
+    """
+    import urllib.request as _urllib
+    import json as _json
+    # 从 service_url 提取 base URL（去掉路径部分，保留协议+主机+端口）
+    # service_url 如 http://10.68.2.27:7000
+    base_url = service_url.rstrip('/')
+    url = f"{base_url}/ics/out/device/list/deviceInfo"
+    body = {"areaId": str(area_id), "deviceType": "0", "deviceCode": device_code}
+    request_info = {"url": url, "body": body}
+    try:
+        req = _urllib.Request(url,
+            data=_json.dumps(body).encode('utf-8'),
+            headers={'Content-Type': 'application/json'})
+        resp = _urllib.urlopen(req, timeout=10)
+        raw_response = resp.read().decode('utf-8')
+        data = _json.loads(raw_response)
+        response_body = data  # 完整响应
+        if data.get('code') == 1000 and data.get('data'):
+            device_info = data['data'][0]
+            return {
+                "state": device_info.get('state', '未知'),
+                "battery": device_info.get('battery', ''),
+                "device_code": device_info.get('deviceCode', device_code),
+                "device_num": device_info.get('deviceNum', ''),
+                "area_id": device_info.get('areaId', area_id),
+                "raw": device_info,
+                "request_url": url,
+                "request_body": body,
+                "response_body": response_body
+            }
+        return {
+            "error": f"设备查询响应异常: code={data.get('code')}",
+            "state": "查询失败",
+            "request_url": url,
+            "request_body": body,
+            "response_body": response_body
+        }
+    except Exception as e:
+        return {
+            "error": f"设备查询请求失败: {str(e)}",
+            "state": "查询失败",
+            "request_url": url,
+            "request_body": body,
+            "response_body": None
+        }

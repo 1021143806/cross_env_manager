@@ -2870,7 +2870,7 @@ function showTemplateDetail(regionKey, templateCode) {
                 html += '<table class="table table-sm table-borderless mb-0"><thead><tr><th>设备</th><th>订单号</th><th>开始时间</th></tr></thead><tbody>';
                 data.running_tasks.forEach(t => {
                     const time = t.create_time ? t.create_time.slice(11, 19) : '';
-                    html += '<tr><td>' + escapeHtml(t.deviceNum || '-') + '</td><td><small><code>' + escapeHtml((t.order_id || '').slice(0, 25)) + '</code></small></td><td>' + time + '</td></tr>';
+                    html += '<tr><td>' + escapeHtml(t.deviceNum || '-') + '</td><td><small><code title="' + escapeHtml(t.order_id || '') + '">' + escapeHtml((t.order_id || '').slice(0, 40)) + (t.order_id && t.order_id.length > 40 ? '...' : '') + '</code></small></td><td>' + time + '</td></tr>';
                 });
                 html += '</tbody></table></div>';
             }

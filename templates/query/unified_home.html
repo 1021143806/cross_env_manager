@@ -115,6 +115,103 @@
         align-items: center;
         z-index: 9999;
     }
+    
+    /* 设备图标样式（复用调车网格） */
+    .device-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+    }
+    .device-grid:empty::after {
+        content: '暂无设备';
+        color: var(--text-muted, #6c757d);
+        font-size: 0.85rem;
+    }
+    .agv-icon {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 52px;
+        height: 64px;
+        border-radius: 8px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: #fff;
+        position: relative;
+        transition: transform 0.2s, box-shadow 0.2s;
+        cursor: default;
+    }
+    .agv-icon:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .agv-icon .dev-num {
+        margin-top: 2px;
+        font-size: 0.65rem;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    }
+    .agv-icon.idle { background: #28a745; }
+    .agv-icon.busy { background: #0d6efd; }
+    .agv-icon.charging { background: #ffc107; color: #333; }
+    .agv-icon.error { background: #dc3545; }
+    .agv-icon.pending { background: #1a8e71; }
+    .agv-icon.load_in { background: #0d6efd; }
+    .agv-icon.load_out { background: #fd7e14; }
+    .agv-icon.empty_in { background: #6ea8fe; }
+    .agv-icon.empty_out { background: #feb272; }
+    
+    /* AGV Sprite */
+    .agv-sprite {
+        display: block;
+        width: 28px;
+        height: 28px;
+        background: url('/static/img/agv/rcsagv.png') no-repeat;
+        background-size: 280px 28px;
+        image-rendering: pixelated;
+    }
+    .agv-sprite.blue { background-position: 0 0; }
+    .agv-sprite.orange { background-position: -28px 0; }
+    .agv-sprite.light-blue { background-position: -56px 0; }
+    .agv-sprite.light-orange { background-position: -84px 0; }
+    .agv-sprite.green { background-position: -112px 0; }
+    .agv-sprite.purple { background-position: -140px 0; }
+    .agv-sprite.yellow { background-position: -168px 0; }
+    .agv-sprite.red { background-position: -196px 0; }
+    .agv-sprite.teal { background-position: -224px 0; }
+    .agv-sprite.gray { background-position: -252px 0; }
+    
+    /* 电池指示器 */
+    .battery-indicator {
+        display: block;
+        width: 20px;
+        height: 6px;
+        border-radius: 3px;
+        margin-top: 2px;
+    }
+    .battery-indicator.low { background: #dc3545; }
+    .battery-indicator.mid { background: #ffc107; }
+    .battery-indicator.high { background: #28a745; }
+    
+    /* AGV Tooltip */
+    .agv-tooltip {
+        display: none;
+        position: fixed;
+        z-index: 99999;
+        background: rgba(0,0,0,0.85);
+        color: #fff;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        pointer-events: none;
+        white-space: nowrap;
+        text-align: center;
+    }
+    .agv-tooltip .tt-code { font-size: 0.7rem; opacity: 0.8; }
+    .agv-tooltip .tt-label { font-weight: 600; }
+    .agv-tooltip .tt-time { font-size: 0.7rem; opacity: 0.7; }
+    .agv-tooltip .tt-battery { font-size: 0.7rem; opacity: 0.8; }
 </style>
 {% endblock %}
 
@@ -146,6 +243,11 @@
                                         <i class="bi bi-box-seam me-1"></i> 货架号查询
                                     </a>
                                 </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" id="navDeviceLink" data-bs-toggle="pill" href="#tabDeviceContent">
+                                        <i class="bi bi-truck me-1"></i> 设备号查询
+                                    </a>
+                                </li>
                             </ul>
                         </div>
                     </div>
@@ -169,11 +271,24 @@
                                 查询逻辑：优先查找执行中 → 失败/异常 → 已完成。若无进行中任务，则返回最近一条已完成。
                             </div>
                         </div>
+                        <!-- 设备号查询面板 -->
+                        <div class="tab-pane fade" id="tabDeviceContent">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">设备号 (DeviceNum)</label>
+                                <input type="text" class="form-control" id="deviceNumInput" placeholder="例如: DJC2">
+                                <div class="form-text">对应数据库中的 device_num 字段，查询该设备最近执行的任务</div>
+                            </div>
+                            <div class="alert alert-info small">
+                                <i class="bi bi-info-circle"></i> 
+                                查询逻辑：通过设备号查找最近任务单号 → 深度查询子任务 → 查询设备实时状态
+                            </div>
+                        </div>
                     </div>
                     
                     <!-- 隐藏的单选按钮，用于JavaScript逻辑 -->
                     <input type="radio" class="d-none" name="queryType" id="typeTask" value="task" checked>
                     <input type="radio" class="d-none" name="queryType" id="typeShelf" value="shelf">
+                    <input type="radio" class="d-none" name="queryType" id="typeDevice" value="device">
 
                     <!-- 服务器IP配置（共用） -->
                     <div class="mb-3">
@@ -314,6 +429,21 @@
     </div>
 </div>
 
+<!-- 设备详情模态框 -->
+<div class="modal fade" id="deviceDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title"><i class="bi bi-truck me-2"></i><span id="ddmTitle">设备详情</span></h6>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-2" id="ddmBody">
+                <div class="text-center text-muted py-3">加载中...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- JSON详情模态框 -->
 <div class="modal fade" id="jsonModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -359,11 +489,14 @@
         // ---------- DOM 元素 ----------
         const typeTaskRadio = document.getElementById('typeTask');
         const typeShelfRadio = document.getElementById('typeShelf');
+        const typeDeviceRadio = document.getElementById('typeDevice');
         // 选项卡面板，保留变量但不使用
         const taskPanel = document.getElementById('tabTaskContent');
         const shelfPanel = document.getElementById('tabShelfContent');
+        const devicePanel = document.getElementById('tabDeviceContent');
         const orderIdInput = document.getElementById('orderIdInput');
         const shelfInput = document.getElementById('shelfInput');
+        const deviceNumInput = document.getElementById('deviceNumInput');
         const serverIpInput = document.getElementById('serverIpInput');
         const ipHint = document.getElementById('ipHint');
         const queryBtn = document.getElementById('queryBtn');
@@ -389,6 +522,7 @@
             // 绑定事件
             typeTaskRadio.addEventListener('change', toggleQueryPanel);
             typeShelfRadio.addEventListener('change', toggleQueryPanel);
+            typeDeviceRadio.addEventListener('change', toggleQueryPanel);
             serverIpInput.addEventListener('input', updateIpHint);
             queryBtn.addEventListener('click', executeQuery);
             document.getElementById('helpToggle').addEventListener('click', async () => {
@@ -409,17 +543,19 @@
             // 回车快捷查询
             orderIdInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') executeQuery(); });
             shelfInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') executeQuery(); });
+            deviceNumInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') executeQuery(); });
             
             // 初始化IP提示
             updateIpHint();
             renderHistoryTags();
             
             // 选项卡切换同步单选按钮
-            document.querySelectorAll('#navTaskLink, #navShelfLink').forEach(tab => {
+            document.querySelectorAll('#navTaskLink, #navShelfLink, #navDeviceLink').forEach(tab => {
                 tab.addEventListener('shown.bs.tab', (event) => {
-                    const isTask = event.target.id === 'navTaskLink';
-                    typeTaskRadio.checked = isTask;
-                    typeShelfRadio.checked = !isTask;
+                    const tabId = event.target.id;
+                    typeTaskRadio.checked = (tabId === 'navTaskLink');
+                    typeShelfRadio.checked = (tabId === 'navShelfLink');
+                    typeDeviceRadio.checked = (tabId === 'navDeviceLink');
                     // 触发change事件以确保相关逻辑更新
                     typeTaskRadio.dispatchEvent(new Event('change'));
                 });
@@ -620,24 +756,32 @@
         // ---------- 查询主流程 ----------
         async function executeQuery() {
             const isTaskQuery = typeTaskRadio.checked;
+            const isDeviceQuery = typeDeviceRadio.checked;
             let orderId = orderIdInput.value.trim();
             const shelf = shelfInput.value.trim();
+            const deviceNum = deviceNumInput.value.trim();
 
             if (isTaskQuery && !orderId) {
                 alert('请输入任务单号');
                 return;
             }
-            if (!isTaskQuery && !shelf) {
+            if (typeShelfRadio.checked && !shelf) {
                 alert('请输入货架号');
+                return;
+            }
+            if (isDeviceQuery && !deviceNum) {
+                alert('请输入设备号');
                 return;
             }
 
             // 禁用输入框防止重复提交
             orderIdInput.disabled = true;
             shelfInput.disabled = true;
+            deviceNumInput.disabled = true;
             serverIpInput.disabled = true;
             typeTaskRadio.disabled = true;
             typeShelfRadio.disabled = true;
+            typeDeviceRadio.disabled = true;
             
             loadingIndicator.classList.remove('d-none');
             resultContainer.innerHTML = '';
@@ -645,19 +789,48 @@
             queryBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>查询中...';
 
             try {
-                if (!isTaskQuery) {
-                    orderId = await findOrderIdByShelf(shelf);
-                    if (!orderId) {
-                        throw new Error(`未找到货架 ${shelf} 的相关任务`);
+                if (isDeviceQuery) {
+                    // 设备号查询：调用后端 API（后端已包含完整深度查询结果 + 设备状态）
+                    const serverIp = getFinalIp();
+                    const res = await fetch('/api/query/device_tasks', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ device_num: deviceNum, server_ip: serverIp })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || data.error) {
+                        throw new Error(data.error || '查询失败');
                     }
-                    orderIdInput.value = orderId;
-                }
+                    addToHistory(`${deviceNum} (设备)`);
+                    // 后端已返回完整数据，直接构造 result 对象
+                    const deepResult = {
+                        orderId: data.order_id,
+                        baseUrl: data.baseUrl || '',
+                        mainTask: data.mainTask,
+                        subTasks: data.subTasks || [],
+                        deviceStatuses: data.device_statuses || [],
+                        device_code: data.device_code,
+                        device_num: data.device_num
+                    };
+                    if (!deepResult.mainTask) {
+                        throw new Error('未找到该设备对应的主任务（远程API查询失败）');
+                    }
+                    renderResult(deepResult);
+                    loadTaskStatusChart();
+                } else {
+                    if (!isTaskQuery) {
+                        orderId = await findOrderIdByShelf(shelf);
+                        if (!orderId) {
+                            throw new Error(`未找到货架 ${shelf} 的相关任务`);
+                        }
+                        orderIdInput.value = orderId;
+                    }
 
-                addToHistory(isTaskQuery ? orderId : `${shelf} (货架)`);
-                const result = await performDeepQuery(orderId);
-                renderResult(result);
-                // 查询完成后刷新图表
-                loadTaskStatusChart();
+                    addToHistory(isTaskQuery ? orderId : `${shelf} (货架)`);
+                    const result = await performDeepQuery(orderId);
+                    renderResult(result);
+                    loadTaskStatusChart();
+                }
             } catch (error) {
                 console.error('查询失败:', error);
                 resultContainer.innerHTML = `
@@ -670,9 +843,11 @@
                 // 恢复输入框
                 orderIdInput.disabled = false;
                 shelfInput.disabled = false;
+                deviceNumInput.disabled = false;
                 serverIpInput.disabled = false;
                 typeTaskRadio.disabled = false;
                 typeShelfRadio.disabled = false;
+                typeDeviceRadio.disabled = false;
                 queryBtn.disabled = false;
                 queryBtn.innerHTML = '<i class="bi bi-search"></i> 开始查询';
             }
@@ -849,13 +1024,266 @@
                 .replace(/\r/g, '\\r');
         }
 
+        // ---------- 设备状态渲染（复用调车网格图标逻辑） ----------
+        function getDeviceStateClass(state) {
+            const map = {
+                'Idle': 'idle', 'InTask': 'busy', 'Charging': 'charging',
+                'Offline': 'error', 'Downlined': 'error', 'Error': 'error',
+                '查询失败': 'pending', '未查询': 'pending'
+            };
+            return map[state] || 'pending';
+        }
+        
+        function getDeviceStateLabel(state) {
+            const map = {
+                'Idle': '空闲', 'InTask': '任务中', 'Charging': '充电中',
+                'Offline': '离线', 'Downlined': '下线', 'Error': '异常',
+                '查询失败': '查询失败', '未查询': '未查询'
+            };
+            return map[state] || state || '未知';
+        }
+        
+        function getBatteryClass(battery, threshold) {
+            const b = parseInt(battery) || 0;
+            const t = threshold || 30;
+            if (b <= t) return 'low';
+            if (b <= (t + 100) / 2) return 'mid';
+            return 'high';
+        }
+        
+        function renderDeviceIconForQuery(d, lowBatteryThreshold, clickHandler) {
+            const dn = d.device_num || d.deviceNum || '?';
+            const dc = d.device_code || d.deviceCode || '';
+            const state = d.state || '未知';
+            const battery = d.battery || '';
+            const threshold = lowBatteryThreshold || 30;
+            const cls = 'agv-icon ' + getDeviceStateClass(state);
+            const spriteCls = 'agv-sprite blue';
+            const label = getDeviceStateLabel(state);
+            
+            let batteryHtml = '';
+            if (battery) {
+                const batCls = getBatteryClass(battery, threshold);
+                if (batCls) {
+                    batteryHtml = `<span class="battery-indicator ${batCls}" title="电量: ${battery}%"></span>`;
+                }
+            }
+            const clickAttr = clickHandler ? `onclick="${clickHandler}" style="cursor:pointer;"` : '';
+            return `<span class="${cls}" ${clickAttr} title="${label} · ${dc} (点击查看详情)"
+                onmouseenter="showAgvTooltipForQuery(event,'${escapeHtml(dc)}','${escapeHtml(label)}','','','${battery}')"
+                onmouseleave="hideAgvTooltipForQuery()"><span class="${spriteCls}"></span><span class="dev-num">${dn}</span>${batteryHtml}</span>`;
+        }
+        
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+        
+        let queryTooltipEl = null;
+        function showAgvTooltipForQuery(e, code, label, time, tpl, battery) {
+            if (!queryTooltipEl) {
+                queryTooltipEl = document.createElement('div');
+                queryTooltipEl.className = 'agv-tooltip';
+                document.body.appendChild(queryTooltipEl);
+            }
+            let html = '';
+            if (code) html += `<div class="tt-code">${code}</div>`;
+            if (tpl) html += `<div class="tt-label">${tpl} · ${label}</div>`;
+            else html += `<div class="tt-label">${label}</div>`;
+            if (time) html += `<div class="tt-time">🕐 ${time}</div>`;
+            if (battery) html += `<div class="tt-battery">🔋 电量: ${battery}%</div>`;
+            queryTooltipEl.innerHTML = html;
+            queryTooltipEl.style.display = 'block';
+            const rect = e.target.closest('.agv-icon')?.getBoundingClientRect() || e.target.getBoundingClientRect();
+            queryTooltipEl.style.left = (rect.left + rect.width / 2) + 'px';
+            queryTooltipEl.style.top = (rect.top - 8) + 'px';
+            queryTooltipEl.style.transform = 'translate(-50%, -100%)';
+        }
+        function hideAgvTooltipForQuery() {
+            if (queryTooltipEl) queryTooltipEl.style.display = 'none';
+        }
+        
+        // 存储设备查询结果供模态框使用
+        let _deviceQueryResult = null;
+        
+        function getStateBadgeClass(state) {
+            if (state === 'Idle') return 'success';
+            if (state === 'InTask') return 'primary';
+            if (state === 'Charging') return 'warning';
+            if (state === 'Offline' || state === 'Downlined' || state === 'Error') return 'danger';
+            if (state === '查询失败') return 'secondary';
+            return 'info';
+        }
+        
+        function renderDeviceStatusCard(result) {
+            const statuses = result.deviceStatuses || [];
+            const deviceCode = result.device_code || '';
+            const deviceNum = result.device_num || '';
+            
+            // 存储数据供模态框使用
+            _deviceQueryResult = {
+                deviceNum, deviceCode, statuses,
+                orderId: result.orderId,
+                mainTask: result.mainTask,
+                subTasks: result.subTasks
+            };
+            
+            const hasStatus = statuses.length > 0;
+            // 取第一个成功的设备状态，没有则构造一个"未查询"状态
+            const firstOk = hasStatus ? (statuses.find(s => s.state && s.state !== '查询失败') || statuses[0]) : { state: '未查询', device_num: deviceNum, device_code: deviceCode };
+            
+            let html = `
+                <div class="query-card mb-3 animate__animated animate__fadeIn">
+                    <div class="query-card-header bg-info bg-opacity-10 d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-truck me-2"></i>设备实时状态</h5>
+                        <div>
+                            <button class="btn btn-sm btn-outline-primary me-1" onclick="showDeviceDetailModal()" title="查看设备详情">
+                                <i class="bi bi-info-circle"></i> 详情
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#deviceStatusBody" aria-expanded="true">
+                                <i class="bi bi-chevron-up collapse-icon"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="collapse show" id="deviceStatusBody">
+                        <div class="card-body">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <div class="device-grid" style="display:flex;flex-wrap:wrap;gap:6px;">
+                                        ${renderDeviceIconForQuery(firstOk, 30, 'showDeviceDetailModal()')}
+                                    </div>
+                                </div>
+                                <div class="col">
+                                    <table class="table table-sm table-borderless small mb-0">
+                                        <tr><th class="w-30">设备号</th><td><code>${deviceNum || '-'}</code></td></tr>
+                                        <tr><th>设备序列号</th><td><code>${deviceCode || '-'}</code></td></tr>`;
+            if (hasStatus) {
+                html += `
+                                        <tr><th>状态</th><td><span class="badge bg-${getStateBadgeClass(firstOk.state)}">${getDeviceStateLabel(firstOk.state)}</span></td></tr>
+                                        ${firstOk.battery ? `<tr><th>电量</th><td>${firstOk.battery}%</td></tr>` : ''}
+                                        ${firstOk.area_id ? `<tr><th>区域ID</th><td>${firstOk.area_id}</td></tr>` : ''}`;
+            } else {
+                html += `
+                                        <tr><th>状态</th><td><span class="badge bg-secondary">未查询到设备信息</span></td></tr>`;
+            }
+            html += `
+                                    </table>
+                                </div>
+                            </div>`;
+            
+            // 各服务器查询详情
+            if (statuses.length > 0) {
+                html += `
+                            <hr>
+                            <small class="text-muted fw-bold">各服务器查询结果：</small>
+                            <div class="table-responsive mt-2">
+                                <table class="table table-sm table-bordered small mb-0">
+                                    <thead><tr><th>服务器</th><th>状态</th><th>电量</th><th>区域</th></tr></thead>
+                                    <tbody>`;
+                statuses.forEach(s => {
+                    html += `<tr>
+                        <td><code>${s.server_ip || s.service_url || '-'}</code></td>
+                        <td><span class="badge bg-${getStateBadgeClass(s.state)}">${getDeviceStateLabel(s.state)}</span></td>
+                        <td>${s.battery || '-'}</td>
+                        <td>${s.area_id || '-'}</td>
+                    </tr>`;
+                });
+                html += `</tbody></table></div>`;
+            }
+            
+            html += `
+                        </div>
+                    </div>
+                </div>`;
+            return html;
+        }
+        
+        function showDeviceDetailModal() {
+            const data = _deviceQueryResult;
+            if (!data) return;
+            
+            const modal = new bootstrap.Modal(document.getElementById('deviceDetailModal'));
+            document.getElementById('ddmTitle').textContent = '设备详情 - ' + (data.deviceNum || '?');
+            
+            const statuses = data.statuses || [];
+            const hasStatus = statuses.length > 0;
+            const firstOk = hasStatus ? (statuses.find(s => s.state && s.state !== '查询失败') || statuses[0]) : { state: '未查询', device_num: data.deviceNum, device_code: data.deviceCode };
+            
+            let html = '<div class="mb-3"><strong style="color:var(--primary-color);">基本信息</strong></div>';
+            html += '<table class="table table-sm table-borderless mb-3"><tbody>';
+            html += '<tr><td class="text-muted" style="width:80px;">设备编号</td><td><strong>' + escapeHtml(data.deviceNum || '-') + '</strong></td></tr>';
+            html += '<tr><td class="text-muted">序列号</td><td><code>' + escapeHtml(data.deviceCode || '-') + '</code></td></tr>';
+            html += '<tr><td class="text-muted">状态</td><td><span class="badge bg-' + getStateBadgeClass(firstOk.state) + '">' + getDeviceStateLabel(firstOk.state) + '</span></td></tr>';
+            if (firstOk.battery) html += '<tr><td class="text-muted">电量</td><td>' + firstOk.battery + '%</td></tr>';
+            if (firstOk.area_id) html += '<tr><td class="text-muted">区域ID</td><td>' + firstOk.area_id + '</td></tr>';
+            html += '</tbody></table>';
+            
+            // 设备图标展示
+            html += '<div class="text-center mb-3"><div class="device-grid" style="display:inline-flex;">' + renderDeviceIconForQuery(firstOk, 30, '') + '</div></div>';
+            
+            // 各服务器查询详情（含请求/响应）
+            if (statuses.length > 0) {
+                html += '<div class="mb-2"><strong style="color:var(--primary-color);">各服务器查询详情</strong></div>';
+                statuses.forEach((s, i) => {
+                    const stateColor = getStateBadgeClass(s.state);
+                    html += '<div class="card mb-2 border-' + stateColor + '"><div class="card-header py-1 px-2 small bg-' + stateColor + ' bg-opacity-10">';
+                    html += '<strong>' + escapeHtml(s.server_ip || s.service_url || '-') + '</strong>';
+                    html += ' <span class="badge bg-' + stateColor + '">' + getDeviceStateLabel(s.state) + '</span>';
+                    if (s.battery) html += ' 🔋' + s.battery + '%';
+                    if (s.area_id) html += ' 区域:' + s.area_id;
+                    html += '</div><div class="card-body py-1 px-2 small">';
+                    
+                    // 请求地址
+                    if (s.request_url) {
+                        html += '<div class="mb-1"><span class="text-muted">请求地址:</span><br><code class="text-break" style="font-size:0.7rem;">' + escapeHtml(s.request_url) + '</code></div>';
+                    }
+                    // 请求体
+                    if (s.request_body) {
+                        html += '<div class="mb-1"><span class="text-muted">请求体:</span><br><pre class="bg-light p-1 rounded mb-0" style="font-size:0.7rem;max-height:80px;overflow:auto;">' + escapeHtml(JSON.stringify(s.request_body, null, 2)) + '</pre></div>';
+                    }
+                    // 返回内容
+                    if (s.response_body) {
+                        html += '<div class="mb-1"><span class="text-muted">返回内容:</span><br><pre class="bg-light p-1 rounded mb-0" style="font-size:0.7rem;max-height:150px;overflow:auto;">' + escapeHtml(JSON.stringify(s.response_body, null, 2)) + '</pre></div>';
+                    } else if (s.error) {
+                        html += '<div class="text-danger"><span class="text-muted">错误:</span> ' + escapeHtml(s.error) + '</div>';
+                    }
+                    html += '</div></div>';
+                });
+            } else {
+                html += '<div class="alert alert-warning small mb-0"><i class="bi bi-exclamation-triangle"></i> 未查询到设备状态信息。可能原因：子任务中没有 service_url，或所有服务器均不可达。</div>';
+            }
+            
+            // 关联任务信息
+            if (data.orderId) {
+                html += '<div class="mt-3"><strong style="color:var(--primary-color);">关联任务</strong></div>';
+                html += '<table class="table table-sm table-borderless small mb-0"><tbody>';
+                html += '<tr><td class="text-muted" style="width:80px;">任务单号</td><td><code>' + escapeHtml(data.orderId || '-') + '</code></td></tr>';
+                if (data.mainTask) {
+                    html += '<tr><td class="text-muted">模板</td><td>' + escapeHtml(data.mainTask.modelProcessName || data.mainTask.templateName || '-') + '</td></tr>';
+                }
+                html += '<tr><td class="text-muted">子任务数</td><td>' + (data.subTasks ? data.subTasks.length : 0) + '</td></tr>';
+                html += '</tbody></table>';
+            }
+            
+            document.getElementById('ddmBody').innerHTML = html;
+            modal.show();
+        }
+
         // ---------- 渲染结果（每个子任务卡片化，默认展开详细信息） ----------
         function renderResult(result) {
             const main = result.mainTask;
             const subTasks = result.subTasks;
             const cardIdPrefix = `card_${result.orderId.replace(/[^a-zA-Z0-9]/g, '_')}`;
             
-            let html = `
+            let html = '';
+            
+            // 设备状态卡片（设备号查询时始终显示）
+            if (result.deviceStatuses !== undefined) {
+                html += renderDeviceStatusCard(result);
+            }
+            
+            html += `
                 <!-- 任务总览卡片 -->
                 <div class="query-card mb-3 animate__animated animate__fadeIn" id="${cardIdPrefix}_overview">
                     <div class="query-card-header bg-primary bg-opacity-10 d-flex justify-content-between align-items-center">
