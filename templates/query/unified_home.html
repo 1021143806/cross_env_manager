@@ -810,7 +810,8 @@
                         subTasks: data.subTasks || [],
                         deviceStatuses: data.device_statuses || [],
                         device_code: data.device_code,
-                        device_num: data.device_num
+                        device_num: data.device_num,
+                        query_debug: data.query_debug || {}
                     };
                     if (!deepResult.mainTask) {
                         throw new Error('未找到该设备对应的主任务（远程API查询失败）');
@@ -1121,13 +1122,15 @@
             const deviceCode = result.device_code || '';
             const deviceNum = result.device_num || '';
             
-            // 存储数据供模态框使用
+            // 存储数据供模态框和调试面板使用
             _deviceQueryResult = {
                 deviceNum, deviceCode, statuses,
                 orderId: result.orderId,
                 mainTask: result.mainTask,
                 subTasks: result.subTasks
             };
+            // 存储全链路调试信息
+            window._queryDebug = result.query_debug || {};
             
             const hasStatus = statuses.length > 0;
             // 取第一个成功的设备状态，没有则构造一个"未查询"状态
@@ -1194,8 +1197,164 @@
             
             html += `
                         </div>
+                    </div>`;
+            
+            // 调试面板入口（设备号查询时始终显示）
+            html += `
+                    <div class="card-footer bg-transparent border-top-0 pt-0">
+                        <button class="btn btn-sm btn-outline-warning w-100" type="button"
+                                onclick="renderQueryDebugPanel()" id="debugPanelToggle">
+                            <i class="bi bi-bug me-1"></i> 查询调试信息
+                            <span class="badge bg-secondary ms-1" id="debugStepCount">4步</span>
+                        </button>
+                        <div id="queryDebugPanel" class="mt-2" style="display:none;"></div>
                     </div>
                 </div>`;
+            return html;
+        }
+        
+        // ========== 全链路调试面板 ==========
+        function renderQueryDebugPanel() {
+            const debug = window._queryDebug;
+            const panel = document.getElementById('queryDebugPanel');
+            const toggle = document.getElementById('debugPanelToggle');
+            
+            if (!panel || !debug || Object.keys(debug).length === 0) {
+                if (panel) panel.innerHTML = '<div class="alert alert-warning small mb-0">暂无调试信息</div>';
+                if (panel) panel.style.display = 'block';
+                return;
+            }
+            
+            // 切换显示/隐藏
+            if (panel.style.display !== 'none') {
+                panel.style.display = 'none';
+                if (toggle) toggle.innerHTML = '<i class="bi bi-bug me-1"></i> 查询调试信息 <span class="badge bg-secondary ms-1">4步</span>';
+                return;
+            }
+            panel.style.display = 'block';
+            if (toggle) toggle.innerHTML = '<i class="bi bi-bug me-1"></i> 隐藏调试信息 <span class="badge bg-secondary ms-1">▲</span>';
+            
+            let html = '';
+            const totalMs = debug.total_elapsed_ms || 0;
+            
+            // 总览
+            html += `<div class="alert alert-secondary small py-1 px-2 mb-2">
+                <i class="bi bi-stopwatch me-1"></i> 全链路总耗时: <strong>${totalMs}ms</strong>
+            </div>`;
+            
+            // 步骤1
+            html += renderDebugStep(1, '按设备号查任务', debug.step1_find_order);
+            // 步骤2
+            html += renderDebugStep(2, '查主任务', debug.step2_main_task);
+            // 步骤3
+            html += renderDebugStep(3, '查子任务', debug.step3_sub_tasks);
+            // 步骤4
+            html += renderDebugStep(4, '查设备实时状态', debug.step4_device_status);
+            
+            panel.innerHTML = html;
+        }
+        
+        function renderDebugStep(stepNum, title, stepData) {
+            if (!stepData) return '';
+            
+            let success = true;
+            let elapsedMs = 0;
+            let httpStatus = null;
+            let requestUrl = '';
+            let requestBody = null;
+            let responseBody = null;
+            let errorMsg = '';
+            let extraInfo = '';
+            
+            if (stepNum === 1) {
+                // 步骤1 特殊处理：多次尝试
+                const attempts = stepData.attempts || [];
+                const lastAttempt = attempts[attempts.length - 1] || {};
+                success = stepData.result_order_id ? true : false;
+                elapsedMs = attempts.reduce((sum, a) => sum + (a.elapsed_ms || 0), 0);
+                httpStatus = lastAttempt.http_status;
+                requestUrl = lastAttempt.request_url || '';
+                requestBody = lastAttempt.request_body;
+                responseBody = lastAttempt.response_body;
+                errorMsg = lastAttempt.error || '';
+                if (attempts.length > 1) {
+                    extraInfo = `<div class="text-muted small mb-1">尝试了 ${attempts.length} 个状态: ${attempts.map(a => a.query_status).join(' → ')}</div>`;
+                }
+            } else if (stepNum === 4) {
+                // 步骤4 特殊处理：多个服务器
+                const servers = stepData.servers || [];
+                success = servers.some(s => s.state && s.state !== '查询失败');
+                elapsedMs = servers.reduce((sum, s) => sum + (s.elapsed_ms || 0), 0);
+                httpStatus = servers.length > 0 ? servers[0].http_status : null;
+                requestUrl = servers.length > 0 ? servers[0].request_url : '';
+                requestBody = servers.length > 0 ? servers[0].request_body : null;
+                responseBody = servers.length > 0 ? servers[0].response_body : null;
+                errorMsg = servers.filter(s => s.error).map(s => s.error).join('; ');
+                extraInfo = `<div class="text-muted small mb-1">查询了 ${servers.length} 个服务器</div>`;
+            } else {
+                success = stepData.success || false;
+                elapsedMs = stepData.elapsed_ms || 0;
+                httpStatus = stepData.http_status;
+                requestUrl = stepData.request_url || '';
+                requestBody = stepData.request_body;
+                responseBody = stepData.response_body;
+                errorMsg = stepData.error || '';
+            }
+            
+            const statusIcon = success ? '✅' : '❌';
+            const statusColor = success ? 'success' : 'danger';
+            const httpBadge = httpStatus
+                ? `<span class="badge bg-${httpStatus < 400 ? 'success' : 'danger'} ms-1">${httpStatus}</span>`
+                : '<span class="badge bg-secondary ms-1">N/A</span>';
+            
+            let html = `
+            <div class="card mb-2 border-${statusColor}">
+                <div class="card-header py-1 px-2 small bg-${statusColor} bg-opacity-10 d-flex justify-content-between align-items-center">
+                    <span>${statusIcon} <strong>步骤${stepNum}: ${escapeHtml(title)}</strong></span>
+                    <span>${httpBadge} <span class="text-muted">${elapsedMs}ms</span></span>
+                </div>
+                <div class="card-body py-1 px-2 small">
+                    ${extraInfo}`;
+            
+            if (requestUrl) {
+                html += `<div class="mb-1"><span class="text-muted">请求:</span> <code class="text-break" style="font-size:0.7rem;">POST ${escapeHtml(requestUrl)}</code></div>`;
+            }
+            if (requestBody) {
+                html += `<div class="mb-1"><span class="text-muted">请求体:</span>
+                    <pre class="bg-light p-1 rounded mb-0" style="font-size:0.7rem;max-height:80px;overflow:auto;">${escapeHtml(JSON.stringify(requestBody, null, 2))}</pre></div>`;
+            }
+            if (responseBody) {
+                html += `<div class="mb-1"><span class="text-muted">响应体:</span>
+                    <pre class="bg-light p-1 rounded mb-0" style="font-size:0.7rem;max-height:120px;overflow:auto;">${escapeHtml(JSON.stringify(responseBody, null, 2))}</pre></div>`;
+            }
+            if (errorMsg) {
+                html += `<div class="text-danger small"><i class="bi bi-exclamation-triangle"></i> ${escapeHtml(errorMsg)}</div>`;
+            }
+            
+            // 步骤4 展开每个服务器的详情
+            if (stepNum === 4 && stepData.servers && stepData.servers.length > 1) {
+                html += `<div class="mt-2"><span class="text-muted fw-bold">各服务器详情:</span></div>`;
+                stepData.servers.forEach((s, i) => {
+                    const sIcon = s.state && s.state !== '查询失败' ? '✅' : '❌';
+                    const sColor = s.state && s.state !== '查询失败' ? 'success' : 'danger';
+                    html += `<div class="card mb-1 border-${sColor}">
+                        <div class="card-header py-0 px-1 small bg-${sColor} bg-opacity-10">
+                            ${sIcon} ${escapeHtml(s.server_ip || s.service_url || '?')}
+                            <span class="badge bg-${sColor}">${escapeHtml(s.state || '?')}</span>
+                            ${s.http_status ? `<span class="badge bg-${s.http_status < 400 ? 'success' : 'danger'} ms-1">${s.http_status}</span>` : ''}
+                            <span class="text-muted ms-1">${s.elapsed_ms || 0}ms</span>
+                        </div>
+                        <div class="card-body py-0 px-1" style="font-size:0.65rem;">
+                            <div>请求: <code>POST ${escapeHtml(s.request_url || '')}</code></div>
+                            ${s.request_body ? `<pre class="bg-light p-1 rounded mb-0" style="max-height:50px;overflow:auto;">${escapeHtml(JSON.stringify(s.request_body, null, 2))}</pre>` : ''}
+                            ${s.response_body ? `<pre class="bg-light p-1 rounded mb-0" style="max-height:80px;overflow:auto;">${escapeHtml(JSON.stringify(s.response_body, null, 2))}</pre>` : ''}
+                            ${s.error ? `<div class="text-danger">${escapeHtml(s.error)}</div>` : ''}
+                        </div>
+                    </div>`;
+                });
+            }
+            
+            html += `</div></div>`;
             return html;
         }
         
@@ -1264,6 +1423,12 @@
                 }
                 html += '<tr><td class="text-muted">子任务数</td><td>' + (data.subTasks ? data.subTasks.length : 0) + '</td></tr>';
                 html += '</tbody></table>';
+            }
+            
+            // 全链路调试信息入口提示
+            if (window._queryDebug && Object.keys(window._queryDebug).length > 0) {
+                html += '<div class="mt-3"><strong style="color:var(--primary-color);"><i class="bi bi-bug me-1"></i>查询调试</strong></div>';
+                html += '<div class="alert alert-info small py-1 px-2 mb-0">请关闭此窗口，在设备状态卡片底部点击 <strong>"查询调试信息"</strong> 查看完整4步链路（请求/响应/耗时）。</div>';
             }
             
             document.getElementById('ddmBody').innerHTML = html;
