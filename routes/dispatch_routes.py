@@ -1589,12 +1589,25 @@ def _execute_dispatch(region_key, region, balance):
         dispatch_template = empty_dispatch.get('template_out', '') or template_code
     dispatch_url = empty_dispatch.get('url', '')
     
+    # 空车回（direction=out）：尝试指定区域内设备（优先低电量），避免跨区域调车
+    # 空车来（direction=in）：不指定设备（从外部调车，不知道具体哪个设备会来）
+    # 手动下发：不指定设备（异常恢复场景，让RCS自行分配更灵活）
+    is_manual = balance.get('manual_dispatch', False)
+    selected_device = None
+    if direction == 'out' and not is_manual:
+        selected_device = _select_device_for_empty_return(region_key, region)
+    
+    task_order_detail = {"taskPath": "", "shelfNumber": ""}
+    if selected_device:
+        task_order_detail["deviceCode"] = selected_device['deviceCode']
+        task_order_detail["deviceNum"] = selected_device.get('deviceNum', '')
+    
     request_body = [{
         "modelProcessCode": dispatch_template,
         "priority": 6,
         "orderId": order_id,
         "fromSystem": "CEM_auto",
-        "taskOrderDetail": {"taskPath": "", "shelfNumber": ""}
+        "taskOrderDetail": task_order_detail
     }]
     
     result = 'simulated'
@@ -1613,16 +1626,20 @@ def _execute_dispatch(region_key, region, balance):
             result = f'请求失败: {str(e)}'
             response_body = {"error": str(e)}
     
-    # 写入模板 JSON（模拟和真实下发一致：不指定设备，留空等待 status=6 上报填充）
+    # 写入模板 JSON（空车回指定设备时记录设备信息，空车来留空等待 status=6 上报填充）
     template_file = _get_template_file_path(region_key, target_template)
     tasks = _load_json(template_file)
     now = datetime.now().isoformat()
     for i in range(dispatch_count):
-        tasks.append({
-            "deviceCode": "", "deviceNum": "",
+        task_entry = {
+            "deviceCode": selected_device['deviceCode'] if selected_device and i == 0 else "",
+            "deviceNum": selected_device['deviceNum'] if selected_device and i == 0 else "",
             "status": 6, "_simulated": True if simulated else False,
             "order_id": order_id, "create_time": now, "update_time": now
-        })
+        }
+        if selected_device and i == 0:
+            task_entry['_selected_battery'] = selected_device.get('battery', '')
+        tasks.append(task_entry)
     _save_json(template_file, tasks)
     
     # 判断 reason
@@ -1770,7 +1787,8 @@ def api_manual_dispatch(region_key):
             'effective_enabled': region.get('enabled', False),
             'time_slot_active': time_slot_active,
             'time_slot_matched': time_slot_matched,
-            'can_dispatch': True
+            'can_dispatch': True,
+            'manual_dispatch': True  # 手动下发不指定设备（异常恢复场景）
         }
         
         result = _execute_dispatch(region_key, region, balance)
@@ -2098,14 +2116,21 @@ def _check_low_battery_return(region_key, region, sh):
     now_file = _get_region_file(region_key, 'currentCount.json')
     now_devices = _load_json(now_file)
     
-    # 收集所有 pending 中的 deviceCode（任何模板 status=6 且有 deviceCode）
+    # 收集当前区域设备的 deviceCode 集合（用于过滤共享模板中的其他区域设备）
+    now_device_codes = {d.get('deviceCode', '') for d in now_devices if d.get('deviceCode')}
+    
+    # 收集 pending 中的 deviceCode（只关注当前区域设备，避免共享模板误判）
     pending_codes = set()
     for t in region.get('templates', []):
         fpath = _get_template_file_path(region_key, t)
         tasks = _load_json(fpath)
         for task in tasks:
-            if task.get('status') == 6 and task.get('deviceCode'):
-                pending_codes.add(task['deviceCode'])
+            dc = task.get('deviceCode', '')
+            if task.get('status') == 6 and dc:
+                # 共享模板：只关注当前区域设备的 pending 状态
+                if t.get('shared') and dc not in now_device_codes:
+                    continue
+                pending_codes.add(dc)
     
     # 遍历在线设备，找低电量且不在 pending 中的
     for d in now_devices:
@@ -2134,6 +2159,69 @@ def _check_low_battery_return(region_key, region, sh):
         return result  # 每次只处理一台
     
     return result
+
+
+def _select_device_for_empty_return(region_key, region):
+    """从当前区域设备中选择最适合回空车的设备
+    
+    选择策略：
+    1. 排除已在 pending 中的设备（任何模板 status=6 且有 deviceCode）
+    2. 优先选低电量设备（电量最低的）
+    3. 电量相同时选 state=idle 的
+    4. 都没有则返回 None（回退到不指定设备）
+    
+    Returns:
+        {'deviceCode': '...', 'deviceNum': '...', 'battery': 80} or None
+    """
+    now_file = _get_region_file(region_key, 'currentCount.json')
+    now_devices = _load_json(now_file)
+    
+    # 收集当前区域设备的 deviceCode 集合（用于过滤共享模板中的其他区域设备）
+    now_device_codes = {d.get('deviceCode', '') for d in now_devices if d.get('deviceCode')}
+    
+    # 收集 pending 中的 deviceCode（只关注当前区域设备）
+    pending_codes = set()
+    for t in region.get('templates', []):
+        fpath = _get_template_file_path(region_key, t)
+        tasks = _load_json(fpath)
+        for task in tasks:
+            dc = task.get('deviceCode', '')
+            if task.get('status') == 6 and dc:
+                # 共享模板：只关注当前区域设备的 pending 状态
+                if t.get('shared') and dc not in now_device_codes:
+                    continue
+                pending_codes.add(dc)
+    
+    # 筛选可用设备：有 deviceCode、不在 pending 中
+    available = []
+    for d in now_devices:
+        dc = d.get('deviceCode', '')
+        if not dc or dc in pending_codes:
+            continue
+        battery_str = d.get('battery', '')
+        try:
+            battery = int(battery_str)
+        except (ValueError, TypeError):
+            battery = 999  # 无电量信息排最后
+        state = d.get('state', 'pending')
+        available.append({
+            'deviceCode': dc,
+            'deviceNum': d.get('deviceNum', ''),
+            'battery': battery,
+            'state': state
+        })
+    
+    if not available:
+        return None
+    
+    # 排序：电量低优先 → state=idle 优先
+    def _sort_key(item):
+        battery_score = item['battery']
+        state_score = 0 if item['state'] == 'idle' else 1
+        return (battery_score, state_score)
+    
+    available.sort(key=_sort_key)
+    return available[0]
 
 
 def _execute_low_battery_return(region_key, region, device_code, device_num, battery):
