@@ -113,6 +113,24 @@
         background: rgba(26, 142, 113, 0.06);
     }
     .agv-icon.pending .dev-num { color: #1a8e71; }
+    /* 任务中（自恢复查出 InTask） */
+    .agv-icon.busy {
+        border-color: #0d6efd;
+        background: rgba(13, 110, 253, 0.06);
+    }
+    .agv-icon.busy .dev-num { color: #0d6efd; }
+    /* 充电中（自恢复查出 Charging） */
+    .agv-icon.charging {
+        border-color: #ffc107;
+        background: rgba(255, 193, 7, 0.06);
+    }
+    .agv-icon.charging .dev-num { color: #cc9a06; }
+    /* 异常（自恢复查出 Error 等） */
+    .agv-icon.error {
+        border-color: #dc3545;
+        background: rgba(220, 53, 69, 0.06);
+    }
+    .agv-icon.error .dev-num { color: #dc3545; }
     /* 来负载 */
     .agv-icon.load-in {
         border-color: #0d6efd;
@@ -1507,11 +1525,19 @@ function renderDeviceIcon(d, isPending, lowBatteryThreshold) {
         spriteCls = 'agv-sprite ' + getSpriteClass(taskType);
         label = getTaskTypeLabel(taskType);
     } else {
-        // 空闲设备：根据 state 区分 pending/idle
+        // 空闲设备：根据 state 区分 idle/busy/charging/error/pending
         const devState = d.state || 'pending';
-        cls = 'agv-icon ' + (devState === 'idle' ? 'idle' : 'pending');
+        const stateClassMap = {
+            'idle': 'idle', 'busy': 'busy', 'charging': 'charging',
+            'error': 'error', 'pending': 'pending'
+        };
+        const stateLabelMap = {
+            'idle': '空闲', 'busy': '任务中', 'charging': '充电中',
+            'error': '异常', 'pending': '可用'
+        };
+        cls = 'agv-icon ' + (stateClassMap[devState] || 'pending');
         spriteCls = 'agv-sprite blue';
-        label = devState === 'idle' ? '空闲' : '可用';
+        label = stateLabelMap[devState] || '可用';
     }
     // 电池图标（仅空闲设备且有电量数据时显示）
     let batteryHtml = '';
@@ -1778,13 +1804,13 @@ function renderSparkline(area) {
     // 初始绘制
     draw(undefined);
     
-    // 创建/获取 tooltip 元素
+    // 创建/获取 tooltip 元素（使用 fixed 定位，相对于视口）
     let tip = document.getElementById('spark-tip-' + area.region_key);
     if (!tip) {
         tip = document.createElement('div');
         tip.id = 'spark-tip-' + area.region_key;
-        tip.style.cssText = 'position:absolute;display:none;background:rgba(0,0,0,0.85);color:#fff;padding:4px 8px;border-radius:4px;font-size:11px;line-height:1.5;pointer-events:none;z-index:999;white-space:nowrap;';
-        canvas.parentNode.appendChild(tip);
+        tip.style.cssText = 'position:fixed;display:none;background:rgba(0,0,0,0.85);color:#fff;padding:4px 8px;border-radius:4px;font-size:11px;line-height:1.5;pointer-events:none;z-index:9999;white-space:nowrap;';
+        document.body.appendChild(tip);
     }
     
     // hover 事件
@@ -1810,8 +1836,20 @@ function renderSparkline(area) {
             });
             tip.innerHTML = html;
             tip.style.display = 'block';
-            tip.style.left = (e.clientX + 12) + 'px';
-            tip.style.top = (e.clientY - 10) + 'px';
+            // 使用 fixed 定位，相对于视口
+            let tipX = e.clientX + 12;
+            let tipY = e.clientY - 10;
+            // 边界检测：防止溢出右边界
+            const tipW = tip.offsetWidth || 150;
+            if (tipX + tipW > window.innerWidth - 10) {
+                tipX = e.clientX - tipW - 12;
+            }
+            // 边界检测：防止溢出上边界
+            if (tipY < 10) {
+                tipY = e.clientY + 20;
+            }
+            tip.style.left = tipX + 'px';
+            tip.style.top = tipY + 'px';
         } else {
             draw(undefined);
             tip.style.display = 'none';

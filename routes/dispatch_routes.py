@@ -2257,7 +2257,9 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
             state = device_info.get('state', '查询失败') if device_info else '查询失败'
             battery = device_info.get('battery', '') if device_info else ''
             # 更新 currentCount.json 中的 battery 和 state
-            d['state'] = 'idle' if state not in ('查询失败', 'Offline', 'Downlined') else state
+            # 映射 API state 到前端状态：Idle→idle, InTask→busy, Charging→charging, 其他→pending
+            state_map = {'Idle': 'idle', 'InTask': 'busy', 'Charging': 'charging'}
+            d['state'] = state_map.get(state, 'pending') if state not in ('查询失败', 'Offline', 'Downlined') else state
             d['battery'] = battery
             if _should_clean_device(device_info):
                 now_devices = [nd for nd in now_devices if nd.get('deviceCode') != device_code]
