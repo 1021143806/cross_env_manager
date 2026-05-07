@@ -154,7 +154,7 @@ args = parse_arguments()
 config = load_config(args.config)
 
 # 应用版本号
-APP_VERSION = '2.0.0'
+APP_VERSION = '2.1.0'
 
 # 初始化Flask应用
 app = Flask(__name__)
