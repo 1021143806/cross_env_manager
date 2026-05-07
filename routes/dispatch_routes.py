@@ -734,6 +734,12 @@ def handle_status_report(data):
             cleaned = _clean_by_order_id_across_all_regions(order_id, device_code)
             if cleaned:
                 return True, f"无法匹配模板但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
+        # 记录未匹配上报到操作日志（方便排查）
+        try:
+            write_global_log('report_unmatched', region_key or '?',
+                f'未匹配上报: template={template_name}, device={device_num}({device_code}), status={status}, order_id={order_id}',
+                raw_data={'data': data, 'reason': '模板code在配置中不存在或无region_key'})
+        except: pass
         print(f"[Dispatch] report_status 无法匹配: region_key={region_key}, template_name={template_name}, deviceNum={device_num}")
         return True, f"无法匹配区域/模板，已接收上报 (region_key={region_key}, template={template_name})", False
     
@@ -766,6 +772,12 @@ def handle_status_report(data):
             cleaned = _clean_by_order_id_across_all_regions(order_id, device_code)
             if cleaned:
                 return True, f"模板不在区域但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
+        # 记录未匹配上报到操作日志
+        try:
+            write_global_log('report_unmatched', region_key,
+                f'未匹配上报(模板不在区域): template={template_name}, device={device_num}({device_code}), status={status}, order_id={order_id}',
+                raw_data={'data': data, 'reason': f'模板code在区域{region_key}中不存在'})
+        except: pass
         print(f"[Dispatch] report_status 模板不存在: region_key={region_key}, template={template_name}")
         return True, f"模板 {template_name} 不存在于区域 {region_key}，已接收上报", False
     
