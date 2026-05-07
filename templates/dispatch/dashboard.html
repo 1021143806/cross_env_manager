@@ -1749,17 +1749,39 @@ function renderSparkline(area) {
             }
         }
         
-        // 折线
+        // 折线（平滑曲线）
         fields.forEach(field => {
             ctx.beginPath();
             ctx.strokeStyle = field.color;
             ctx.lineWidth = 1.2;
-            let first = true;
-            points.forEach((p, i) => {
-                const y = padTop + plotH - (p.vals[field.key] / yMax) * plotH;
-                if (first) { ctx.moveTo(p.x, y); first = false; }
-                else ctx.lineTo(p.x, y);
-            });
+            if (points.length === 1) {
+                const y = padTop + plotH - (points[0].vals[field.key] / yMax) * plotH;
+                ctx.moveTo(points[0].x, y);
+                ctx.lineTo(points[0].x, y);
+            } else if (points.length === 2) {
+                const y0 = padTop + plotH - (points[0].vals[field.key] / yMax) * plotH;
+                const y1 = padTop + plotH - (points[1].vals[field.key] / yMax) * plotH;
+                ctx.moveTo(points[0].x, y0);
+                ctx.lineTo(points[1].x, y1);
+            } else {
+                // 使用 Catmull-Rom 样条曲线平滑
+                for (let i = 0; i < points.length - 1; i++) {
+                    const p0 = points[Math.max(i - 1, 0)];
+                    const p1 = points[i];
+                    const p2 = points[i + 1];
+                    const p3 = points[Math.min(i + 2, points.length - 1)];
+                    const y0 = padTop + plotH - (p0.vals[field.key] / yMax) * plotH;
+                    const y1 = padTop + plotH - (p1.vals[field.key] / yMax) * plotH;
+                    const y2 = padTop + plotH - (p2.vals[field.key] / yMax) * plotH;
+                    const y3 = padTop + plotH - (p3.vals[field.key] / yMax) * plotH;
+                    const cp1x = p1.x + (p2.x - p0.x) / 6;
+                    const cp1y = y1 + (y2 - y0) / 6;
+                    const cp2x = p2.x - (p3.x - p1.x) / 6;
+                    const cp2y = y2 - (y3 - y1) / 6;
+                    if (i === 0) ctx.moveTo(p1.x, y1);
+                    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, y2);
+                }
+            }
             ctx.stroke();
         });
         
