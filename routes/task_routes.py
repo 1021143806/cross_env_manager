@@ -193,7 +193,10 @@ def cross_task_info():
 @task_bp.route('/api/query/device_tasks', methods=['POST'])
 @login_required
 def api_device_tasks():
-    """根据设备号查询任务单号并获取深度查询结果 + 设备实时状态"""
+    """根据设备号查询任务单号并获取深度查询结果 + 设备实时状态（全部通过远程HTTP API）"""
+    import urllib.request as _urllib
+    import json as _json
+    
     try:
         data = request.get_json() or {}
         device_num = data.get('device_num', '').strip()
@@ -207,28 +210,67 @@ def api_device_tasks():
         if not server_ip:
             server_ip = "10.68.2.32"
         
-        # 步骤1: 根据设备号查询最近的任务单号
-        task_info = task_query_extended.get_order_id_by_device_num(device_num, server_ip)
-        if 'error' in task_info:
-            return jsonify({'error': task_info['error']}), 404
+        base_url = f"http://{server_ip}:8315"
         
-        order_id = task_info['order_id']
-        device_code = task_info['device_code']
+        def _api_post(path, body, timeout=15):
+            """调用远程API"""
+            req = _urllib.Request(f"{base_url}{path}",
+                data=_json.dumps(body).encode('utf-8'),
+                headers={'Content-Type': 'application/json'})
+            resp = _urllib.urlopen(req, timeout=timeout)
+            return _json.loads(resp.read().decode('utf-8'))
         
-        # 步骤2: 用 order_id 走深度查询（复用 get_cross_task_info）
-        cross_info = task_query_extended.get_cross_task_info(order_id, server_ip)
-        if 'error' in cross_info:
-            return jsonify({'error': cross_info['error']}), 500
+        # 步骤1: 通过远程API按设备号查询最近的任务（按状态优先级）
+        order_id = None
+        device_code = None
+        status_priority = ['6', '7', '5', '9', '4', '3', '2', '1', '8']
+        for status in status_priority:
+            try:
+                res = _api_post('/crossTask/query', {
+                    "taskStatus": status,
+                    "deviceNum": device_num,
+                    "pageSize": 1,
+                    "pageNo": 1
+                })
+                if res.get('code') == 1000 and res.get('data', {}).get('list'):
+                    task = res['data']['list'][0]
+                    order_id = task.get('orderId', '')
+                    device_code = task.get('deviceCode', '')
+                    break
+            except Exception as e:
+                print(f"[DeviceQuery] 按状态{status}查询失败: {e}")
         
-        sub_tasks = cross_info.get('cross_task_details', [])
+        if not order_id:
+            return jsonify({'error': f'未找到设备 {device_num} 的任务记录'}), 404
         
-        # 步骤3: 对每个子任务，查询设备区域和设备实时状态
+        # 步骤2: 查询主任务
+        main_task = None
+        try:
+            main_res = _api_post('/crossTask/query', {"orderId": order_id, "pageSize": 1, "pageNo": 1})
+            if main_res.get('code') == 1000 and main_res.get('data', {}).get('list'):
+                main_task = main_res['data']['list'][0]
+        except Exception as e:
+            print(f"[DeviceQuery] 主任务查询失败: {e}")
+        
+        if not main_task:
+            return jsonify({'error': '未找到该任务单号对应的主任务'}), 404
+        
+        # 步骤3: 查询子任务详情
+        sub_tasks_sorted = []
+        try:
+            detail_res = _api_post('/crossTask/detail', {"id": main_task['id']})
+            if detail_res.get('code') == 1000 and detail_res.get('data'):
+                sub_tasks_sorted = sorted(detail_res['data'], key=lambda x: x.get('taskSeq', 0))
+        except Exception as e:
+            print(f"[DeviceQuery] 子任务查询失败: {e}")
+        
+        # 步骤4: 对每个子任务查询设备实时状态
         # 按 service_url 去重，同一服务器只查一次
         device_statuses = []
         seen_servers = set()
         
-        for task in sub_tasks:
-            service_url = task.get('service_url', '')
+        for task in sub_tasks_sorted:
+            service_url = task.get('serviceUrl', task.get('service_url', ''))
             if not service_url or service_url in seen_servers:
                 continue
             seen_servers.add(service_url)
@@ -241,9 +283,8 @@ def api_device_tasks():
             except:
                 task_server_ip = server_ip
             
-            # 查询设备区域
-            area_info = task_query_extended.get_device_area_from_server(task_server_ip, device_code)
-            area_id = area_info.get('area_id', '0') if 'error' not in area_info else '0'
+            # 使用子任务中的 area_id（来自远程API返回）
+            area_id = task.get('areaId', task.get('area_id', '0'))
             
             # 查询设备实时状态
             status_info = task_query_extended.query_device_status_via_service(service_url, area_id, device_code)
@@ -257,8 +298,9 @@ def api_device_tasks():
             'device_num': device_num,
             'device_code': device_code,
             'order_id': order_id,
-            'task_info': task_info,
-            'cross_info': cross_info,
+            'baseUrl': base_url,
+            'mainTask': main_task,
+            'subTasks': sub_tasks_sorted,
             'device_statuses': device_statuses
         })
     except Exception as e:

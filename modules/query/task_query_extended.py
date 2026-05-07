@@ -767,7 +767,7 @@ def get_device_area_from_server(server_ip, device_code):
 def query_device_status_via_service(service_url, area_id, device_code):
     """
     通过 service_url 调用设备查询接口 /ics/out/device/list/deviceInfo
-    获取设备实时状态（state、battery 等）
+    获取设备实时状态（state、battery 等），同时返回请求/响应详情
     """
     import urllib.request as _urllib
     import json as _json
@@ -776,12 +776,15 @@ def query_device_status_via_service(service_url, area_id, device_code):
     base_url = service_url.rstrip('/')
     url = f"{base_url}/ics/out/device/list/deviceInfo"
     body = {"areaId": str(area_id), "deviceType": "0", "deviceCode": device_code}
+    request_info = {"url": url, "body": body}
     try:
         req = _urllib.Request(url,
             data=_json.dumps(body).encode('utf-8'),
             headers={'Content-Type': 'application/json'})
         resp = _urllib.urlopen(req, timeout=10)
-        data = _json.loads(resp.read().decode('utf-8'))
+        raw_response = resp.read().decode('utf-8')
+        data = _json.loads(raw_response)
+        response_body = data  # 完整响应
         if data.get('code') == 1000 and data.get('data'):
             device_info = data['data'][0]
             return {
@@ -790,8 +793,23 @@ def query_device_status_via_service(service_url, area_id, device_code):
                 "device_code": device_info.get('deviceCode', device_code),
                 "device_num": device_info.get('deviceNum', ''),
                 "area_id": device_info.get('areaId', area_id),
-                "raw": device_info
+                "raw": device_info,
+                "request_url": url,
+                "request_body": body,
+                "response_body": response_body
             }
-        return {"error": f"设备查询响应异常: code={data.get('code')}", "state": "查询失败"}
+        return {
+            "error": f"设备查询响应异常: code={data.get('code')}",
+            "state": "查询失败",
+            "request_url": url,
+            "request_body": body,
+            "response_body": response_body
+        }
     except Exception as e:
-        return {"error": f"设备查询请求失败: {str(e)}", "state": "查询失败"}
+        return {
+            "error": f"设备查询请求失败: {str(e)}",
+            "state": "查询失败",
+            "request_url": url,
+            "request_body": body,
+            "response_body": None
+        }

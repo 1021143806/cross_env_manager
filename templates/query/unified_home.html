@@ -790,7 +790,7 @@
 
             try {
                 if (isDeviceQuery) {
-                    // 设备号查询：调用后端 API
+                    // 设备号查询：调用后端 API（后端已包含完整深度查询结果 + 设备状态）
                     const serverIp = getFinalIp();
                     const res = await fetch('/api/query/device_tasks', {
                         method: 'POST',
@@ -802,12 +802,19 @@
                         throw new Error(data.error || '查询失败');
                     }
                     addToHistory(`${deviceNum} (设备)`);
-                    // 用返回的 order_id 走深度查询获取完整子任务信息
-                    const deepResult = await performDeepQuery(data.order_id);
-                    // 合并设备状态信息
-                    deepResult.deviceStatuses = data.device_statuses || [];
-                    deepResult.device_code = data.device_code;
-                    deepResult.device_num = data.device_num;
+                    // 后端已返回完整数据，直接构造 result 对象
+                    const deepResult = {
+                        orderId: data.order_id,
+                        baseUrl: data.baseUrl || '',
+                        mainTask: data.mainTask,
+                        subTasks: data.subTasks || [],
+                        deviceStatuses: data.device_statuses || [],
+                        device_code: data.device_code,
+                        device_num: data.device_num
+                    };
+                    if (!deepResult.mainTask) {
+                        throw new Error('未找到该设备对应的主任务（远程API查询失败）');
+                    }
                     renderResult(deepResult);
                     loadTaskStatusChart();
                 } else {
@@ -1021,7 +1028,8 @@
         function getDeviceStateClass(state) {
             const map = {
                 'Idle': 'idle', 'InTask': 'busy', 'Charging': 'charging',
-                'Offline': 'error', 'Downlined': 'error', 'Error': 'error'
+                'Offline': 'error', 'Downlined': 'error', 'Error': 'error',
+                '查询失败': 'pending', '未查询': 'pending'
             };
             return map[state] || 'pending';
         }
@@ -1029,7 +1037,8 @@
         function getDeviceStateLabel(state) {
             const map = {
                 'Idle': '空闲', 'InTask': '任务中', 'Charging': '充电中',
-                'Offline': '离线', 'Downlined': '下线', 'Error': '异常'
+                'Offline': '离线', 'Downlined': '下线', 'Error': '异常',
+                '查询失败': '查询失败', '未查询': '未查询'
             };
             return map[state] || state || '未知';
         }
@@ -1098,12 +1107,19 @@
         // 存储设备查询结果供模态框使用
         let _deviceQueryResult = null;
         
+        function getStateBadgeClass(state) {
+            if (state === 'Idle') return 'success';
+            if (state === 'InTask') return 'primary';
+            if (state === 'Charging') return 'warning';
+            if (state === 'Offline' || state === 'Downlined' || state === 'Error') return 'danger';
+            if (state === '查询失败') return 'secondary';
+            return 'info';
+        }
+        
         function renderDeviceStatusCard(result) {
             const statuses = result.deviceStatuses || [];
-            // 取第一个成功的设备状态
-            const firstOk = statuses.find(s => s.state && s.state !== '查询失败') || statuses[0];
-            const deviceCode = result.device_code || firstOk?.device_code || '';
-            const deviceNum = result.device_num || firstOk?.device_num || '';
+            const deviceCode = result.device_code || '';
+            const deviceNum = result.device_num || '';
             
             // 存储数据供模态框使用
             _deviceQueryResult = {
@@ -1112,6 +1128,10 @@
                 mainTask: result.mainTask,
                 subTasks: result.subTasks
             };
+            
+            const hasStatus = statuses.length > 0;
+            // 取第一个成功的设备状态，没有则构造一个"未查询"状态
+            const firstOk = hasStatus ? (statuses.find(s => s.state && s.state !== '查询失败') || statuses[0]) : { state: '未查询', device_num: deviceNum, device_code: deviceCode };
             
             let html = `
                 <div class="query-card mb-3 animate__animated animate__fadeIn">
@@ -1136,17 +1156,24 @@
                                 </div>
                                 <div class="col">
                                     <table class="table table-sm table-borderless small mb-0">
-                                        <tr><th class="w-30">设备号</th><td><code>${deviceNum}</code></td></tr>
-                                        <tr><th>设备序列号</th><td><code>${deviceCode}</code></td></tr>
-                                        <tr><th>状态</th><td><span class="badge bg-${firstOk.state === 'Idle' ? 'success' : firstOk.state === 'InTask' ? 'primary' : firstOk.state === 'Charging' ? 'warning' : firstOk.state === '查询失败' ? 'secondary' : 'info'}">${getDeviceStateLabel(firstOk.state)}</span></td></tr>
+                                        <tr><th class="w-30">设备号</th><td><code>${deviceNum || '-'}</code></td></tr>
+                                        <tr><th>设备序列号</th><td><code>${deviceCode || '-'}</code></td></tr>`;
+            if (hasStatus) {
+                html += `
+                                        <tr><th>状态</th><td><span class="badge bg-${getStateBadgeClass(firstOk.state)}">${getDeviceStateLabel(firstOk.state)}</span></td></tr>
                                         ${firstOk.battery ? `<tr><th>电量</th><td>${firstOk.battery}%</td></tr>` : ''}
-                                        ${firstOk.area_id ? `<tr><th>区域ID</th><td>${firstOk.area_id}</td></tr>` : ''}
+                                        ${firstOk.area_id ? `<tr><th>区域ID</th><td>${firstOk.area_id}</td></tr>` : ''}`;
+            } else {
+                html += `
+                                        <tr><th>状态</th><td><span class="badge bg-secondary">未查询到设备信息</span></td></tr>`;
+            }
+            html += `
                                     </table>
                                 </div>
                             </div>`;
             
             // 各服务器查询详情
-            if (statuses.length > 1) {
+            if (statuses.length > 0) {
                 html += `
                             <hr>
                             <small class="text-muted fw-bold">各服务器查询结果：</small>
@@ -1157,7 +1184,7 @@
                 statuses.forEach(s => {
                     html += `<tr>
                         <td><code>${s.server_ip || s.service_url || '-'}</code></td>
-                        <td><span class="badge bg-${s.state === 'Idle' ? 'success' : s.state === 'InTask' ? 'primary' : s.state === 'Charging' ? 'warning' : 'secondary'}">${getDeviceStateLabel(s.state)}</span></td>
+                        <td><span class="badge bg-${getStateBadgeClass(s.state)}">${getDeviceStateLabel(s.state)}</span></td>
                         <td>${s.battery || '-'}</td>
                         <td>${s.area_id || '-'}</td>
                     </tr>`;
@@ -1177,16 +1204,17 @@
             if (!data) return;
             
             const modal = new bootstrap.Modal(document.getElementById('deviceDetailModal'));
-            document.getElementById('ddmTitle').textContent = '设备详情 - ' + data.deviceNum;
+            document.getElementById('ddmTitle').textContent = '设备详情 - ' + (data.deviceNum || '?');
             
             const statuses = data.statuses || [];
-            const firstOk = statuses.find(s => s.state && s.state !== '查询失败') || statuses[0] || {};
+            const hasStatus = statuses.length > 0;
+            const firstOk = hasStatus ? (statuses.find(s => s.state && s.state !== '查询失败') || statuses[0]) : { state: '未查询', device_num: data.deviceNum, device_code: data.deviceCode };
             
             let html = '<div class="mb-3"><strong style="color:var(--primary-color);">基本信息</strong></div>';
             html += '<table class="table table-sm table-borderless mb-3"><tbody>';
             html += '<tr><td class="text-muted" style="width:80px;">设备编号</td><td><strong>' + escapeHtml(data.deviceNum || '-') + '</strong></td></tr>';
             html += '<tr><td class="text-muted">序列号</td><td><code>' + escapeHtml(data.deviceCode || '-') + '</code></td></tr>';
-            html += '<tr><td class="text-muted">状态</td><td><span class="badge bg-' + (firstOk.state === 'Idle' ? 'success' : firstOk.state === 'InTask' ? 'primary' : firstOk.state === 'Charging' ? 'warning' : 'secondary') + '">' + getDeviceStateLabel(firstOk.state) + '</span></td></tr>';
+            html += '<tr><td class="text-muted">状态</td><td><span class="badge bg-' + getStateBadgeClass(firstOk.state) + '">' + getDeviceStateLabel(firstOk.state) + '</span></td></tr>';
             if (firstOk.battery) html += '<tr><td class="text-muted">电量</td><td>' + firstOk.battery + '%</td></tr>';
             if (firstOk.area_id) html += '<tr><td class="text-muted">区域ID</td><td>' + firstOk.area_id + '</td></tr>';
             html += '</tbody></table>';
@@ -1194,26 +1222,41 @@
             // 设备图标展示
             html += '<div class="text-center mb-3"><div class="device-grid" style="display:inline-flex;">' + renderDeviceIconForQuery(firstOk, 30, '') + '</div></div>';
             
-            // 各服务器查询详情
+            // 各服务器查询详情（含请求/响应）
             if (statuses.length > 0) {
-                html += '<div class="mb-2"><strong style="color:var(--primary-color);">各服务器查询结果</strong></div>';
-                html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-3"><thead><tr><th>服务器</th><th>状态</th><th>电量</th><th>区域</th><th>详情</th></tr></thead><tbody>';
-                statuses.forEach(s => {
-                    const stateColor = s.state === 'Idle' ? 'success' : s.state === 'InTask' ? 'primary' : s.state === 'Charging' ? 'warning' : 'secondary';
-                    html += '<tr>';
-                    html += '<td><code>' + escapeHtml(s.server_ip || s.service_url || '-') + '</code></td>';
-                    html += '<td><span class="badge bg-' + stateColor + '">' + getDeviceStateLabel(s.state) + '</span></td>';
-                    html += '<td>' + (s.battery || '-') + '</td>';
-                    html += '<td>' + (s.area_id || '-') + '</td>';
-                    html += '<td>' + (s.error ? '<span class="text-danger small">' + escapeHtml(s.error) + '</span>' : '-') + '</td>';
-                    html += '</tr>';
+                html += '<div class="mb-2"><strong style="color:var(--primary-color);">各服务器查询详情</strong></div>';
+                statuses.forEach((s, i) => {
+                    const stateColor = getStateBadgeClass(s.state);
+                    html += '<div class="card mb-2 border-' + stateColor + '"><div class="card-header py-1 px-2 small bg-' + stateColor + ' bg-opacity-10">';
+                    html += '<strong>' + escapeHtml(s.server_ip || s.service_url || '-') + '</strong>';
+                    html += ' <span class="badge bg-' + stateColor + '">' + getDeviceStateLabel(s.state) + '</span>';
+                    if (s.battery) html += ' 🔋' + s.battery + '%';
+                    if (s.area_id) html += ' 区域:' + s.area_id;
+                    html += '</div><div class="card-body py-1 px-2 small">';
+                    
+                    // 请求地址
+                    if (s.request_url) {
+                        html += '<div class="mb-1"><span class="text-muted">请求地址:</span><br><code class="text-break" style="font-size:0.7rem;">' + escapeHtml(s.request_url) + '</code></div>';
+                    }
+                    // 请求体
+                    if (s.request_body) {
+                        html += '<div class="mb-1"><span class="text-muted">请求体:</span><br><pre class="bg-light p-1 rounded mb-0" style="font-size:0.7rem;max-height:80px;overflow:auto;">' + escapeHtml(JSON.stringify(s.request_body, null, 2)) + '</pre></div>';
+                    }
+                    // 返回内容
+                    if (s.response_body) {
+                        html += '<div class="mb-1"><span class="text-muted">返回内容:</span><br><pre class="bg-light p-1 rounded mb-0" style="font-size:0.7rem;max-height:150px;overflow:auto;">' + escapeHtml(JSON.stringify(s.response_body, null, 2)) + '</pre></div>';
+                    } else if (s.error) {
+                        html += '<div class="text-danger"><span class="text-muted">错误:</span> ' + escapeHtml(s.error) + '</div>';
+                    }
+                    html += '</div></div>';
                 });
-                html += '</tbody></table></div>';
+            } else {
+                html += '<div class="alert alert-warning small mb-0"><i class="bi bi-exclamation-triangle"></i> 未查询到设备状态信息。可能原因：子任务中没有 service_url，或所有服务器均不可达。</div>';
             }
             
             // 关联任务信息
             if (data.orderId) {
-                html += '<div class="mb-2"><strong style="color:var(--primary-color);">关联任务</strong></div>';
+                html += '<div class="mt-3"><strong style="color:var(--primary-color);">关联任务</strong></div>';
                 html += '<table class="table table-sm table-borderless small mb-0"><tbody>';
                 html += '<tr><td class="text-muted" style="width:80px;">任务单号</td><td><code>' + escapeHtml(data.orderId || '-') + '</code></td></tr>';
                 if (data.mainTask) {
@@ -1235,8 +1278,8 @@
             
             let html = '';
             
-            // 设备状态卡片（设备号查询时显示）
-            if (result.deviceStatuses && result.deviceStatuses.length > 0) {
+            // 设备状态卡片（设备号查询时始终显示）
+            if (result.deviceStatuses !== undefined) {
                 html += renderDeviceStatusCard(result);
             }
             
