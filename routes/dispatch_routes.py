@@ -87,13 +87,15 @@ def _is_in_direction(task_type):
 
 
 def _normalize_order_id(order_id):
-    """规范化 order_id：去掉跨环境子任务的后缀 _N_XXXX
+    """规范化 order_id：去掉跨环境子任务的后缀 _N_XXXX（仅单下划线）
     例如: DHB2-7E0FCFD938794DF0BA6A4561FF8B67BD_1_5554 -> DHB2-7E0FCFD938794DF0BA6A4561FF8B67BD
+          CEM_auto_2026-05-07_09:38:49.304__4974_1_4056 -> CEM_auto_2026-05-07_09:38:49.304__4974
     """
     if not order_id:
         return order_id
     import re
-    return re.sub(r'_\d+_\d+$', '', order_id)
+    # 只匹配单下划线后跟数字的模式，保护 __ 双下划线
+    return re.sub(r'(?<!_)_\d+_\d+$', '', order_id)
 
 
 def _get_template_file_path(region_key, t):
@@ -842,43 +844,62 @@ def handle_status_report(data):
         template_removed = old_count - len(tasks)
         
         # 更新 currentCount.json（所有类型都更新，因为车确实在移动）
-        now_devices = _load_json(now_file)
-        cc_change = ''
-        if _is_in_direction(task_type):
-            # 来区域完成：写入 currentCount.json
-            # 数据完整性校验：如果上报的 deviceNum/deviceCode 为空，从模板 JSON 回填
-            _device_code = device_code
-            _device_num = device_num
-            if not _device_code or not _device_num:
-                # 从模板 JSON 中查找 status=6 时已填充的设备信息
-                for t in tasks:
-                    if t.get('order_id') == order_id and t.get('status') == 6:
-                        if not _device_code and t.get('deviceCode'):
-                            _device_code = t['deviceCode']
-                        if not _device_num and t.get('deviceNum'):
-                            _device_num = t['deviceNum']
+        # 共享模板：需要遍历所有共享该模板的区域，同步清理各自的 currentCount.json
+        is_shared = template_config.get('shared', False)
+        regions_to_update = []
+        if is_shared:
+            # 收集所有共享该模板的区域
+            for rk, r in index.items():
+                if not isinstance(r, dict) or 'templates' not in r:
+                    continue
+                for rt in r.get('templates', []):
+                    rt_code = rt.get('code') or rt.get('name', '')
+                    if rt_code == template_name and rt.get('shared'):
+                        regions_to_update.append(rk)
                         break
-            # 如果仍然没有有效设备信息，跳过写入（避免产生空数据）
-            if not _device_code and not _device_num:
-                cc_change = ', currentCount 跳过(无设备信息)'
-            elif not any(d.get('deviceCode') == _device_code for d in now_devices):
-                now_devices.append({
-                    "deviceCode": _device_code,
-                    "deviceNum": _device_num,
-                    "order_id": order_id,
-                    "shelfNumber": data.get('shelfNumber', ''),
-                    "create_time": now,
-                    "state": "pending"
-                })
-                cc_change = f', currentCount +1 (共{len(now_devices)}条)'
-        else:
-            # 离开完成：从 currentCount.json 删除
-            old_cc = len(now_devices)
-            now_devices = [d for d in now_devices if d.get('deviceCode') != device_code]
-            if len(now_devices) < old_cc:
-                cc_change = f', currentCount -1 (共{len(now_devices)}条)'
+        if not regions_to_update:
+            regions_to_update = [region_key]
         
-        _save_json(now_file, now_devices)
+        cc_change_parts = []
+        for rk in regions_to_update:
+            rk_now_file = _get_region_file(rk, 'currentCount.json')
+            rk_now_devices = _load_json(rk_now_file)
+            rk_cc_change = ''
+            if _is_in_direction(task_type):
+                # 来区域完成：写入 currentCount.json
+                _device_code = device_code
+                _device_num = device_num
+                if not _device_code or not _device_num:
+                    for t in tasks:
+                        if t.get('order_id') == order_id and t.get('status') == 6:
+                            if not _device_code and t.get('deviceCode'):
+                                _device_code = t['deviceCode']
+                            if not _device_num and t.get('deviceNum'):
+                                _device_num = t['deviceNum']
+                            break
+                if not _device_code and not _device_num:
+                    rk_cc_change = f'{rk}:跳过(无设备信息)'
+                elif not any(d.get('deviceCode') == _device_code for d in rk_now_devices):
+                    rk_now_devices.append({
+                        "deviceCode": _device_code,
+                        "deviceNum": _device_num,
+                        "order_id": order_id,
+                        "shelfNumber": data.get('shelfNumber', ''),
+                        "create_time": now,
+                        "state": "pending"
+                    })
+                    rk_cc_change = f'{rk}:+1(共{len(rk_now_devices)})'
+            else:
+                # 离开完成：从 currentCount.json 删除
+                old_cc = len(rk_now_devices)
+                rk_now_devices = [d for d in rk_now_devices if d.get('deviceCode') != device_code]
+                if len(rk_now_devices) < old_cc:
+                    rk_cc_change = f'{rk}:-1(共{len(rk_now_devices)})'
+            _save_json(rk_now_file, rk_now_devices)
+            if rk_cc_change:
+                cc_change_parts.append(rk_cc_change)
+        
+        cc_change = ', currentCount ' + '; '.join(cc_change_parts) if cc_change_parts else ''
         change_summary = f'模板-{template_name} -{template_removed}{cc_change}'
         # 更新每日统计（status=8 完成时）
         if status == 8:
