@@ -453,7 +453,7 @@
 
 <!-- 设备详情 Modal -->
 <div class="modal fade" id="deviceModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
             <div class="modal-header py-2">
                 <h6 class="modal-title"><i class="bi bi-truck me-2"></i><span id="dmTitle">设备详情</span></h6>
@@ -2865,12 +2865,12 @@ function showTemplateDetail(regionKey, templateCode) {
             html += '</tbody></table>';
             
             if (data.running_tasks && data.running_tasks.length > 0) {
-                html += '<div class="mb-2"><strong style="color:var(--primary-color);">执行中任务</strong></div>';
-                html += '<div style="max-height:200px;overflow-y:auto;font-size:0.75rem;">';
-                html += '<table class="table table-sm table-borderless mb-0"><thead><tr><th>设备</th><th>订单号</th><th>开始时间</th></tr></thead><tbody>';
+                html += '<div class="mb-2"><strong style="color:var(--primary-color);">执行中任务 (' + data.running_tasks.length + ')</strong></div>';
+                html += '<div style="max-height:300px;overflow-y:auto;font-size:0.75rem;">';
+                html += '<table class="table table-sm table-bordered mb-0"><thead><tr><th>设备</th><th>序列号</th><th>订单号</th><th>开始时间</th></tr></thead><tbody>';
                 data.running_tasks.forEach(t => {
                     const time = t.create_time ? t.create_time.slice(11, 19) : '';
-                    html += '<tr><td>' + escapeHtml(t.deviceNum || '-') + '</td><td><small><code title="' + escapeHtml(t.order_id || '') + '">' + escapeHtml((t.order_id || '').slice(0, 40)) + (t.order_id && t.order_id.length > 40 ? '...' : '') + '</code></small></td><td>' + time + '</td></tr>';
+                    html += '<tr><td>' + escapeHtml(t.deviceNum || '-') + '</td><td><code style="font-size:0.7rem;">' + escapeHtml(t.deviceCode || '-') + '</code></td><td><code style="font-size:0.7rem;word-break:break-all;">' + escapeHtml(t.order_id || '-') + '</code></td><td>' + time + '</td></tr>';
                 });
                 html += '</tbody></table></div>';
             }
