@@ -3129,25 +3129,26 @@ function loadDeviceHistory(regionKey) {
 
 function renderHistoryDeviceIcons(devices) {
     if (!devices || devices.length === 0) return '';
+    // 只显示离线设备（Offline/Downlined），在线设备已在上方设备网格中显示
+    const offlineDevices = devices.filter(d => {
+        const state = d.state || '';
+        return state === 'Offline' || state === 'Downlined';
+    });
+    if (offlineDevices.length === 0) return '<span class="text-muted small">无离线设备</span>';
     // 按 update_time 倒序排列
-    const sorted = [...devices].sort((a, b) => (b.update_time || '').localeCompare(a.update_time || ''));
+    const sorted = [...offlineDevices].sort((a, b) => (b.update_time || '').localeCompare(a.update_time || ''));
     return sorted.map(d => {
         const dn = d.deviceNum || d.deviceName || '?';
         const dc = d.deviceCode || '';
         const state = d.state || '';
-        const battery = d.battery || '';
-        const isOffline = state === 'Offline' || state === 'Downlined';
-        const cls = isOffline ? 'agv-icon offline-device' : 'agv-icon idle';
-        const spriteCls = isOffline ? 'agv-sprite offline' : 'agv-sprite blue';
-        const label = isOffline ? state : (state || '未知');
+        const updateTime = d.update_time ? d.update_time.slice(11, 19) : '';  // xx:xx:xx 格式
+        const cls = 'agv-icon offline-device';
+        const spriteCls = 'agv-sprite offline';
+        const label = state;
         const clickAttr = dn !== '?' ? `onclick="showDeviceModal('${dn}')" style="cursor:pointer;"` : '';
-        let batteryHtml = '';
-        if (battery && !isOffline) {
-            batteryHtml = `<span class="battery-indicator battery-high" title="电量: ${battery}%"></span>`;
-        }
         return `<span class="${cls}" ${clickAttr}
-            onmouseenter="showAgvTooltip(event,'${escapeHtml(dc)}','${escapeHtml(label)}','${escapeHtml(d.update_time || '')}','','${battery}')"
-            onmouseleave="hideAgvTooltip()"><span class="${spriteCls}"></span><span class="dev-num">${dn}</span>${batteryHtml}</span>`;
+            onmouseenter="showAgvTooltip(event,'${escapeHtml(dc)}','${escapeHtml(label)}','${escapeHtml(updateTime)}','','')"
+            onmouseleave="hideAgvTooltip()"><span class="${spriteCls}"></span><span class="dev-num">${dn}</span></span>`;
     }).join('');
 }
 

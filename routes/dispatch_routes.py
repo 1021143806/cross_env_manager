@@ -2205,11 +2205,14 @@ def _sync_device_history(region_key, api_devices):
         if dc in history_map:
             # 更新已有记录
             existing = history_map[dc]
+            dev_state = dev.get('state', '')
             existing['deviceNum'] = dev.get('deviceName', existing.get('deviceNum', ''))
             existing['deviceName'] = dev.get('deviceName', '')
-            existing['state'] = dev.get('state', '')
+            existing['state'] = dev_state
             existing['battery'] = dev.get('battery', '')
-            existing['update_time'] = now
+            # 离线设备不更新 update_time（保持上次在线时间，48h后自动清理）
+            if dev_state not in ('Offline', 'Downlined'):
+                existing['update_time'] = now
             updated_count += 1
         else:
             # 不在 history 中，抛弃
@@ -2220,35 +2223,63 @@ def _sync_device_history(region_key, api_devices):
 
 
 def _update_current_count_from_api(region_key, api_devices):
-    """用全量API返回的设备状态更新 currentCount.json 中已有设备的状态
+    """用全量API返回的设备状态同步 currentCount.json
     
-    只更新已存在的设备，不新增（currentCount 的新增由 status=8 上报负责）
+    - 非离线设备（Idle/InTask/Charging）不在 currentCount 中：自动添加
+    - 离线设备（Offline/Downlined）在 currentCount 中：自动清理
+    - 已存在的设备：更新 state 和 battery
     """
     now_file = _get_region_file(region_key, 'currentCount.json')
     now_devices = _load_json(now_file)
-    if not now_devices:
-        return {'updated': 0}
+    now = datetime.now().isoformat()
     
     # 建立 API 设备索引（按 deviceCode）
     api_map = {d.get('deviceCode', ''): d for d in api_devices if d.get('deviceCode')}
     
     state_map = {'Idle': 'idle', 'InTask': 'busy', 'Charging': 'charging'}
     updated = 0
+    added = 0
+    cleaned = 0
     
+    # 建立 currentCount 设备索引
+    cc_codes = {d.get('deviceCode', '') for d in now_devices}
+    
+    # 1. 更新已有设备 + 清理离线设备
+    new_now_devices = []
     for d in now_devices:
         dc = d.get('deviceCode', '')
-        if not dc or dc not in api_map:
-            continue
-        api_dev = api_map[dc]
+        if dc in api_map:
+            api_dev = api_map[dc]
+            new_state = api_dev.get('state', '')
+            # 离线设备：清理
+            if new_state in ('Offline', 'Downlined'):
+                cleaned += 1
+                continue
+            d['state'] = state_map.get(new_state, 'pending')
+            d['battery'] = api_dev.get('battery', '')
+            updated += 1
+        new_now_devices.append(d)
+    
+    # 2. 非离线设备不在 currentCount 中：自动添加
+    for dc, api_dev in api_map.items():
         new_state = api_dev.get('state', '')
-        d['state'] = state_map.get(new_state, 'pending') if new_state not in ('查询失败', 'Offline', 'Downlined') else new_state
-        d['battery'] = api_dev.get('battery', '')
-        updated += 1
+        if new_state in ('Offline', 'Downlined'):
+            continue
+        if dc not in cc_codes:
+            new_now_devices.append({
+                'deviceCode': dc,
+                'deviceNum': api_dev.get('deviceName', ''),
+                'order_id': '',
+                'shelfNumber': '',
+                'create_time': now,
+                'state': state_map.get(new_state, 'pending'),
+                'battery': api_dev.get('battery', '')
+            })
+            added += 1
     
-    if updated > 0:
-        _save_json(now_file, now_devices)
+    _save_json(now_file, new_now_devices)
     
-    return {'updated': updated}
+    return {'updated': updated, 'added': added, 'cleaned': cleaned}
 
 
 def _fetch_all_devices_and_sync(region_key, region):
@@ -2285,7 +2316,9 @@ def _fetch_all_devices_and_sync(region_key, region):
         'history_total': sync_result['total'],
         'history_updated': sync_result['updated'],
         'history_skipped': sync_result['skipped'],
-        'cc_updated': cc_result['updated']
+        'cc_updated': cc_result['updated'],
+        'cc_added': cc_result['added'],
+        'cc_cleaned': cc_result['cleaned']
     }
 
 
@@ -2316,7 +2349,7 @@ def _on_time_slot_change(region_key, region):
                 f'分时段切换全量检查完成: 清理{clean_result["cleaned"]}条旧记录, '
                 f'获取{fetch_result["device_count"]}台设备, '
                 f'历史共{fetch_result["history_total"]}条(更新{fetch_result["history_updated"]},跳过{fetch_result["history_skipped"]}), '
-                f'currentCount更新{fetch_result["cc_updated"]}台')
+                f'currentCount更新{fetch_result["cc_updated"]}台,新增{fetch_result["cc_added"]}台,清理{fetch_result["cc_cleaned"]}台')
         else:
             write_global_log('time_slot_change', region_key,
                 f'分时段切换全量检查失败: {fetch_result.get("error", "未知错误")}', 'warning')
@@ -3033,7 +3066,7 @@ def api_device_history_fetch_all(region_key):
             f'手动全量获取: 清理{clean_result["cleaned"]}条, '
             f'获取{fetch_result["device_count"]}台设备, '
             f'历史共{fetch_result["history_total"]}条(更新{fetch_result["history_updated"]},跳过{fetch_result["history_skipped"]}), '
-            f'currentCount更新{fetch_result["cc_updated"]}台')
+            f'currentCount更新{fetch_result["cc_updated"]}台,新增{fetch_result["cc_added"]}台,清理{fetch_result["cc_cleaned"]}台')
     
     return jsonify({
         'success': fetch_result['success'],
