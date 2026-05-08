@@ -342,6 +342,19 @@ def api_global_log():
     return jsonify({'logs': logs})
 
 
+@dispatch_bp.route('/api/dispatch/global_log/export')
+@login_required
+def api_global_log_export():
+    """导出全部日志（热数据+大日志）为JSON文件下载"""
+    all_logs = _load_all_logs()
+    all_logs.sort(key=lambda x: x.get('time', ''), reverse=True)
+    return Response(
+        json.dumps(all_logs, ensure_ascii=False, indent=2),
+        mimetype='application/json',
+        headers={'Content-Disposition': f'attachment; filename=dispatch_logs_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'}
+    )
+
+
 # ========== 核心计算逻辑 ==========
 
 def _get_last_calc_info(region_key):
