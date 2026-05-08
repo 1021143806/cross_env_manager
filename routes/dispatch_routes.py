@@ -2533,6 +2533,18 @@ def _select_device_for_empty_return(region_key, region):
                     continue
                 pending_codes.add(dc)
     
+    # 收集每台设备最近一次被下发的时间（从所有模板JSON中查找）
+    last_dispatch_time = {}
+    for t in region.get('templates', []):
+        fpath = _get_template_file_path(region_key, t)
+        tasks = _load_json(fpath)
+        for task in tasks:
+            dc = task.get('deviceCode', '')
+            ct = task.get('create_time', '')
+            if dc and ct:
+                if dc not in last_dispatch_time or ct > last_dispatch_time[dc]:
+                    last_dispatch_time[dc] = ct
+    
     # 筛选可用设备：有 deviceCode、不在 pending 中
     available = []
     for d in now_devices:
@@ -2545,21 +2557,27 @@ def _select_device_for_empty_return(region_key, region):
         except (ValueError, TypeError):
             battery = 999  # 无电量信息排最后
         state = d.get('state', 'pending')
+        # 最近下发时间（越早越好，没被下发过的最优先）
+        last_dt = last_dispatch_time.get(dc, '')
         available.append({
             'deviceCode': dc,
             'deviceNum': d.get('deviceNum', ''),
             'battery': battery,
-            'state': state
+            'state': state,
+            'last_dispatch': last_dt
         })
     
     if not available:
         return None
     
-    # 排序：电量低优先 → state=idle 优先
+    # 排序：最近未被下发过的优先 → 电量低优先 → state=idle 优先
+    # 最近下发时间越早（或从未下发），排在越前面
     def _sort_key(item):
+        # 最近下发过（1小时内）的排后面，没下发过的排前面
+        recently_dispatched = 1 if item['last_dispatch'] else 0
         battery_score = item['battery']
         state_score = 0 if item['state'] == 'idle' else 1
-        return (battery_score, state_score)
+        return (recently_dispatched, battery_score, state_score)
     
     available.sort(key=_sort_key)
     return available[0]
