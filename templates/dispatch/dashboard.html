@@ -1389,6 +1389,9 @@ function updateAreasData(areas) {
             });
         }
         
+        // 增量更新历史设备网格（如果已展开）
+        updateHistoryDeviceGrid(area.region_key);
+        
         // 更新双环形图
         updateDualCharts(area);
 
@@ -3105,6 +3108,9 @@ function toggleDeviceHistory(regionKey) {
     }
 }
 
+// 历史设备数据缓存 {regionKey: {devices: [], labelEl: null}}
+let _historyDeviceCache = {};
+
 function loadDeviceHistory(regionKey) {
     const grid = document.getElementById('history-devices-' + regionKey);
     const label = document.querySelector('#history-' + regionKey + ' .history-label');
@@ -3113,18 +3119,95 @@ function loadDeviceHistory(regionKey) {
     fetch('/api/dispatch/device_history/' + encodeURIComponent(regionKey))
         .then(r => r.json())
         .then(data => {
-            if (!data.devices || data.devices.length === 0) {
+            const devices = data.devices || [];
+            // 缓存数据
+            _historyDeviceCache[regionKey] = { devices: devices, labelEl: label };
+            if (devices.length === 0) {
                 grid.innerHTML = '';
                 if (label) label.textContent = '历史设备（暂无记录）';
                 return;
             }
             if (label) label.textContent = '历史设备（共' + data.total + '台）';
-            grid.innerHTML = renderHistoryDeviceIcons(data.devices);
+            grid.innerHTML = renderHistoryDeviceIcons(devices);
         })
         .catch(err => {
             grid.innerHTML = '<span class="text-danger small">加载失败</span>';
             if (label) label.textContent = '历史设备（加载失败）';
         });
+}
+
+// 增量更新历史设备网格（与上方设备网格动画一致）
+function updateHistoryDeviceGrid(regionKey) {
+    const section = document.getElementById('history-' + regionKey);
+    if (!section || !section.classList.contains('expanded')) return;  // 未展开则跳过
+    
+    const grid = document.getElementById('history-devices-' + regionKey);
+    if (!grid) return;
+    
+    const cache = _historyDeviceCache[regionKey];
+    if (!cache || !cache.devices) return;
+    
+    // 只取离线设备
+    const offlineDevices = cache.devices.filter(d => {
+        const state = d.state || '';
+        return state === 'Offline' || state === 'Downlined';
+    });
+    
+    const label = cache.labelEl;
+    if (label) label.textContent = '历史设备（共' + offlineDevices.length + '台离线）';
+    
+    if (offlineDevices.length === 0) {
+        grid.innerHTML = '<span class="text-muted small">无离线设备</span>';
+        return;
+    }
+    
+    // 按 update_time 排序
+    offlineDevices.sort((a, b) => (b.update_time || '').localeCompare(a.update_time || ''));
+    
+    // 构建新数据映射：deviceNum -> 新数据
+    const newDataMap = {};
+    offlineDevices.forEach(d => { newDataMap[d.deviceNum || d.deviceName] = d; });
+    const newNums = new Set(offlineDevices.map(d => d.deviceNum || d.deviceName));
+    
+    const existingIcons = grid.querySelectorAll('.agv-icon');
+    
+    // 移除离开的设备
+    existingIcons.forEach(icon => {
+        const dn = icon.querySelector('.dev-num')?.textContent;
+        if (!dn) return;
+        if (!newNums.has(dn)) {
+            icon.classList.add('leaving');
+            setTimeout(() => icon.remove(), 400);
+        }
+    });
+    
+    // 添加新设备
+    const existingNums = new Set(Array.from(grid.querySelectorAll('.agv-icon')).map(el => el.querySelector('.dev-num')?.textContent));
+    offlineDevices.forEach(d => {
+        const dn = d.deviceNum || d.deviceName;
+        if (!existingNums.has(dn)) {
+            const html = renderHistoryDeviceIcon(d);
+            const temp = document.createElement('span');
+            temp.innerHTML = html;
+            const newIcon = temp.firstChild;
+            newIcon.classList.add('entering');
+            grid.appendChild(newIcon);
+        }
+    });
+}
+
+// 渲染单个历史设备图标（供增量更新使用）
+function renderHistoryDeviceIcon(d) {
+    const dn = d.deviceNum || d.deviceName || '?';
+    const dc = d.deviceCode || '';
+    const state = d.state || '';
+    const updateTime = d.update_time ? d.update_time.slice(11, 19) : '';
+    const cls = 'agv-icon offline-device';
+    const spriteCls = 'agv-sprite offline';
+    const clickAttr = dn !== '?' ? `onclick="showDeviceModal('${dn}')" style="cursor:pointer;"` : '';
+    return `<span class="${cls}" ${clickAttr}
+        onmouseenter="showAgvTooltip(event,'${escapeHtml(dc)}','${escapeHtml(state)}','${escapeHtml(updateTime)}','','')"
+        onmouseleave="hideAgvTooltip()"><span class="${spriteCls}"></span><span class="dev-num">${dn}</span></span>`;
 }
 
 function renderHistoryDeviceIcons(devices) {
