@@ -649,6 +649,13 @@ def _clean_by_order_id_across_all_regions(order_id, device_code):
             if len(now_devices) < old_cc:
                 _save_json(now_file, now_devices)
                 print(f"[Dispatch] _clean_by_order_id: 清理currentCount {rk} 删除了{old_cc - len(now_devices)}条")
+                try:
+                    write_global_log('device_leave', rk,
+                        f'设备离开网格(跨区域清理): deviceCode={device_code[-8:] if device_code else "?"}, '
+                        f'order_id={order_id}, currentCount {old_cc}→{len(now_devices)}',
+                        raw_data={'deviceCode': device_code, 'order_id': order_id,
+                                  'region_key': rk, 'currentCount_before': old_cc, 'currentCount_after': len(now_devices)})
+                except: pass
     print(f"[Dispatch] _clean_by_order_id_across_all_regions: 共清理{cleaned}条")
     return cleaned
 
@@ -947,6 +954,15 @@ def handle_status_report(data):
                 rk_now_devices = [d for d in rk_now_devices if d.get('deviceCode') != device_code]
                 if len(rk_now_devices) < old_cc:
                     rk_cc_change = f'{rk}:-1(共{len(rk_now_devices)})'
+                    # 记录设备从网格消失事件到操作日志
+                    try:
+                        write_global_log('device_leave', rk,
+                            f'设备离开网格: {device_num}({device_code[-8:] if device_code else "?"}), '
+                            f'模板:{template_name}, status:{status}, order_id:{order_id}',
+                            raw_data={'deviceCode': device_code, 'deviceNum': device_num,
+                                      'template': template_name, 'status': status, 'order_id': order_id,
+                                      'region_key': rk, 'currentCount_after': len(rk_now_devices)})
+                    except: pass
             _save_json(rk_now_file, rk_now_devices)
             if rk_cc_change:
                 cc_change_parts.append(rk_cc_change)
