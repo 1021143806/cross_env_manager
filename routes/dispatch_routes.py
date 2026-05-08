@@ -640,22 +640,9 @@ def _clean_by_order_id_across_all_regions(order_id, device_code):
                     removed2 = len(tasks) - len(new_tasks2)
                     cleaned += removed2
                     print(f"[Dispatch] _clean_by_order_id: 按deviceCode清理 {rk}/{t.get('code', t.get('name', ''))} 删除了{removed2}条")
-        # 清理 currentCount
-        if device_code:
-            now_file = _get_region_file(rk, 'currentCount.json')
-            now_devices = _load_json(now_file)
-            old_cc = len(now_devices)
-            now_devices = [d for d in now_devices if d.get('deviceCode') != device_code]
-            if len(now_devices) < old_cc:
-                _save_json(now_file, now_devices)
-                print(f"[Dispatch] _clean_by_order_id: 清理currentCount {rk} 删除了{old_cc - len(now_devices)}条")
-                try:
-                    write_global_log('device_leave', rk,
-                        f'设备离开网格(跨区域清理): deviceCode={device_code[-8:] if device_code else "?"}, '
-                        f'order_id={order_id}, currentCount {old_cc}→{len(now_devices)}',
-                        raw_data={'deviceCode': device_code, 'order_id': order_id,
-                                  'region_key': rk, 'currentCount_before': old_cc, 'currentCount_after': len(now_devices)})
-                except: pass
+        # 注意：不清理 currentCount！
+        # 跨区域清理时无法确定设备属于哪个区域，误删会导致设备从网格消失。
+        # currentCount 的清理只由正常匹配的 status=8 上报处理。
     print(f"[Dispatch] _clean_by_order_id_across_all_regions: 共清理{cleaned}条")
     return cleaned
 
