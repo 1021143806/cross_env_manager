@@ -2236,16 +2236,47 @@ def _query_device_status(server, api_path, area_id, device_code):
         return None
 
 
-def _should_clean_device(device_info):
-    """判断设备是否应该被清理（仅明确离线/下线才清理，查询失败保留）"""
+def _should_clean_device(device_info, region_key='', region=None, device_code=''):
+    """判断设备是否应该被清理
+    
+    - 查询失败 → 保留
+    - 在线 → 保留
+    - Offline/Downlined → 检查是否有执行中任务：
+      - 无执行中任务 → 清理
+      - 有执行中任务但超过1小时 → 清理
+      - 有执行中任务且未超过1小时 → 保留（可能在连廊环境中）
+    """
     if not device_info:
         return False  # 查询失败（车可能还没到），保留不清理
     state = device_info.get('state', '')
-    # 仅离线/下线 → 清理
-    if state in ('Offline', 'Downlined'):
-        return True
-    # 在线（空闲/充电/任务中/故障/升级中/查询失败）→ 保留
-    return False
+    if state not in ('Offline', 'Downlined'):
+        return False  # 在线 → 保留
+    
+    # 离线/下线：检查是否有执行中任务
+    if region and device_code:
+        from datetime import timedelta
+        cutoff = (datetime.now() - timedelta(hours=1)).isoformat()
+        has_active_task = False
+        task_start_time = ''
+        for t in region.get('templates', []):
+            fpath = _get_template_file_path(region_key, t)
+            if not os.path.exists(fpath):
+                continue
+            tasks = _load_json(fpath)
+            for task in tasks:
+                if task.get('deviceCode') == device_code and task.get('status') == 6:
+                    has_active_task = True
+                    task_start_time = task.get('create_time', '')
+                    break
+            if has_active_task:
+                break
+        
+        if has_active_task:
+            if task_start_time and task_start_time < cutoff:
+                return True  # 超过1小时，清理
+            return False  # 未超过1小时，保留（可能在连廊中）
+    
+    return True  # 无执行中任务，清理
 
 
 # ========== 设备历史记录 ==========
@@ -2832,7 +2863,7 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
             state_map = {'Idle': 'idle', 'InTask': 'busy', 'Charging': 'charging'}
             d['state'] = state_map.get(state, 'pending') if state not in ('查询失败', 'Offline', 'Downlined') else state
             d['battery'] = battery
-            if _should_clean_device(device_info):
+            if _should_clean_device(device_info, region_key, region, device_code):
                 now_devices = [nd for nd in now_devices if nd.get('deviceCode') != device_code]
                 cleaned += 1
                 steps.append({
