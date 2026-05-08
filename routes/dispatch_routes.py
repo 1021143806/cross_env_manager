@@ -2047,7 +2047,9 @@ SELF_HEAL_DEFAULTS = {
 
 
 def _query_device_status(server, api_path, area_id, device_code):
-    """查询单个设备状态
+    """查询设备状态
+    - device_code 非空：查询单个设备，返回 dict 或 None
+    - device_code 为空：查询全量设备，返回 list 或 None
     api_path 支持两种格式：
     - 相对路径: /ics/out/device/list/deviceInfo → 拼接 http://{server}{api_path}
     - 完整 URL: http://192.168.1.100:8080/ics/... → 直接使用
@@ -2066,10 +2068,13 @@ def _query_device_status(server, api_path, area_id, device_code):
         req = _urllib.Request(url,
             data=json.dumps(body).encode('utf-8'),
             headers={'Content-Type': 'application/json'})
-        resp = _urllib.urlopen(req, timeout=10)
+        resp = _urllib.urlopen(req, timeout=30)  # 全量查询可能较慢，超时30秒
         data = json.loads(resp.read().decode('utf-8'))
         if data.get('code') == 1000 and data.get('data'):
-            return data['data'][0]
+            # device_code 为空时返回全量列表，非空时返回单条
+            if device_code:
+                return data['data'][0] if data['data'] else None
+            return data['data']
         print(f"[Dispatch] _query_device_status 响应异常: url={url}, code={data.get('code')}, device={device_code}")
         return None
     except Exception as e:
@@ -2087,6 +2092,205 @@ def _should_clean_device(device_info):
         return True
     # 在线（空闲/充电/任务中/故障/升级中/查询失败）→ 保留
     return False
+
+
+# ========== 设备历史记录 ==========
+
+def _get_device_history_path(region_key):
+    """获取设备历史记录文件路径"""
+    return _get_region_file(region_key, 'device_history.json')
+
+
+def _load_device_history(region_key):
+    """加载设备历史记录"""
+    return _load_json(_get_device_history_path(region_key))
+
+
+def _save_device_history(region_key, data):
+    """保存设备历史记录"""
+    _save_json(_get_device_history_path(region_key), data)
+
+
+def _clean_stale_device_history(region_key):
+    """清理超过48小时未活动的设备记录
+    
+    Returns:
+        {'cleaned': int, 'remaining': int}
+    """
+    history = _load_device_history(region_key)
+    if not history:
+        return {'cleaned': 0, 'remaining': 0}
+    
+    from datetime import timedelta
+    cutoff = (datetime.now() - timedelta(hours=48)).isoformat()
+    
+    old_count = len(history)
+    history = [d for d in history if d.get('update_time', '') >= cutoff]
+    new_count = len(history)
+    cleaned = old_count - new_count
+    
+    if cleaned > 0:
+        _save_device_history(region_key, history)
+    
+    return {'cleaned': cleaned, 'remaining': new_count}
+
+
+def _sync_device_history(region_key, api_devices):
+    """将API返回的设备列表同步到 device_history.json
+    
+    - 新设备：新增记录
+    - 已存在设备（按 deviceCode 匹配）：更新 state/battery/deviceNum/update_time
+    - 不删除任何记录（删除由48h清理负责）
+    
+    Returns:
+        {'total': int, 'new': int, 'updated': int}
+    """
+    history = _load_device_history(region_key)
+    now = datetime.now().isoformat()
+    
+    # 建立 deviceCode 索引
+    history_map = {d['deviceCode']: d for d in history}
+    new_count = 0
+    updated_count = 0
+    
+    for dev in api_devices:
+        dc = dev.get('deviceCode', '')
+        if not dc:
+            continue
+        if dc in history_map:
+            # 更新已有记录
+            existing = history_map[dc]
+            existing['deviceNum'] = dev.get('deviceName', existing.get('deviceNum', ''))
+            existing['deviceName'] = dev.get('deviceName', '')
+            existing['state'] = dev.get('state', '')
+            existing['battery'] = dev.get('battery', '')
+            existing['update_time'] = now
+            updated_count += 1
+        else:
+            # 新增记录
+            history.append({
+                'deviceCode': dc,
+                'deviceNum': dev.get('deviceName', ''),
+                'deviceName': dev.get('deviceName', ''),
+                'state': dev.get('state', ''),
+                'battery': dev.get('battery', ''),
+                'create_time': now,
+                'update_time': now
+            })
+            new_count += 1
+    
+    _save_device_history(region_key, history)
+    return {'total': len(history), 'new': new_count, 'updated': updated_count}
+
+
+def _update_current_count_from_api(region_key, api_devices):
+    """用全量API返回的设备状态更新 currentCount.json 中已有设备的状态
+    
+    只更新已存在的设备，不新增（currentCount 的新增由 status=8 上报负责）
+    """
+    now_file = _get_region_file(region_key, 'currentCount.json')
+    now_devices = _load_json(now_file)
+    if not now_devices:
+        return {'updated': 0}
+    
+    # 建立 API 设备索引（按 deviceCode）
+    api_map = {d.get('deviceCode', ''): d for d in api_devices if d.get('deviceCode')}
+    
+    state_map = {'Idle': 'idle', 'InTask': 'busy', 'Charging': 'charging'}
+    updated = 0
+    
+    for d in now_devices:
+        dc = d.get('deviceCode', '')
+        if not dc or dc not in api_map:
+            continue
+        api_dev = api_map[dc]
+        new_state = api_dev.get('state', '')
+        d['state'] = state_map.get(new_state, 'pending') if new_state not in ('查询失败', 'Offline', 'Downlined') else new_state
+        d['battery'] = api_dev.get('battery', '')
+        updated += 1
+    
+    if updated > 0:
+        _save_json(now_file, now_devices)
+    
+    return {'updated': updated}
+
+
+def _fetch_all_devices_and_sync(region_key, region):
+    """全量获取设备状态并同步到 device_history 和 currentCount
+    
+    Returns:
+        {'success': bool, 'device_count': int, 'history_total': int, 'error': str}
+    """
+    sh = region.get('self_heal', {})
+    api_path = sh.get('device_query_api', SELF_HEAL_DEFAULTS['device_query_api'])
+    area_id = region.get('areaId', '0')
+    
+    if not api_path or 'XX' in api_path:
+        return {'success': False, 'device_count': 0, 'history_total': 0, 'error': 'API未配置'}
+    
+    # 全量获取（deviceCode 为空）
+    api_devices = _query_device_status('', api_path, area_id, '')
+    
+    if api_devices is None:
+        return {'success': False, 'device_count': 0, 'history_total': 0, 'error': 'API请求失败'}
+    
+    if not isinstance(api_devices, list):
+        return {'success': False, 'device_count': 0, 'history_total': 0, 'error': 'API返回格式异常'}
+    
+    # 同步到 device_history.json
+    sync_result = _sync_device_history(region_key, api_devices)
+    
+    # 更新 currentCount.json 中已有设备的状态
+    cc_result = _update_current_count_from_api(region_key, api_devices)
+    
+    return {
+        'success': True,
+        'device_count': len(api_devices),
+        'history_total': sync_result['total'],
+        'history_new': sync_result['new'],
+        'history_updated': sync_result['updated'],
+        'cc_updated': cc_result['updated']
+    }
+
+
+# 分时段切换全量检查防抖
+_time_slot_check_last = {}  # {region_key: timestamp}
+_TIME_SLOT_CHECK_DEBOUNCE = 300  # 同一区域5分钟内最多触发一次分时段切换检查
+
+
+def _on_time_slot_change(region_key, region):
+    """分时段切换处理：清理48h旧记录 → 全量获取设备状态 → 同步"""
+    # 防抖检查
+    now_ts = time.time()
+    last_ts = _time_slot_check_last.get(region_key, 0)
+    if now_ts - last_ts < _TIME_SLOT_CHECK_DEBOUNCE:
+        return
+    
+    _time_slot_check_last[region_key] = now_ts
+    
+    try:
+        # 1. 清理48h旧记录
+        clean_result = _clean_stale_device_history(region_key)
+        
+        # 2. 全量获取并同步
+        fetch_result = _fetch_all_devices_and_sync(region_key, region)
+        
+        if fetch_result['success']:
+            write_global_log('time_slot_change', region_key,
+                f'分时段切换全量检查完成: 清理{clean_result["cleaned"]}条旧记录, '
+                f'获取{fetch_result["device_count"]}台设备, '
+                f'历史共{fetch_result["history_total"]}条(新增{fetch_result["history_new"]},更新{fetch_result["history_updated"]}), '
+                f'currentCount更新{fetch_result["cc_updated"]}台')
+        else:
+            write_global_log('time_slot_change', region_key,
+                f'分时段切换全量检查失败: {fetch_result.get("error", "未知错误")}', 'warning')
+    except Exception as e:
+        print(f"[TimeSlotCheck] 分时段切换检查异常 {region_key}: {e}")
+        try:
+            write_global_log('time_slot_change', region_key,
+                f'分时段切换检查异常: {str(e)}', 'error')
+        except:
+            pass
 
 
 def _get_low_battery_threshold(sh):
@@ -2543,6 +2747,9 @@ _poll_dispatch_last = {}  # 记录每个区域上次轮询调度时间
 
 def _start_poll_dispatch_thread():
     """启动定时轮询调度后台线程（兜底机制）"""
+    # 记录每个区域上次生效的分时配置标识，用于检测切换
+    _time_slot_identity = {}
+    
     def _loop():
         # 启动后等待30秒，让自恢复先清理幽灵任务，避免防抖丢失导致重复下发
         time.sleep(30)
@@ -2559,6 +2766,22 @@ def _start_poll_dispatch_thread():
                     
                     # 计算平衡
                     balance = calculate_area_balance(rk, region)
+                    
+                    # [分时段切换检测] 比较当前生效的 slot 是否与上次不同
+                    if balance.get('time_slot_active') and balance.get('time_slot_matched'):
+                        slot = balance['time_slot_matched']
+                        slot_id = f"{slot.get('name','')}_{slot.get('priority','')}_{slot.get('start','')}_{slot.get('end','')}"
+                        last_slot_id = _time_slot_identity.get(rk, '')
+                        if slot_id != last_slot_id:
+                            _time_slot_identity[rk] = slot_id
+                            # 异步执行分时段切换检查
+                            def _do_slot_check(rk=rk, region=region):
+                                try:
+                                    _on_time_slot_change(rk, region)
+                                except Exception as e:
+                                    print(f"[TimeSlotCheck] 分时段切换检查失败 {rk}: {e}")
+                            threading.Thread(target=_do_slot_check, daemon=True).start()
+                    
                     if balance['direction'] == 'none':
                         continue
                     if not balance['can_dispatch']:
@@ -2681,6 +2904,107 @@ def api_self_heal_force_check(region_key):
         })
     except Exception as e:
         return jsonify({'error': f'强制检查失败: {str(e)}'}), 500
+
+
+# ========== 设备历史记录 API ==========
+
+@dispatch_bp.route('/api/dispatch/device_history/<region_key>')
+@login_required
+def api_device_history(region_key):
+    """获取设备历史记录"""
+    index = _load_cache_index()
+    if region_key not in index:
+        return jsonify({'error': f'区域 {region_key} 不存在'}), 404
+    
+    history = _load_device_history(region_key)
+    return jsonify({'region_key': region_key, 'devices': history, 'total': len(history)})
+
+
+@dispatch_bp.route('/api/dispatch/device_history/<region_key>/clean', methods=['POST'])
+@login_required
+@admin_required
+def api_device_history_clean(region_key):
+    """手动触发48h清理"""
+    index = _load_cache_index()
+    if region_key not in index:
+        return jsonify({'error': f'区域 {region_key} 不存在'}), 404
+    
+    result = _clean_stale_device_history(region_key)
+    write_global_log('device_history', region_key,
+        f'手动48h清理: 清理{result["cleaned"]}条, 剩余{result["remaining"]}条')
+    return jsonify({'success': True, 'region_key': region_key, **result})
+
+
+@dispatch_bp.route('/api/dispatch/device_history/<region_key>/check', methods=['POST'])
+@login_required
+def api_device_history_check(region_key):
+    """检查48h内活动（不清理，仅返回检查结果）"""
+    index = _load_cache_index()
+    if region_key not in index:
+        return jsonify({'error': f'区域 {region_key} 不存在'}), 404
+    
+    history = _load_device_history(region_key)
+    if not history:
+        return jsonify({'region_key': region_key, 'total': 0, 'stale': 0, 'active': 0})
+    
+    from datetime import timedelta
+    cutoff = (datetime.now() - timedelta(hours=48)).isoformat()
+    
+    stale = [d for d in history if d.get('update_time', '') < cutoff]
+    active = [d for d in history if d.get('update_time', '') >= cutoff]
+    
+    return jsonify({
+        'region_key': region_key,
+        'total': len(history),
+        'stale': len(stale),
+        'active': len(active),
+        'stale_devices': [{'deviceCode': d['deviceCode'], 'deviceNum': d.get('deviceNum', ''), 'update_time': d.get('update_time', '')} for d in stale]
+    })
+
+
+# 全量获取防抖
+_fetch_all_last = {}  # {region_key: timestamp}
+_FETCH_ALL_DEBOUNCE = 5  # 5秒防抖
+
+
+@dispatch_bp.route('/api/dispatch/device_history/<region_key>/fetch_all', methods=['POST'])
+@login_required
+@admin_required
+def api_device_history_fetch_all(region_key):
+    """手动触发全量获取设备状态（5s防抖）"""
+    # 防抖检查
+    now_ts = time.time()
+    last_ts = _fetch_all_last.get(region_key, 0)
+    if now_ts - last_ts < _FETCH_ALL_DEBOUNCE:
+        remaining = round(_FETCH_ALL_DEBOUNCE - (now_ts - last_ts), 1)
+        return jsonify({'success': False, 'error': f'请等待 {remaining} 秒后再试', 'debounce': True}), 429
+    
+    _fetch_all_last[region_key] = now_ts
+    
+    index = _load_cache_index()
+    region = index.get(region_key)
+    if not region:
+        return jsonify({'error': f'区域 {region_key} 不存在'}), 404
+    
+    # 先清理48h旧记录
+    clean_result = _clean_stale_device_history(region_key)
+    
+    # 全量获取并同步
+    fetch_result = _fetch_all_devices_and_sync(region_key, region)
+    
+    if fetch_result['success']:
+        write_global_log('device_history', region_key,
+            f'手动全量获取: 清理{clean_result["cleaned"]}条, '
+            f'获取{fetch_result["device_count"]}台设备, '
+            f'历史共{fetch_result["history_total"]}条(新增{fetch_result["history_new"]},更新{fetch_result["history_updated"]}), '
+            f'currentCount更新{fetch_result["cc_updated"]}台')
+    
+    return jsonify({
+        'success': fetch_result['success'],
+        'region_key': region_key,
+        'clean_result': clean_result,
+        **fetch_result
+    })
 
 
 # ========== 自动驾驶测试 API ==========

@@ -96,6 +96,10 @@
     .agv-icon .agv-sprite.loaded {
         background-position: -192px -120px;
     }
+    /* 灰色AGV（离线设备）- 第6行第5列: -96px, -120px */
+    .agv-icon .agv-sprite.offline {
+        background-position: -96px -120px;
+    }
     .agv-icon .dev-num { font-weight: 600; }
     .agv-icon:hover {
         transform: translateY(-1px);
@@ -247,6 +251,48 @@
     .agv-tooltip .tt-code { color: var(--text-muted); font-family: monospace; }
     .agv-tooltip .tt-label { font-weight: 600; }
     .agv-tooltip .tt-time { opacity: 0.6; }
+    .agv-tooltip .tt-battery { opacity: 0.7; }
+
+    /* 离线设备 */
+    .agv-icon.offline-device {
+        border-color: #6c757d;
+        background: rgba(108, 117, 125, 0.06);
+        opacity: 0.7;
+    }
+    .agv-icon.offline-device .dev-num { color: #6c757d; }
+
+    /* 设备历史展开区域 */
+    .device-history-section {
+        border-top: 1px dashed var(--border-color);
+        padding: 0.4rem 1rem;
+        display: none;
+    }
+    .device-history-section.expanded {
+        display: block;
+    }
+    .device-history-section .history-label {
+        font-size: 0.7rem;
+        opacity: 0.5;
+        margin-bottom: 0.3rem;
+    }
+    .device-history-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+        flex-wrap: wrap;
+    }
+    .device-history-actions .btn {
+        font-size: 0.7rem;
+        padding: 0.15rem 0.5rem;
+    }
+    .detail-toggle {
+        font-size: 0.75rem;
+        cursor: pointer;
+        user-select: none;
+        opacity: 0.6;
+        transition: opacity 0.2s;
+    }
+    .detail-toggle:hover { opacity: 1; }
 
     .template-table { width: 100%; font-size: 0.9rem; }
     .template-table th {
@@ -906,6 +952,26 @@ function renderAreas(areas) {
                     <div class="device-grid" id="devices-${area.region_key}">
                         ${renderDeviceIcons(filterCurrentDevices(area.current_devices || [], area.pending_devices || []), false, area.low_battery_threshold)}
                         ${renderDeviceIcons(area.pending_devices || [], true, area.low_battery_threshold)}
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:0 1rem 0.2rem;">
+                        <span class="detail-toggle" onclick="toggleDeviceHistory('${area.region_key}')" id="toggle-${area.region_key}">
+                            📋 详细 ▾
+                        </span>
+                    </div>
+                    <div class="device-history-section" id="history-${area.region_key}">
+                        <div class="history-label">历史设备（加载中...）</div>
+                        <div class="device-grid" id="history-devices-${area.region_key}"></div>
+                        <div class="device-history-actions">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="fetchAllDevices('${area.region_key}')" id="btn-fetch-all-${area.region_key}">
+                                🔄 全量获取设备状态
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="checkDeviceHistory('${area.region_key}')" id="btn-check-history-${area.region_key}">
+                                🕐 48h检查
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="cleanDeviceHistory('${area.region_key}')" id="btn-clean-history-${area.region_key}">
+                                🗑️ 清理48h+
+                            </button>
+                        </div>
                     </div>
                     <div class="formula-row" id="formula-${area.region_key}" style="font-size:0.8rem;padding:0.25rem 0;opacity:0.8;">
                         ${getFormulaText(area)}
@@ -3016,6 +3082,168 @@ function triggerSelfHeal(regionKey) {
             }
         })
         .catch(err => { el.innerHTML = '<div class="text-danger py-2">检查失败: ' + err.message + '</div>'; });
+}
+
+// ========== 设备历史记录 ==========
+
+function toggleDeviceHistory(regionKey) {
+    const section = document.getElementById('history-' + regionKey);
+    const toggle = document.getElementById('toggle-' + regionKey);
+    const isExpanded = section.classList.contains('expanded');
+    
+    if (isExpanded) {
+        section.classList.remove('expanded');
+        toggle.innerHTML = '📋 详细 ▾';
+    } else {
+        section.classList.add('expanded');
+        toggle.innerHTML = '📋 收起 ▴';
+        // 首次展开时加载历史设备
+        loadDeviceHistory(regionKey);
+    }
+}
+
+function loadDeviceHistory(regionKey) {
+    const grid = document.getElementById('history-devices-' + regionKey);
+    const label = document.querySelector('#history-' + regionKey + ' .history-label');
+    if (label) label.textContent = '历史设备（加载中...）';
+    
+    fetch('/api/dispatch/device_history/' + encodeURIComponent(regionKey))
+        .then(r => r.json())
+        .then(data => {
+            if (!data.devices || data.devices.length === 0) {
+                grid.innerHTML = '';
+                if (label) label.textContent = '历史设备（暂无记录）';
+                return;
+            }
+            if (label) label.textContent = '历史设备（共' + data.total + '台）';
+            grid.innerHTML = renderHistoryDeviceIcons(data.devices);
+        })
+        .catch(err => {
+            grid.innerHTML = '<span class="text-danger small">加载失败</span>';
+            if (label) label.textContent = '历史设备（加载失败）';
+        });
+}
+
+function renderHistoryDeviceIcons(devices) {
+    if (!devices || devices.length === 0) return '';
+    // 按 update_time 倒序排列
+    const sorted = [...devices].sort((a, b) => (b.update_time || '').localeCompare(a.update_time || ''));
+    return sorted.map(d => {
+        const dn = d.deviceNum || d.deviceName || '?';
+        const dc = d.deviceCode || '';
+        const state = d.state || '';
+        const battery = d.battery || '';
+        const isOffline = state === 'Offline' || state === 'Downlined';
+        const cls = isOffline ? 'agv-icon offline-device' : 'agv-icon idle';
+        const spriteCls = isOffline ? 'agv-sprite offline' : 'agv-sprite blue';
+        const label = isOffline ? state : (state || '未知');
+        const clickAttr = dn !== '?' ? `onclick="showDeviceModal('${dn}')" style="cursor:pointer;"` : '';
+        let batteryHtml = '';
+        if (battery && !isOffline) {
+            batteryHtml = `<span class="battery-indicator battery-high" title="电量: ${battery}%"></span>`;
+        }
+        return `<span class="${cls}" ${clickAttr}
+            onmouseenter="showAgvTooltip(event,'${escapeHtml(dc)}','${escapeHtml(label)}','${escapeHtml(d.update_time || '')}','','${battery}')"
+            onmouseleave="hideAgvTooltip()"><span class="${spriteCls}"></span><span class="dev-num">${dn}</span>${batteryHtml}</span>`;
+    }).join('');
+}
+
+// 全量获取防抖
+let _fetchAllTimers = {};
+
+function fetchAllDevices(regionKey) {
+    const btn = document.getElementById('btn-fetch-all-' + regionKey);
+    if (!btn) return;
+    
+    // 检查是否在防抖中
+    if (_fetchAllTimers[regionKey]) {
+        showToast('请稍后再试（5秒防抖）', 'warning');
+        return;
+    }
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>获取中...';
+    
+    fetch('/api/dispatch/device_history/' + encodeURIComponent(regionKey) + '/fetch_all', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.debounce) {
+                showToast(data.error || '请稍后再试', 'warning');
+                btn.disabled = false;
+                btn.innerHTML = '🔄 全量获取设备状态';
+                return;
+            }
+            if (data.success) {
+                showToast('获取完成: ' + data.device_count + '台设备, 历史共' + data.history_total + '条', 'success');
+                loadDeviceHistory(regionKey);
+                refreshData();
+            } else {
+                showToast(data.error || '获取失败', 'danger');
+            }
+            btn.disabled = false;
+            btn.innerHTML = '🔄 全量获取设备状态';
+            
+            // 5秒防抖
+            _fetchAllTimers[regionKey] = setTimeout(() => {
+                delete _fetchAllTimers[regionKey];
+            }, 5000);
+        })
+        .catch(err => {
+            showToast('请求失败: ' + err.message, 'danger');
+            btn.disabled = false;
+            btn.innerHTML = '🔄 全量获取设备状态';
+        });
+}
+
+function checkDeviceHistory(regionKey) {
+    const btn = document.getElementById('btn-check-history-' + regionKey);
+    if (!btn) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>检查中...';
+    
+    fetch('/api/dispatch/device_history/' + encodeURIComponent(regionKey) + '/check', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '🕐 48h检查';
+            if (data.stale > 0) {
+                showToast('48h检查: 共' + data.total + '条, ' + data.stale + '条超过48h未活动', 'warning');
+            } else {
+                showToast('48h检查: 共' + data.total + '条, 全部在48h内活动', 'success');
+            }
+        })
+        .catch(err => {
+            showToast('检查失败: ' + err.message, 'danger');
+            btn.disabled = false;
+            btn.innerHTML = '🕐 48h检查';
+        });
+}
+
+function cleanDeviceHistory(regionKey) {
+    if (!confirm('确认清理 ' + regionKey + ' 中超过48小时未活动的设备记录？')) return;
+    
+    const btn = document.getElementById('btn-clean-history-' + regionKey);
+    if (!btn) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>清理中...';
+    
+    fetch('/api/dispatch/device_history/' + encodeURIComponent(regionKey) + '/clean', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '🗑️ 清理48h+';
+            if (data.success) {
+                showToast('清理完成: ' + data.cleaned + '条, 剩余' + data.remaining + '条', 'success');
+                loadDeviceHistory(regionKey);
+            } else {
+                showToast(data.error || '清理失败', 'danger');
+            }
+        })
+        .catch(err => {
+            showToast('清理失败: ' + err.message, 'danger');
+            btn.disabled = false;
+            btn.innerHTML = '🗑️ 清理48h+';
+        });
 }
 </script>
 {% endblock %}
