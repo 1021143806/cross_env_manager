@@ -173,7 +173,7 @@ def _get_region_file(region_key, filename):
 # ========== 全局操作日志 ==========
 
 def write_global_log(action, region_key, detail='', level='info', raw_data=None):
-    """写入全局操作日志（超过100条自动清理，保留最新100条）
+    """写入全局操作日志（超过200条自动清理，保留最新200条）
     
     report_status 去重逻辑：
     - 完全一致（同模板+设备+状态+订单ID）：修改已有日志，追加重复次数
@@ -227,9 +227,9 @@ def write_global_log(action, region_key, detail='', level='info', raw_data=None)
     if raw_data is not None:
         entry["raw_data"] = raw_data
     logs.append(entry)
-    # 超过100条保留最新100条
-    if len(logs) > 100:
-        logs = logs[-100:]
+    # 超过200条保留最新200条
+    if len(logs) > 200:
+        logs = logs[-200:]
     _save_json(GLOBAL_LOG_PATH, logs)
     
     # 监控采样：每5次调车操作采样一次
@@ -2736,6 +2736,14 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
                     'state': state, 'action': '清理',
                     'reason': f'当前设备离线: {state}'
                 })
+                # 记录设备离开网格事件
+                try:
+                    write_global_log('device_leave', region_key,
+                        f'设备离开网格(自恢复清理): {device_num}({device_code[-8:] if device_code else "?"}), '
+                        f'状态:{state}',
+                        raw_data={'deviceCode': device_code, 'deviceNum': device_num,
+                                  'state': state, 'region_key': region_key, 'reason': 'self_heal'})
+                except: pass
             else:
                 steps.append({
                     'device_code': device_code, 'device_num': device_num,
