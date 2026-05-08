@@ -680,8 +680,13 @@ def get_all_areas_status():
 
 # ========== 状态上报处理 ==========
 
-def _clean_by_order_id_across_all_regions(order_id, device_code):
-    """当 status=8 无法匹配模板时，遍历所有区域所有模板按 order_id 清理"""
+def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
+    """当 status=8 无法匹配模板时，遍历所有区域所有模板按 order_id 清理
+    
+    同时根据匹配到的模板类型操作 currentCount：
+    - 来方向（empty_in/load_in）：写入 currentCount
+    - 回方向（empty_out/load_out）：从 currentCount 删除
+    """
     index = _load_cache_index()
     cleaned = 0
     print(f"[Dispatch] _clean_by_order_id_across_all_regions: order_id={order_id}, device_code={device_code}")
@@ -692,13 +697,45 @@ def _clean_by_order_id_across_all_regions(order_id, device_code):
             fpath = _get_template_file_path(rk, t)
             tasks = _load_json(fpath)
             old_count = len(tasks)
-            # 按 order_id 匹配删除
+            # 按 order_id 匹配删除，同时记录被删任务的信息
+            removed_tasks = [task for task in tasks if task.get('order_id') == order_id and task.get('status') == 6]
             new_tasks = [task for task in tasks if not (task.get('order_id') == order_id and task.get('status') == 6)]
             if len(new_tasks) < old_count:
                 _save_json(fpath, new_tasks)
                 removed = old_count - len(new_tasks)
                 cleaned += removed
                 print(f"[Dispatch] _clean_by_order_id: 按order_id清理 {rk}/{t.get('code', t.get('name', ''))} 删除了{removed}条")
+                
+                # 根据模板类型操作 currentCount
+                task_type = _normalize_task_type(t)
+                _dc = device_code
+                _dn = device_num
+                # 从被删任务中获取设备信息
+                if (not _dc or not _dn) and removed_tasks:
+                    rt = removed_tasks[0]
+                    if not _dc: _dc = rt.get('deviceCode', '')
+                    if not _dn: _dn = rt.get('deviceNum', '')
+                
+                if _dc:
+                    now_file = _get_region_file(rk, 'currentCount.json')
+                    now_devices = _load_json(now_file)
+                    if _is_in_direction(task_type):
+                        # 来方向：写入 currentCount
+                        if not any(d.get('deviceCode') == _dc for d in now_devices):
+                            now_devices.append({
+                                'deviceCode': _dc, 'deviceNum': _dn or '',
+                                'order_id': order_id, 'create_time': datetime.now().isoformat(),
+                                'state': 'pending'
+                            })
+                            _save_json(now_file, now_devices)
+                            print(f"[Dispatch] _clean_by_order_id: currentCount {rk} +1 (来方向)")
+                    else:
+                        # 回方向：从 currentCount 删除
+                        old_cc = len(now_devices)
+                        now_devices = [d for d in now_devices if d.get('deviceCode') != _dc]
+                        if len(now_devices) < old_cc:
+                            _save_json(now_file, now_devices)
+                            print(f"[Dispatch] _clean_by_order_id: currentCount {rk} -1 (回方向)")
             tasks = new_tasks
             # 也按 deviceCode 匹配删除
             if device_code:
@@ -708,9 +745,6 @@ def _clean_by_order_id_across_all_regions(order_id, device_code):
                     removed2 = len(tasks) - len(new_tasks2)
                     cleaned += removed2
                     print(f"[Dispatch] _clean_by_order_id: 按deviceCode清理 {rk}/{t.get('code', t.get('name', ''))} 删除了{removed2}条")
-        # 注意：不清理 currentCount！
-        # 跨区域清理时无法确定设备属于哪个区域，误删会导致设备从网格消失。
-        # currentCount 的清理只由正常匹配的 status=8 上报处理。
     print(f"[Dispatch] _clean_by_order_id_across_all_regions: 共清理{cleaned}条")
     return cleaned
 
@@ -826,7 +860,7 @@ def handle_status_report(data):
                     return True, f"无法匹配模板但按order_id更新了{updated}条 (region_key={region_key}, template={template_name})", True
             else:
                 # status=8 等完成状态：遍历所有区域按 order_id 清理
-                cleaned = _clean_by_order_id_across_all_regions(order_id, device_code)
+                cleaned = _clean_by_order_id_across_all_regions(order_id, device_code, device_num)
                 if cleaned:
                     return True, f"无法匹配模板但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
         # 记录未匹配上报到操作日志（方便排查）
@@ -868,7 +902,7 @@ def handle_status_report(data):
                 if updated:
                     return True, f"模板不在区域但按order_id更新了{updated}条 (region_key={region_key}, template={template_name})", True
             else:
-                cleaned = _clean_by_order_id_across_all_regions(order_id, device_code)
+                cleaned = _clean_by_order_id_across_all_regions(order_id, device_code, device_num)
                 if cleaned:
                     return True, f"模板不在区域但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
         # 记录未匹配上报到操作日志
