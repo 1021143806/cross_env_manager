@@ -971,6 +971,9 @@ function renderAreas(areas) {
                             <button class="btn btn-sm btn-outline-danger" onclick="cleanDeviceHistory('${area.region_key}')" id="btn-clean-history-${area.region_key}">
                                 🗑️ 清理48h+
                             </button>
+                            <button class="btn btn-sm btn-outline-info" onclick="viewDeviceHistoryFile('${area.region_key}')">
+                                📝 查看/编辑
+                            </button>
                         </div>
                     </div>
                     <div class="formula-row" id="formula-${area.region_key}" style="font-size:0.8rem;padding:0.25rem 0;opacity:0.8;">
@@ -3244,6 +3247,56 @@ function cleanDeviceHistory(regionKey) {
             btn.disabled = false;
             btn.innerHTML = '🗑️ 清理48h+';
         });
+}
+
+function viewDeviceHistoryFile(regionKey) {
+    const filename = 'device_history.json';
+    fetch('/api/dispatch/region_file/' + encodeURIComponent(regionKey) + '/' + encodeURIComponent(filename))
+        .then(r => r.json())
+        .then(data => {
+            let content = data.content || '[]';
+            try { content = JSON.stringify(JSON.parse(content), null, 2); } catch(e) {}
+            
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+            modal.innerHTML = '<div style="background:var(--card-bg);border-radius:12px;padding:1.5rem;max-width:800px;width:90%;max-height:80vh;display:flex;flex-direction:column;">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">' +
+                '<h6 style="margin:0;">📝 ' + regionKey + ' / ' + filename + '</h6>' +
+                '<div><button class="btn btn-sm btn-primary me-1" id="btn-save-history">💾 保存</button>' +
+                '<button class="btn btn-sm btn-outline-secondary" id="btn-close-history">✕ 关闭</button></div></div>' +
+                '<textarea id="history-editor" style="flex:1;min-height:300px;font-family:monospace;font-size:0.8rem;padding:0.75rem;border:1px solid var(--border-color);border-radius:8px;background:var(--detail-card-bg);color:var(--text-color);resize:vertical;">' + escapeHtml(content) + '</textarea>' +
+                '<div id="history-save-msg" style="margin-top:0.5rem;font-size:0.8rem;"></div></div>';
+            document.body.appendChild(modal);
+            
+            modal.querySelector('#btn-close-history').onclick = () => modal.remove();
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+            
+            modal.querySelector('#btn-save-history').onclick = () => {
+                const editor = modal.querySelector('#history-editor');
+                const msgEl = modal.querySelector('#history-save-msg');
+                let newContent = editor.value;
+                try { JSON.parse(newContent); } catch(e) {
+                    msgEl.innerHTML = '<span class="text-danger">JSON 格式错误: ' + e.message + '</span>'; return;
+                }
+                fetch('/api/dispatch/region_file/' + encodeURIComponent(regionKey) + '/' + encodeURIComponent(filename), {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({content: newContent})
+                })
+                .then(r => r.json())
+                .then(result => {
+                    if (result.success) {
+                        msgEl.innerHTML = '<span class="text-success">✅ 保存成功</span>';
+                        loadDeviceHistory(regionKey);
+                        setTimeout(() => modal.remove(), 1000);
+                    } else {
+                        msgEl.innerHTML = '<span class="text-danger">❌ ' + (result.error || '保存失败') + '</span>';
+                    }
+                })
+                .catch(err => { msgEl.innerHTML = '<span class="text-danger">请求失败: ' + err.message + '</span>'; });
+            };
+        })
+        .catch(err => showToast('加载失败: ' + err.message, 'danger'));
 }
 </script>
 {% endblock %}

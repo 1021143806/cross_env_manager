@@ -2136,22 +2136,22 @@ def _clean_stale_device_history(region_key):
 
 
 def _sync_device_history(region_key, api_devices):
-    """将API返回的设备列表同步到 device_history.json
+    """将API返回的设备列表同步到 device_history.json（匹配模式）
     
-    - 新设备：新增记录
-    - 已存在设备（按 deviceCode 匹配）：更新 state/battery/deviceNum/update_time
+    - 只更新 deviceCode 在 history 中已存在的设备（匹配模式）
+    - API 返回但不在 history 中的设备：抛弃不记录
     - 不删除任何记录（删除由48h清理负责）
     
     Returns:
-        {'total': int, 'new': int, 'updated': int}
+        {'total': int, 'updated': int, 'skipped': int}
     """
     history = _load_device_history(region_key)
     now = datetime.now().isoformat()
     
     # 建立 deviceCode 索引
     history_map = {d['deviceCode']: d for d in history}
-    new_count = 0
     updated_count = 0
+    skipped_count = 0
     
     for dev in api_devices:
         dc = dev.get('deviceCode', '')
@@ -2167,17 +2167,8 @@ def _sync_device_history(region_key, api_devices):
             existing['update_time'] = now
             updated_count += 1
         else:
-            # 新增记录
-            history.append({
-                'deviceCode': dc,
-                'deviceNum': dev.get('deviceName', ''),
-                'deviceName': dev.get('deviceName', ''),
-                'state': dev.get('state', ''),
-                'battery': dev.get('battery', ''),
-                'create_time': now,
-                'update_time': now
-            })
-            new_count += 1
+            # 不在 history 中，抛弃
+            skipped_count += 1
     
     _save_device_history(region_key, history)
     return {'total': len(history), 'new': new_count, 'updated': updated_count}
@@ -2247,8 +2238,8 @@ def _fetch_all_devices_and_sync(region_key, region):
         'success': True,
         'device_count': len(api_devices),
         'history_total': sync_result['total'],
-        'history_new': sync_result['new'],
         'history_updated': sync_result['updated'],
+        'history_skipped': sync_result['skipped'],
         'cc_updated': cc_result['updated']
     }
 
@@ -2279,7 +2270,7 @@ def _on_time_slot_change(region_key, region):
             write_global_log('time_slot_change', region_key,
                 f'分时段切换全量检查完成: 清理{clean_result["cleaned"]}条旧记录, '
                 f'获取{fetch_result["device_count"]}台设备, '
-                f'历史共{fetch_result["history_total"]}条(新增{fetch_result["history_new"]},更新{fetch_result["history_updated"]}), '
+                f'历史共{fetch_result["history_total"]}条(更新{fetch_result["history_updated"]},跳过{fetch_result["history_skipped"]}), '
                 f'currentCount更新{fetch_result["cc_updated"]}台')
         else:
             write_global_log('time_slot_change', region_key,
@@ -2996,7 +2987,7 @@ def api_device_history_fetch_all(region_key):
         write_global_log('device_history', region_key,
             f'手动全量获取: 清理{clean_result["cleaned"]}条, '
             f'获取{fetch_result["device_count"]}台设备, '
-            f'历史共{fetch_result["history_total"]}条(新增{fetch_result["history_new"]},更新{fetch_result["history_updated"]}), '
+            f'历史共{fetch_result["history_total"]}条(更新{fetch_result["history_updated"]},跳过{fetch_result["history_skipped"]}), '
             f'currentCount更新{fetch_result["cc_updated"]}台')
     
     return jsonify({
