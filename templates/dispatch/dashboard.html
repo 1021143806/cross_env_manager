@@ -882,7 +882,24 @@ function loadGlobalLog() {
 }
 
 function exportLogs() {
-    window.open('/api/dispatch/global_log/export', '_blank');
+    // 如果有筛选条件，导出筛选后的数据；否则导出全部
+    const searchInput = document.getElementById('logSearch');
+    const searchText = searchInput ? searchInput.value.trim().toLowerCase() : '';
+    const filtered = filterLogs(allLogs, logFilter);
+    
+    if (searchText || logFilter !== 'all') {
+        // 有筛选：导出筛选后的数据
+        const blob = new Blob([JSON.stringify(filtered, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'dispatch_logs_filtered_' + new Date().toISOString().slice(0,19).replace(/:/g,'') + '.json';
+        a.click();
+        URL.revokeObjectURL(url);
+    } else {
+        // 无筛选：导出全部（含大日志）
+        window.open('/api/dispatch/global_log/export', '_blank');
+    }
 }
 
 let currentRawData = null;
