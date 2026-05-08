@@ -920,9 +920,18 @@ def handle_status_report(data):
     
     now = datetime.now().isoformat()
     
-    # status=7 且无设备号：任务异常（如货架未初始化），任务从未开始执行，直接忽略
-    if status == 7 and not device_code and not device_num:
-        return True, f"异常上报(status=7)无设备号: {data.get('errorDesc', '')}", True
+    # status=7：任务下发失败（如设备已有任务），只清理模板JSON，不操作currentCount（车没走）
+    if status == 7:
+        tasks = _load_json(template_file)
+        old_count = len(tasks)
+        if order_id:
+            tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') == 6)]
+        if device_code:
+            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') == 6)]
+        template_removed = old_count - len(tasks)
+        if template_removed > 0:
+            _save_json(template_file, tasks)
+        return True, f'模板-{template_name} -{template_removed} (status=7下发失败，车未移动)', True
     
     if status in (6, 10):
         # 任务开始（运行中）：记录到模板 JSON
@@ -1750,6 +1759,21 @@ def _execute_dispatch(region_key, region, balance):
     selected_device = None
     if direction == 'out' and not is_manual:
         selected_device = _select_device_for_empty_return(region_key, region)
+        # 下发前检查设备状态：非空闲则跳过，避免 RCS 返回 status=7
+        if selected_device:
+            sh = region.get('self_heal', {})
+            api_path = sh.get('device_query_api', SELF_HEAL_DEFAULTS['device_query_api'])
+            area_id = region.get('areaId', '0')
+            if api_path and 'XX' not in api_path:
+                device_info = _query_device_status('', api_path, area_id, selected_device['deviceCode'])
+                if device_info:
+                    dev_state = device_info.get('state', '')
+                    if dev_state != 'Idle':
+                        print(f"[Dispatch] 设备非空闲跳过下发: {selected_device['deviceNum']}({selected_device['deviceCode'][-8:]}), state={dev_state}")
+                        write_global_log('execute_skip', region_key,
+                            f'设备非空闲跳过下发: {selected_device["deviceNum"]}({selected_device["deviceCode"][-8:]}), state={dev_state}',
+                            raw_data={'deviceCode': selected_device['deviceCode'], 'deviceNum': selected_device['deviceNum'], 'state': dev_state})
+                        selected_device = None  # 跳过，回退到不指定设备
     
     task_order_detail = {"taskPath": "", "shelfNumber": ""}
     if selected_device:
