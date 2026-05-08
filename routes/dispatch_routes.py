@@ -724,6 +724,8 @@ def _update_by_order_id_across_all_regions(order_id, device_code, device_num):
             if found:
                 _save_json(fpath, tasks)
                 print(f"[Dispatch] _update_by_order_id: 更新 {rk}/{t.get('code', t.get('name', ''))} device={device_num}")
+    if updated == 0:
+        print(f"[Dispatch] _update_by_order_id: 未找到匹配 order_id={order_id}, device={device_num}({device_code})")
     return updated
 
 
