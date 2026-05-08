@@ -820,7 +820,7 @@ def handle_status_report(data):
     if status == 7 and not device_code and not device_num:
         return True, f"异常上报(status=7)无设备号: {data.get('errorDesc', '')}", True
     
-    if status == 6:
+    if status in (6, 10):
         # 任务开始（运行中）：记录到模板 JSON
         # 匹配策略（两级）：
         #   1. 先按 deviceCode 匹配（负载任务）
