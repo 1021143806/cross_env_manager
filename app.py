@@ -1462,6 +1462,32 @@ def get_task_group_info(order_id):
             'message': f'服务器错误: {str(e)}'
         }), 500
 
+@app.route('/api/task/local_detail/<order_id>')
+@login_required
+def get_local_task_detail(order_id):
+    """从本地数据库直接查询 fy_cross_task + fy_cross_task_detail 完整字段"""
+    try:
+        result = task_query_extended.get_local_cross_task_detail(order_id)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/query/log')
+@login_required
+def api_query_log():
+    """获取查询操作日志"""
+    import json as _json
+    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'query', 'query_log.json')
+    if not os.path.exists(log_path):
+        return jsonify({'logs': []})
+    try:
+        with open(log_path, 'r', encoding='utf-8') as f:
+            logs = _json.load(f)
+        logs.sort(key=lambda x: x.get('time', ''), reverse=True)
+        return jsonify({'logs': logs})
+    except:
+        return jsonify({'logs': []})
+
 @app.route('/api/task/resend', methods=['POST'])
 @login_required
 def resend_task():
@@ -1727,10 +1753,15 @@ def get_main_task_status():
         })
         
     except Exception as e:
+        print(f"[Stats] 获取大模板状态统计失败: {e}")
         return jsonify({
-            'success': False,
-            'message': f'服务器错误: {str(e)}'
-        }), 500
+            'success': True,
+            'total': 0,
+            'date': today if 'today' in dir() else '',
+            'distribution': [],
+            'errorDetail': [],
+            '_warning': f'数据库连接失败: {str(e)}'
+        })
     finally:
         if 'conn' in locals():
             conn.close()
@@ -2602,7 +2633,9 @@ if __name__ == '__main__':
         register_blueprints(app)
         print(f"[启动] 蓝图路由已注册")
     except Exception as e:
+        import traceback
         print(f"[启动] 警告: 蓝图注册失败，使用原有路由: {e}")
+        traceback.print_exc()
     
     # ========================================================================
     # Phase 4 架构优化：初始化缓存

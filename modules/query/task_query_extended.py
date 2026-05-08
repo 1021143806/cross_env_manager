@@ -6,6 +6,7 @@
 """
 
 import pymysql
+from pymysql.cursors import DictCursor
 from datetime import datetime
 from modules.database.connection import get_db_connection
 
@@ -368,7 +369,7 @@ def format_timestamp(timestamp):
     return ""
 
 def connect_to_production_db(server_ip, db_name="wms"):
-    """连接到生产环境数据库"""
+    """连接到生产环境数据库（5秒超时）"""
     try:
         conn = pymysql.connect(
             host=server_ip,
@@ -376,6 +377,7 @@ def connect_to_production_db(server_ip, db_name="wms"):
             password='CCshenda889',
             database=db_name,
             charset='utf8mb4',
+            connect_timeout=5,
             cursorclass=pymysql.cursors.DictCursor
         )
         return conn
@@ -824,3 +826,45 @@ def query_device_status_via_service(service_url, area_id, device_code):
             "http_status": None,
             "elapsed_ms": elapsed_ms
         }
+
+
+def get_local_cross_task_detail(order_id):
+    """
+    从本地数据库直接查询 fy_cross_task 和 fy_cross_task_detail 表
+    返回完整的数据库原始字段，用于前端 Tab 面板展示
+    连接超时 5 秒，失败时静默返回错误
+    """
+    try:
+        from modules.database.connection import get_db_config
+        config = get_db_config()
+        config['connect_timeout'] = 5
+        conn = pymysql.connect(**config, cursorclass=DictCursor)
+    except Exception as e:
+        return {"error": f"数据库连接失败: {str(e)}"}
+    
+    try:
+        with conn.cursor() as cursor:
+            # 查询主任务
+            cursor.execute(
+                "SELECT * FROM fy_cross_task WHERE orderId = %s LIMIT 1",
+                (order_id,)
+            )
+            main_task = cursor.fetchone()
+            
+            # 查询子任务
+            cursor.execute(
+                "SELECT * FROM fy_cross_task_detail WHERE order_id = %s ORDER BY id",
+                (order_id,)
+            )
+            sub_tasks = cursor.fetchall()
+            
+            return {
+                "success": True,
+                "main_task": main_task,
+                "sub_tasks": sub_tasks,
+                "sub_task_count": len(sub_tasks) if sub_tasks else 0
+            }
+    except Exception as e:
+        return {"error": f"查询失败: {str(e)}"}
+    finally:
+        conn.close()
