@@ -614,6 +614,72 @@ function refreshData() {
         .catch(err => console.error('获取数据失败:', err));
 }
 
+// 只刷新单个区域（不全量刷新所有区域）
+function refreshSingleRegion(regionKey) {
+    fetch('/api/dispatch/status')
+        .then(r => r.json())
+        .then(data => {
+            const area = (data.areas || []).find(a => a.region_key === regionKey);
+            if (area) {
+                updateSingleArea(area);
+            }
+        })
+        .catch(err => console.error('刷新单区域失败:', err));
+}
+
+// 更新单个区域卡片
+function updateSingleArea(area) {
+    const card = document.querySelector(`[data-region="${area.region_key}"]`) ||
+                 document.getElementById('card-' + area.region_key);
+    if (!card) return;
+    
+    // 更新设备网格
+    const deviceGrid = card.querySelector('.device-grid');
+    if (deviceGrid) {
+        const currentDevs = filterCurrentDevices(area.current_devices || [], area.pending_devices || []);
+        const pendingDevs = area.pending_devices || [];
+        const allDevs = [...currentDevs.map(d => ({...d, isPending: false})), ...pendingDevs.map(d => ({...d, isPending: true}))];
+        allDevs.sort((a, b) => (a.create_time || '').localeCompare(b.create_time || ''));
+        
+        const newDataMap = {};
+        allDevs.forEach(d => { newDataMap[d.deviceNum] = d; });
+        const newNums = new Set(allDevs.map(d => d.deviceNum));
+        
+        const existingIcons = deviceGrid.querySelectorAll('.agv-icon');
+        existingIcons.forEach(icon => {
+            const dn = icon.querySelector('.dev-num')?.textContent;
+            if (!dn) return;
+            if (!newNums.has(dn)) {
+                icon.classList.add('leaving');
+                setTimeout(() => icon.remove(), 400);
+            }
+        });
+        
+        const existingNums = new Set(Array.from(deviceGrid.querySelectorAll('.agv-icon')).map(el => el.querySelector('.dev-num')?.textContent));
+        allDevs.forEach(d => {
+            if (!existingNums.has(d.deviceNum)) {
+                const html = renderDeviceIcon(d, d.isPending);
+                const temp = document.createElement('span');
+                temp.innerHTML = html;
+                const newIcon = temp.firstChild;
+                newIcon.classList.add('entering');
+                deviceGrid.appendChild(newIcon);
+            }
+        });
+    }
+    
+    // 更新历史设备网格
+    updateHistoryDeviceGrid(area.region_key);
+    
+    // 更新公式行
+    const formulaRow = card.querySelector('.formula-row');
+    if (formulaRow) formulaRow.innerHTML = getFormulaText(area);
+    
+    // 更新计算信息行
+    const calcInfoRow = card.querySelector('.calc-info-row');
+    if (calcInfoRow) calcInfoRow.innerHTML = getCalcInfoText(area);
+}
+
 let allLogs = [];
 let logFilter = 'all';
 let logAutoScroll = true;
@@ -3263,7 +3329,8 @@ function fetchAllDevices(regionKey) {
             if (data.success) {
                 showToast('获取完成: ' + data.device_count + '台设备, 历史共' + data.history_total + '条', 'success');
                 loadDeviceHistory(regionKey);
-                refreshData();
+                // 只刷新当前区域，不刷新全部
+                refreshSingleRegion(regionKey);
             } else {
                 showToast(data.error || '获取失败', 'danger');
             }

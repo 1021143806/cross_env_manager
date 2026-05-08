@@ -2223,18 +2223,30 @@ def _sync_device_history(region_key, api_devices):
 
 
 def _update_current_count_from_api(region_key, api_devices):
-    """用全量API返回的设备状态同步 currentCount.json
+    """用全量API返回的设备状态同步 currentCount.json（仅匹配历史设备）
     
+    只处理 deviceCode 在 device_history.json 中已存在的设备：
     - 非离线设备（Idle/InTask/Charging）不在 currentCount 中：自动添加
     - 离线设备（Offline/Downlined）在 currentCount 中：自动清理
     - 已存在的设备：更新 state 和 battery
+    - 不在 history 中的设备：忽略
     """
+    # 加载历史设备，建立 deviceCode 白名单
+    history = _load_device_history(region_key)
+    history_codes = {d.get('deviceCode', '') for d in history if d.get('deviceCode')}
+    if not history_codes:
+        return {'updated': 0, 'added': 0, 'cleaned': 0}
+    
     now_file = _get_region_file(region_key, 'currentCount.json')
     now_devices = _load_json(now_file)
     now = datetime.now().isoformat()
     
-    # 建立 API 设备索引（按 deviceCode）
-    api_map = {d.get('deviceCode', ''): d for d in api_devices if d.get('deviceCode')}
+    # 建立 API 设备索引（按 deviceCode），只保留在 history 中的设备
+    api_map = {}
+    for d in api_devices:
+        dc = d.get('deviceCode', '')
+        if dc and dc in history_codes:
+            api_map[dc] = d
     
     state_map = {'Idle': 'idle', 'InTask': 'busy', 'Charging': 'charging'}
     updated = 0
@@ -2260,7 +2272,7 @@ def _update_current_count_from_api(region_key, api_devices):
             updated += 1
         new_now_devices.append(d)
     
-    # 2. 非离线设备不在 currentCount 中：自动添加
+    # 2. 非离线设备不在 currentCount 中且在白名单中：自动添加
     for dc, api_dev in api_map.items():
         new_state = api_dev.get('state', '')
         if new_state in ('Offline', 'Downlined'):
