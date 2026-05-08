@@ -917,6 +917,13 @@ def handle_status_report(data):
         if status == 8:
             _update_daily_stats(region_key, task_type)
     
+    # 更新设备历史记录（记录这个区域48小时内来过哪些设备）
+    if device_code:
+        try:
+            _touch_device_history(region_key, device_code, device_num)
+        except Exception as e:
+            print(f"[Dispatch] _touch_device_history 失败: {e}")
+    
     return True, change_summary, True
 
 
@@ -2111,6 +2118,44 @@ def _save_device_history(region_key, data):
     _save_json(_get_device_history_path(region_key), data)
 
 
+def _touch_device_history(region_key, device_code, device_num='', state=''):
+    """状态上报时更新设备历史记录（轻量操作）
+    
+    - deviceCode 已存在：更新 update_time、deviceNum、state
+    - deviceCode 不存在：新增记录（设备第一次来这个区域）
+    
+    这是 device_history.json 的主要写入入口，
+    记录这个区域48小时内来过哪些设备。
+    """
+    if not device_code:
+        return
+    
+    history = _load_device_history(region_key)
+    now = datetime.now().isoformat()
+    
+    # 查找已有记录
+    for d in history:
+        if d.get('deviceCode') == device_code:
+            d['deviceNum'] = device_num or d.get('deviceNum', '')
+            if state:
+                d['state'] = state
+            d['update_time'] = now
+            _save_device_history(region_key, history)
+            return
+    
+    # 新设备：新增记录
+    history.append({
+        'deviceCode': device_code,
+        'deviceNum': device_num,
+        'deviceName': device_num,
+        'state': state,
+        'battery': '',
+        'create_time': now,
+        'update_time': now
+    })
+    _save_device_history(region_key, history)
+
+
 def _clean_stale_device_history(region_key):
     """清理超过48小时未活动的设备记录
     
@@ -2171,7 +2216,7 @@ def _sync_device_history(region_key, api_devices):
             skipped_count += 1
     
     _save_device_history(region_key, history)
-    return {'total': len(history), 'new': new_count, 'updated': updated_count}
+    return {'total': len(history), 'updated': updated_count, 'skipped': skipped_count}
 
 
 def _update_current_count_from_api(region_key, api_devices):
