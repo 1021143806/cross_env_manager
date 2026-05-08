@@ -2507,6 +2507,8 @@ def _self_heal_check_all():
 def _start_self_heal_thread():
     """启动自恢复后台线程"""
     def _loop():
+        # 启动后等待15秒，让积压的状态上报先处理，避免误判设备离线
+        time.sleep(15)
         while True:
             try:
                 index = _load_cache_index()
@@ -2542,6 +2544,8 @@ _poll_dispatch_last = {}  # 记录每个区域上次轮询调度时间
 def _start_poll_dispatch_thread():
     """启动定时轮询调度后台线程（兜底机制）"""
     def _loop():
+        # 启动后等待30秒，让自恢复先清理幽灵任务，避免防抖丢失导致重复下发
+        time.sleep(30)
         while True:
             try:
                 index = _load_cache_index()
