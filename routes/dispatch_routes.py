@@ -653,6 +653,31 @@ def _clean_by_order_id_across_all_regions(order_id, device_code):
     return cleaned
 
 
+def _update_by_order_id_across_all_regions(order_id, device_code, device_num):
+    """当 status=6 无法匹配模板时，遍历所有区域按 order_id 更新设备信息"""
+    index = _load_cache_index()
+    updated = 0
+    for rk, region in index.items():
+        if not isinstance(region, dict) or 'templates' not in region:
+            continue
+        for t in region.get('templates', []):
+            fpath = _get_template_file_path(rk, t)
+            tasks = _load_json(fpath)
+            found = False
+            for task in tasks:
+                if task.get('order_id') == order_id and task.get('status') == 6:
+                    task['deviceCode'] = device_code
+                    task['deviceNum'] = device_num
+                    task['update_time'] = datetime.now().isoformat()
+                    found = True
+                    updated += 1
+                    break
+            if found:
+                _save_json(fpath, tasks)
+                print(f"[Dispatch] _update_by_order_id: 更新 {rk}/{t.get('code', t.get('name', ''))} device={device_num}")
+    return updated
+
+
 def handle_status_report(data):
     """
     处理任务状态上报（兼容两种报文格式）
@@ -729,11 +754,17 @@ def handle_status_report(data):
     
     if not region_key or not template_name:
         # 无法匹配区域/模板，静默接受上报（不返回错误，避免 ICS 重试）
-        # status=8 等完成状态：遍历所有区域按 order_id 清理，避免数据残留
-        if status != 6 and order_id:
-            cleaned = _clean_by_order_id_across_all_regions(order_id, device_code)
-            if cleaned:
-                return True, f"无法匹配模板但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
+        if order_id:
+            if status == 6:
+                # status=6：按 order_id 跨区域更新设备信息
+                updated = _update_by_order_id_across_all_regions(order_id, device_code, device_num)
+                if updated:
+                    return True, f"无法匹配模板但按order_id更新了{updated}条 (region_key={region_key}, template={template_name})", True
+            else:
+                # status=8 等完成状态：遍历所有区域按 order_id 清理
+                cleaned = _clean_by_order_id_across_all_regions(order_id, device_code)
+                if cleaned:
+                    return True, f"无法匹配模板但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
         # 记录未匹配上报到操作日志（方便排查）
         try:
             write_global_log('report_unmatched', region_key or '?',
@@ -767,11 +798,15 @@ def handle_status_report(data):
     
     if not template_config:
         # 模板不存在于该区域，静默接受上报
-        # status=8 等完成状态：遍历所有区域按 order_id 清理
-        if status != 6 and order_id:
-            cleaned = _clean_by_order_id_across_all_regions(order_id, device_code)
-            if cleaned:
-                return True, f"模板不在区域但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
+        if order_id:
+            if status == 6:
+                updated = _update_by_order_id_across_all_regions(order_id, device_code, device_num)
+                if updated:
+                    return True, f"模板不在区域但按order_id更新了{updated}条 (region_key={region_key}, template={template_name})", True
+            else:
+                cleaned = _clean_by_order_id_across_all_regions(order_id, device_code)
+                if cleaned:
+                    return True, f"模板不在区域但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
         # 记录未匹配上报到操作日志
         try:
             write_global_log('report_unmatched', region_key,
