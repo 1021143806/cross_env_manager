@@ -834,20 +834,49 @@ function scrollLogToTop() {
     container.scrollTop = 0;
 }
 
+let _lastLogTime = '';  // 记录最后一条日志的时间戳，用于增量拉取
+
 function loadGlobalLog() {
-    fetch('/api/dispatch/global_log?_=' + Date.now())
+    let url = '/api/dispatch/global_log';
+    if (_lastLogTime) {
+        url += '?since=' + encodeURIComponent(_lastLogTime);
+    }
+    fetch(url)
         .then(r => {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
         })
         .then(data => {
-            allLogs = data.logs || [];
-            renderLogs();
+            const newLogs = data.logs || [];
+            if (newLogs.length > 0) {
+                // 更新最后时间戳
+                _lastLogTime = newLogs[0].time || _lastLogTime;
+                if (_lastLogTime && !allLogs.length) {
+                    // 首次加载：全量替换
+                    allLogs = newLogs;
+                } else {
+                    // 增量模式：合并去重（按 time+action+detail 去重）
+                    const existingKeys = new Set(allLogs.map(l => (l.time||'') + '|' + (l.action||'') + '|' + (l.detail||'')));
+                    newLogs.forEach(l => {
+                        const key = (l.time||'') + '|' + (l.action||'') + '|' + (l.detail||'');
+                        if (!existingKeys.has(key)) {
+                            allLogs.unshift(l);
+                        }
+                    });
+                    // 缓存最多400条
+                    if (allLogs.length > 400) {
+                        allLogs = allLogs.slice(0, 400);
+                    }
+                }
+                renderLogs();
+            }
         })
         .catch(err => {
             console.error('加载日志失败:', err);
             const container = document.getElementById('logContainer');
-            if (container) container.innerHTML = '<div class="text-center text-muted py-3">加载日志失败</div>';
+            if (container && !allLogs.length) {
+                container.innerHTML = '<div class="text-center text-muted py-3">加载日志失败</div>';
+            }
         });
 }
 

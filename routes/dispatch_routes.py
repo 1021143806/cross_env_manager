@@ -51,6 +51,7 @@ DATA_DIR = os.path.join(BASE_DIR, 'data', 'dispatch')
 CACHE_INDEX_PATH = os.path.join(DATA_DIR, 'cache_index.json')
 BACKUP_DIR = os.path.join(DATA_DIR, 'backups')
 GLOBAL_LOG_PATH = os.path.join(DATA_DIR, 'global_log.json')
+GLOBAL_LOG_ARCHIVE_DIR = os.path.join(DATA_DIR, 'logs')  # 大日志归档目录
 DAILY_STATS_PATH = os.path.join(DATA_DIR, 'daily_stats.json')
 SHARED_DIR = os.path.join(DATA_DIR, '_shared')  # 跨区域共享模板目录
 
@@ -172,8 +173,49 @@ def _get_region_file(region_key, filename):
 
 # ========== 全局操作日志 ==========
 
+def _get_archive_log_path(date_str=None):
+    """获取大日志归档文件路径"""
+    os.makedirs(GLOBAL_LOG_ARCHIVE_DIR, exist_ok=True)
+    if date_str is None:
+        date_str = datetime.now().strftime('%Y-%m-%d')
+    return os.path.join(GLOBAL_LOG_ARCHIVE_DIR, f'global_log_{date_str}.json')
+
+
+def _load_all_logs():
+    """加载所有日志：热数据 + 2天内的大日志"""
+    logs = _load_json(GLOBAL_LOG_PATH)
+    # 加载最近2天的大日志
+    from datetime import timedelta
+    for i in range(2):
+        date_str = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+        archive_path = _get_archive_log_path(date_str)
+        if os.path.exists(archive_path):
+            archive_logs = _load_json(archive_path)
+            if isinstance(archive_logs, list):
+                logs.extend(archive_logs)
+    return logs
+
+
+def _clean_old_archive_logs():
+    """清理2天前的大日志文件"""
+    from datetime import timedelta
+    cutoff_date = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
+    if os.path.exists(GLOBAL_LOG_ARCHIVE_DIR):
+        for f in os.listdir(GLOBAL_LOG_ARCHIVE_DIR):
+            if f.startswith('global_log_') and f.endswith('.json'):
+                date_part = f.replace('global_log_', '').replace('.json', '')
+                if date_part < cutoff_date:
+                    try:
+                        os.remove(os.path.join(GLOBAL_LOG_ARCHIVE_DIR, f))
+                    except:
+                        pass
+
+
 def write_global_log(action, region_key, detail='', level='info', raw_data=None):
-    """写入全局操作日志（超过200条自动清理，保留最新200条）
+    """写入全局操作日志
+    
+    - 热数据 global_log.json：保留最新200条，前端实时展示
+    - 大日志 global_log_YYYY-MM-DD.json：满200条时批量追加旧日志，保留2天
     
     report_status 去重逻辑：
     - 完全一致（同模板+设备+状态+订单ID）：修改已有日志，追加重复次数
@@ -186,9 +228,7 @@ def write_global_log(action, region_key, detail='', level='info', raw_data=None)
         tn = raw_data.get('modelProcessCode') or raw_data.get('template_name', '')
         dn = raw_data.get('deviceNum', '')
         st = raw_data.get('status', '')
-        # 统一规范化 orderId：兼容 orderId 和 order_id 两种字段名
         oid = raw_data.get('orderId') or raw_data.get('order_id', '')
-        # 从后往前找最近一条匹配的 report_status 日志
         for i in range(len(logs) - 1, -1, -1):
             log = logs[i]
             if log.get('action') != 'report_status' or not log.get('raw_data'):
@@ -198,17 +238,13 @@ def write_global_log(action, region_key, detail='', level='info', raw_data=None)
             r_dn = rd.get('deviceNum', '')
             r_st = rd.get('status', '')
             if r_tn == tn and r_dn == dn and str(r_st) == str(st):
-                # 找到匹配：更新时间和内容
                 log['time'] = datetime.now().isoformat()
-                # 统一规范化旧日志的 orderId 后再比较
                 r_oid = rd.get('orderId') or rd.get('order_id', '')
                 if r_oid == oid:
-                    # 完全一致：追加重复次数（放在开头，避免冒号前空格问题）
                     dup_count = log.get('dup_count', 1) + 1
                     log['dup_count'] = dup_count
                     log['detail'] = f'(重复#{dup_count}) ' + detail
                 else:
-                    # 有偏差：覆盖内容，重置重复计数
                     log['detail'] = detail
                     log['raw_data'] = raw_data
                     log['level'] = level
@@ -227,9 +263,22 @@ def write_global_log(action, region_key, detail='', level='info', raw_data=None)
     if raw_data is not None:
         entry["raw_data"] = raw_data
     logs.append(entry)
-    # 超过200条保留最新200条
+    
+    # 超过200条：把最旧的日志批量追加到大日志，保留最新200条
     if len(logs) > 200:
-        logs = logs[-200:]
+        overflow = logs[:-200]  # 超出200条的部分
+        logs = logs[-200:]      # 保留最新200条
+        # 追加到大日志文件
+        archive_path = _get_archive_log_path()
+        archive_logs = _load_json(archive_path)
+        if not isinstance(archive_logs, list):
+            archive_logs = []
+        archive_logs.extend(overflow)
+        # 大日志最多500条
+        if len(archive_logs) > 500:
+            archive_logs = archive_logs[-500:]
+        _save_json(archive_path, archive_logs)
+    
     _save_json(GLOBAL_LOG_PATH, logs)
     
     # 监控采样：每5次调车操作采样一次
@@ -281,8 +330,14 @@ def _update_daily_stats(region_key, field):
 @dispatch_bp.route('/api/dispatch/global_log')
 @login_required
 def api_global_log():
-    """获取全局操作日志"""
+    """获取全局操作日志（支持增量拉取 ?since=timestamp）"""
+    since = request.args.get('since', '')
     logs = _load_json(GLOBAL_LOG_PATH)
+    
+    if since:
+        # 增量模式：只返回比 since 新的日志
+        logs = [log for log in logs if log.get('time', '') > since]
+    
     logs.sort(key=lambda x: x.get('time', ''), reverse=True)
     return jsonify({'logs': logs})
 
@@ -1072,8 +1127,8 @@ def api_device_info():
     if not device_info:
         return jsonify({'error': f'设备 {device_num} 未找到'}), 404
     
-    # 从 global_log 查询该设备的操作历史
-    logs = _load_json(GLOBAL_LOG_PATH)
+    # 从热数据+大日志中查询该设备的操作历史
+    logs = _load_all_logs()
     history = []
     for log in reversed(logs):
         detail = log.get('detail', '')
@@ -2863,6 +2918,10 @@ def _start_self_heal_thread():
     def _loop():
         # 启动后等待15秒，让积压的状态上报先处理，避免误判设备离线
         time.sleep(15)
+        # 清理2天前的大日志文件
+        try:
+            _clean_old_archive_logs()
+        except: pass
         while True:
             try:
                 index = _load_cache_index()
