@@ -802,10 +802,10 @@ def handle_status_report(data):
             if t.get('deviceCode') == device_code and t.get('status') == 6:
                 existing = t
                 break
-        # 第2级：空车任务覆盖更新（下发时 deviceCode 为空，上报时填充）
+        # 第2级：按 order_id 匹配（空车任务，下发时可能已指定设备也可能未指定）
         if not existing and order_id:
             for t in tasks:
-                if t.get('order_id') == order_id and not t.get('deviceCode') and t.get('status') == 6:
+                if t.get('order_id') == order_id and t.get('status') == 6:
                     existing = t
                     break
         
@@ -842,15 +842,27 @@ def handle_status_report(data):
         #   3. deviceCode 匹配（兜底）
         tasks = _load_json(template_file)
         old_count = len(tasks)
+        
+        # 在清理前先保存匹配到的任务信息（用于后续 currentCount 更新）
+        _matched_task = None
         # 第1级：deviceCode + order_id 精确匹配
         matched = [t for t in tasks if t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') == 6]
         if matched:
+            _matched_task = matched[0]
             tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') == 6)]
         elif order_id:
-            # 第2级：order_id 匹配（空车任务，deviceCode 为空）
+            # 第2级：order_id 匹配
+            for t in tasks:
+                if t.get('order_id') == order_id and t.get('status') == 6:
+                    _matched_task = t
+                    break
             tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') == 6)]
         else:
             # 第3级：deviceCode 匹配（兜底）
+            for t in tasks:
+                if t.get('deviceCode') == device_code and t.get('status') == 6:
+                    _matched_task = t
+                    break
             tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') == 6)]
         _save_json(template_file, tasks)
         template_removed = old_count - len(tasks)
@@ -879,16 +891,9 @@ def handle_status_report(data):
             rk_cc_change = ''
             if _is_in_direction(task_type):
                 # 来区域完成：写入 currentCount.json
-                _device_code = device_code
-                _device_num = device_num
-                if not _device_code or not _device_num:
-                    for t in tasks:
-                        if t.get('order_id') == order_id and t.get('status') == 6:
-                            if not _device_code and t.get('deviceCode'):
-                                _device_code = t['deviceCode']
-                            if not _device_num and t.get('deviceNum'):
-                                _device_num = t['deviceNum']
-                            break
+                # 优先使用上报的设备信息，否则从匹配到的任务中获取
+                _device_code = device_code or (_matched_task.get('deviceCode', '') if _matched_task else '')
+                _device_num = device_num or (_matched_task.get('deviceNum', '') if _matched_task else '')
                 if not _device_code and not _device_num:
                     rk_cc_change = f'{rk}:跳过(无设备信息)'
                 elif not any(d.get('deviceCode') == _device_code for d in rk_now_devices):
