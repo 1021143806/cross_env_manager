@@ -1270,7 +1270,7 @@
         }
         
         // ========== 全链路调试面板 ==========
-        function renderQueryDebugPanel() {
+        window.renderQueryDebugPanel = function() {
             const debug = window._queryDebug;
             const panel = document.getElementById('queryDebugPanel');
             const toggle = document.getElementById('debugPanelToggle');
@@ -1414,7 +1414,7 @@
             return html;
         }
         
-        function showDeviceDetailModal() {
+        window.showDeviceDetailModal = function() {
             const data = _deviceQueryResult;
             if (!data) return;
             
