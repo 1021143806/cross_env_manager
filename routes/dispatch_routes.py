@@ -2284,17 +2284,22 @@ def _should_clean_device(device_info, region_key='', region=None, device_code=''
         task_start_time = ''
         matched_template = ''
         matched_status = ''
+        all_task_info = []  # 调试：记录所有遍历到的任务信息
         for t in region.get('templates', []):
             fpath = _get_template_file_path(region_key, t)
             if not os.path.exists(fpath):
                 continue
             tasks = _load_json(fpath)
+            tcode = t.get('code', t.get('name', ''))
             for task in tasks:
-                if task.get('deviceCode') == device_code and task.get('status') in (6, 10):
+                tdc = task.get('deviceCode', '')
+                ts = task.get('status', '')
+                all_task_info.append(f'{tcode}:{tdc[-8:] if tdc else "?"}={ts}')
+                if tdc == device_code and ts in (6, 10):
                     has_active_task = True
                     task_start_time = task.get('create_time', '')
-                    matched_template = t.get('code', t.get('name', ''))
-                    matched_status = str(task.get('status', ''))
+                    matched_template = tcode
+                    matched_status = str(ts)
                     break
             if has_active_task:
                 break
@@ -2316,7 +2321,9 @@ def _should_clean_device(device_info, region_key='', region=None, device_code=''
                 pass
             return False  # 未超过1小时，保留（可能在连廊中）
     
-    msg = f'[SelfHeal] 设备 {device_code[-8:]} 离线且无执行中任务(status in (6,10))，清理 | region={region_key} has_region={bool(region)} has_code={bool(device_code)}'
+    # 无执行中任务：输出调试信息
+    task_summary = ', '.join(all_task_info) if all_task_info else '(无任务)'
+    msg = f'[SelfHeal] 设备 {device_code[-8:]} 离线且无执行中任务(status in (6,10))，清理 | region={region_key} has_region={bool(region)} has_code={bool(device_code)} | 模板任务: {task_summary}'
     print(msg)
     try:
         write_global_log('self_heal_detail', region_key, msg)

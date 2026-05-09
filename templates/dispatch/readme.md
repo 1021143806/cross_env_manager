@@ -266,8 +266,10 @@ data/dispatch/
 | POST | `/api/dispatch/clean_simulated/<region_key>` | 🔑 登录 | 清理模拟数据 |
 | GET | `/api/dispatch/dispatch_log/<region_key>` | 🔑 登录 | 获取下发记录 |
 | POST | `/api/dispatch/dispatch_log/<region_key>` | ⚙️ 管理员 | 写入下发记录 |
-| GET | `/api/dispatch/global_log` | 🔑 登录 | 获取全局操作日志（支持搜索筛选） |
-| GET | `/api/dispatch/device_info` | 🔑 登录 | 获取设备详情（按 deviceNum 查询） |
+| GET | `/api/dispatch/global_log` | 🔑 登录 | 获取全局操作日志（支持搜索筛选、增量拉取 `?since=`） |
+| GET | `/api/dispatch/global_log/export` | 🔑 登录 | 导出大日志（2天内归档日志） |
+| GET | `/api/dispatch/logs` | ⚙️ 管理员 | 查看 supervisor 控制台日志（支持 `?lines=` 和 `?filter=`） |
+| GET | `/api/dispatch/device_info` | 🔑 登录 | 获取设备详情（按 deviceNum 查询，含历史日志） |
 | POST | `/api/dispatch/device_check` | 🔑 登录 | 设备状态检查（查询+清理） |
 | POST | `/api/dispatch/cancel_empty_tasks/<region_key>` | 🔑 登录 | 取消区域所有空车任务 |
 | POST | `/api/dispatch/manual_dispatch/<region_key>` | 🔑 登录 | 手动发空车（来/回） |
@@ -539,8 +541,13 @@ flowchart TD
 - `Offline` — 离线
 - `Downlined` — 下线
 
+**清理前检查**：设备离线/下线时，先检查该设备在区域模板中是否有执行中任务（`status in (6, 10)`）：
+- 有执行中任务且未超过 1 小时 → 保留（可能在连廊跨环境中）
+- 有执行中任务但超过 1 小时 → 清理
+- 无执行中任务 → 清理
+
 以下状态保留：
-- 任务执行中
+- 任务执行中（status=6 或 status=10）
 - 故障状态
 - 查询失败（保守保留，车可能还在路上）
 - 其他在线状态（空闲/充电等）
@@ -561,6 +568,7 @@ flowchart TD
 | `reset_all` | 清空数据 | 清空区域所有数据 |
 | `clean_simulated` | 清理模拟 | 清理模拟数据 |
 | `self_heal` | 自恢复 | 自恢复清理异常任务 |
+| `self_heal_detail` | 自恢复详情 | `_should_clean_device` 决策日志（含 status in (6,10) 检查结果） |
 | `device_leave` | 设备离开网格 | 设备从 currentCount 中删除 |
 | `device_history` | 设备历史 | 手动全量获取/清理设备历史 |
 | `time_slot_change` | 分时段切换 | 分时段切换时全量检查 |
@@ -597,7 +605,9 @@ flowchart TD
 
 ### 日志保留
 
-- `global_log.json`：最多 100 条
+- `global_log.json`（热数据）：最多 200 条
+- `global_log_YYYY-MM-DD.json`（归档日志）：每天最多 500 条，保留 2 天
+- 搜索时自动加载归档日志，搜索模式下停用自动刷新
 - `dispatch_log.json`（每个区域）：最多 10 条
 
 ## 性能负荷
