@@ -3169,6 +3169,30 @@ def _start_poll_dispatch_thread():
                     # 计算平衡
                     balance = calculate_area_balance(rk, region)
                     
+                    # [定时全量查询] 检查是否超过配置间隔
+                    sh = region.get('self_heal', {})
+                    fetch_interval_hours = sh.get('fetch_all_interval_hours', 0)
+                    if fetch_interval_hours > 0:
+                        last_fetch = _fetch_all_last.get(rk, 0)
+                        if time.time() - last_fetch > fetch_interval_hours * 3600:
+                            _fetch_all_last[rk] = time.time()
+                            def _do_fetch_all(rk=rk, region=region):
+                                try:
+                                    clean_result = _clean_stale_device_history(rk)
+                                    fetch_result = _fetch_all_devices_and_sync(rk, region)
+                                    if fetch_result['success']:
+                                        write_global_log('device_history', rk,
+                                            f'定时全量获取: 清理{clean_result["cleaned"]}条, '
+                                            f'获取{fetch_result["device_count"]}台设备, '
+                                            f'历史共{fetch_result["history_total"]}条(更新{fetch_result["history_updated"]},跳过{fetch_result["history_skipped"]}), '
+                                            f'currentCount更新{fetch_result["cc_updated"]}台,新增{fetch_result["cc_added"]}台,清理{fetch_result["cc_cleaned"]}台')
+                                        print(f"[FetchAll] 定时全量获取完成 {rk}: {fetch_result['device_count']}台设备")
+                                    else:
+                                        print(f"[FetchAll] 定时全量获取失败 {rk}: {fetch_result.get('error','未知')}")
+                                except Exception as e:
+                                    print(f"[FetchAll] 定时全量获取异常 {rk}: {e}")
+                            threading.Thread(target=_do_fetch_all, daemon=True).start()
+                    
                     # [分时段切换检测] 比较当前生效的 slot 是否与上次不同
                     if balance.get('time_slot_active') and balance.get('time_slot_matched'):
                         slot = balance['time_slot_matched']

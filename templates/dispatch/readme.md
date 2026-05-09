@@ -535,6 +535,7 @@ flowchart TD
 | `self_heal.recover_timeout_minutes` | `30` | 异常超时阈值（分钟） |
 | `self_heal.device_query_api` | `10.68.2.XX:7000/...` | 设备状态查询 API，含 `XX` 占位符时跳过检查 |
 | `self_heal.task_timeout_hours` | `6` | 任务超时清理阈值（小时），status=6 任务超过此时间自动清理 |
+| `self_heal.fetch_all_interval_hours` | `0` | 定时全量查询间隔（小时），0=禁用。自动从 ICS 全量获取设备状态并同步到 currentCount |
 
 ### 清理条件
 
