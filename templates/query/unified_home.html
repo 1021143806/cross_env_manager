@@ -224,6 +224,15 @@
     .log-item .log-icon { font-size: 0.9rem; opacity: 0.6; }
     .log-tab { font-size: 0.75rem; padding: 0.2rem 0.5rem; }
     .log-tab.active { background: var(--primary-color, #0d6efd); color: #fff; }
+    
+    /* 暗黑模式下覆盖 Bootstrap bg-light 白色背景，适配项目主题 */
+    [data-bs-theme="dark"] .bg-light {
+        background-color: var(--detail-card-bg) !important;
+        color: var(--text-color) !important;
+    }
+    [data-bs-theme="dark"] .bg-light.text-dark {
+        color: var(--text-color) !important;
+    }
 </style>
 {% endblock %}
 
