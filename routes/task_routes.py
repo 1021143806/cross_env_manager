@@ -315,7 +315,18 @@ def api_device_tasks():
             main_task = main_res['data']['list'][0]
         
         if not main_task:
-            return jsonify({'error': '未找到该任务单号对应的主任务', 'query_debug': query_debug}), 404
+            write_query_log('device_query',
+                f'设备号查询(部分失败): {device_num} → 任务 {order_id}, step2主任务查询失败',
+                'warning', {'device_num': device_num, 'order_id': order_id, 'step2_error': step2_debug.get('error', '')})
+            return jsonify({
+                'success': False,
+                'error': f'未找到该任务单号 {order_id} 对应的主任务（远程API step2返回空）',
+                'device_num': device_num,
+                'device_code': device_code,
+                'order_id': order_id,
+                'baseUrl': base_url,
+                'query_debug': query_debug
+            }), 404
         
         sub_tasks_sorted = []
         detail_res, step3_debug = _api_post_with_debug('/crossTask/detail', {"id": main_task['id']})

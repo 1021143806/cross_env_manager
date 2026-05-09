@@ -936,8 +936,27 @@
                         body: JSON.stringify({ device_num: deviceNum, server_ip: serverIp })
                     });
                     const data = await res.json();
+                    // 存储 query_debug 供调试面板使用（即使查询部分失败也展示）
+                    if (data.query_debug) {
+                        window._queryDebug = data.query_debug;
+                    }
                     if (!res.ok || data.error) {
-                        throw new Error(data.error || '查询失败');
+                        // 部分失败：展示错误信息 + 调试面板
+                        let errHtml = `<div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i> ${data.error || '查询失败'}
+                            ${data.order_id ? `<br><small>任务单号: <code>${data.order_id}</code></small>` : ''}
+                            ${data.device_code ? `<br><small>设备序列号: <code>${data.device_code}</code></small>` : ''}
+                        </div>`;
+                        if (data.query_debug) {
+                            errHtml += `<div class="query-card mb-3"><div class="query-card-header bg-warning bg-opacity-10">
+                                <i class="bi bi-bug me-2"></i>查询调试信息（部分失败）
+                                <button class="btn btn-sm btn-outline-warning ms-2" onclick="renderQueryDebugPanel()">展开</button>
+                            </div><div id="queryDebugPanel" class="card-body" style="display:block;"></div></div>`;
+                            // 延迟渲染调试面板
+                            setTimeout(() => { if (window._queryDebug) renderQueryDebugPanel(); }, 100);
+                        }
+                        resultContainer.innerHTML = errHtml;
+                        return;
                     }
                     addToHistory(`${deviceNum} (设备)`);
                     // 后端已返回完整数据，直接构造 result 对象
@@ -1307,12 +1326,10 @@
             window._queryDebug = result.query_debug || {};
             
             const hasStatus = statuses.length > 0;
-            const firstOk = hasStatus ? (statuses.find(s => s.state && s.state !== '查询失败') || statuses[0]) : { state: '未查询', device_num: deviceNum, device_code: deviceCode };
-            
-            // 检测多服务器状态是否一致
-            const okStates = statuses.filter(s => s.state && s.state !== '查询失败').map(s => s.state);
-            const uniqueStates = [...new Set(okStates)];
-            const hasMismatch = uniqueStates.length > 1;
+            // 优先取非下线/非离线/非查询失败的状态，排除完后没有则取第一个（即显示离线）
+            const firstOk = hasStatus
+                ? (statuses.find(s => s.state && s.state !== 'Offline' && s.state !== 'Downlined' && s.state !== '查询失败') || statuses[0])
+                : { state: '未查询', device_num: deviceNum, device_code: deviceCode };
             
             // 电量进度条 HTML
             const batteryBar = (battery) => {
@@ -1367,11 +1384,8 @@
                 html += `
                             <hr>
                             <div class="d-flex justify-content-between align-items-center mb-2">
-                                <small class="fw-bold" style="opacity:0.7;">各服务器查询结果 (${statuses.length}台)</small>`;
-                if (hasMismatch) {
-                    html += `<small class="text-warning"><i class="bi bi-exclamation-triangle"></i> 状态不一致</small>`;
-                }
-                html += `</div>
+                                <small class="fw-bold" style="opacity:0.7;">各服务器查询结果 (${statuses.length}台)</small>
+                            </div>
                             <div class="server-cards-grid">`;
                 statuses.forEach(s => {
                     const stateCls = getStateBadgeClass(s.state);
@@ -1398,15 +1412,6 @@
                                 </div>`;
                 });
                 html += `</div>`;
-                
-                // 状态不一致警告
-                if (hasMismatch) {
-                    html += `
-                            <div class="status-mismatch-alert">
-                                <i class="bi bi-exclamation-triangle-fill text-warning"></i>
-                                <span>${statuses.length}台服务器返回了 <strong>${uniqueStates.length}</strong> 种不同状态：${uniqueStates.map(s => getDeviceStateLabel(s)).join('、')}，请核实设备实际状态</span>
-                            </div>`;
-                }
             }
             
             html += `
@@ -1579,7 +1584,9 @@
             
             const statuses = data.statuses || [];
             const hasStatus = statuses.length > 0;
-            const firstOk = hasStatus ? (statuses.find(s => s.state && s.state !== '查询失败') || statuses[0]) : { state: '未查询', device_num: data.deviceNum, device_code: data.deviceCode };
+            const firstOk = hasStatus
+                ? (statuses.find(s => s.state && s.state !== 'Offline' && s.state !== 'Downlined' && s.state !== '查询失败') || statuses[0])
+                : { state: '未查询', device_num: data.deviceNum, device_code: data.deviceCode };
             
             // 电量进度条
             const batteryBar = (battery) => {
@@ -2267,7 +2274,12 @@
         }
 
         window.fillHistory = function(term) {
-            if (term.includes('(货架)')) {
+            if (term.includes('(设备)')) {
+                const deviceNum = term.replace(' (设备)', '');
+                typeDeviceRadio.checked = true;
+                toggleQueryPanel();
+                deviceNumInput.value = deviceNum;
+            } else if (term.includes('(货架)')) {
                 const shelf = term.replace(' (货架)', '');
                 typeShelfRadio.checked = true;
                 toggleQueryPanel();
