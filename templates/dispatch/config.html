@@ -335,6 +335,12 @@ function renderVisualEditor(data) {
                     </select></div>
                 <div class="col-md-3"><label class="form-label small">低电量阈值(%) <small class="text-muted">-1=全局默认30%</small></label>
                     <input class="form-control form-control-sm" type="number" min="-1" max="100" value="${(region.self_heal||{}).low_battery_threshold??-1}" onchange="updateSelfHeal('${key}','low_battery_threshold',parseInt(this.value)??-1)"></div>
+            </div>
+            <div class="row g-2 mt-1">
+                <div class="col-md-3"><label class="form-label small">⏰ 任务超时清理(小时) <small class="text-muted">0=禁用</small></label>
+                    <input class="form-control form-control-sm" type="number" min="0" max="72" value="${(region.self_heal||{}).task_timeout_hours||6}" onchange="updateSelfHeal('${key}','task_timeout_hours',parseInt(this.value)||6)"></div>
+                <div class="col-md-3"><label class="form-label small">🔄 定时全量查询(小时) <small class="text-muted">0=禁用</small></label>
+                    <input class="form-control form-control-sm" type="number" min="0" max="24" value="${(region.self_heal||{}).fetch_all_interval_hours||0}" onchange="updateSelfHeal('${key}','fetch_all_interval_hours',parseInt(this.value)||0)"></div>
             </div></details></div>`;
         container.appendChild(card);
     });

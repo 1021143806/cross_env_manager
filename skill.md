@@ -245,3 +245,8 @@ venv/bin/python3 test/???.py
 - 2026-04-27: 跨环境任务重发功能已完成前后端实现。重发逻辑中前置任务检查放在最前面（不通过则不执行任何修改），逻辑1和逻辑2已合并为统一流程。sub_order_id递增规则为解析{orderId}_{taskSeq}_{subId}后subId+1。API文档已整理到doc/API.md。
 - 2026-04-27: 查询页面字段显示问题已修复，根因是前端getField()查找的字段名与远程API返回的驼峰命名不匹配。修复方案是添加候选字段名而非修改API，保持向后兼容。
 - 2026-04-27: fy_cross_model_process_detail 表新增 need_third_trigger 字段（默认0，1=存在第三方触发）。已在 app.py 的4处 SQL（edit_detail、copy_template、API新增子任务、批量更新子任务）和 edit_template.html、template_detail.html 的编辑/新增子任务模态框中添加该字段的编辑支持。前端使用复选框控件，勾选=1，不勾选=0。
+- 2026-05-09: **版本号规则**：每个模块有独立的内部版本号，修改哪个模块就递增哪个模块的版本号（末尾数字+1）。各模块版本号定义：
+  - `app.py`: `APP_VERSION` — 全局版本，页面底部展示 `CEM v{APP_VERSION}`
+  - `routes/dispatch_routes.py`: `DISPATCH_VERSION` — 调车模块版本，`[SelfHeal v{DISPATCH_VERSION}]` 日志
+  - `routes/task_routes.py`: `TASK_VERSION` — 任务查询模块版本，查询日志 `version` 字段
+  - 其他模块按需添加 `__version__` 或 `{MODULE}_VERSION`

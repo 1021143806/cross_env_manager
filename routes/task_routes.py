@@ -4,6 +4,9 @@
 任务查询路由蓝图 - 1.3项目功能整合
 """
 
+# 任务查询模块版本号（修改本文件时递增末尾数字）
+TASK_VERSION = '2.1.6'
+
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session
 from functools import wraps
 import sys, os
@@ -86,7 +89,8 @@ def write_query_log(action, detail='', level='info', raw_data=None):
         'action': action,
         'detail': detail,
         'level': level,
-        'user': username
+        'user': username,
+        'version': TASK_VERSION
     }
     if raw_data:
         log_entry['raw_data'] = raw_data
@@ -335,13 +339,27 @@ def api_device_tasks():
             except:
                 task_server_ip = server_ip
             area_id = task.get('areaId', task.get('area_id', '0'))
+            area_id_source = 'sub_task'
+            # 方案A：从 agv_robot_ext 表查询正确的 DEVICE_AREA 修正 area_id
+            if area_id == '0' and device_code:
+                try:
+                    area_info = task_query_extended.get_device_area_from_server(task_server_ip, device_code)
+                    if area_info and not area_info.get('error') and area_info.get('area_id') is not None:
+                        db_area = str(area_info['area_id'])
+                        if db_area != '0':
+                            area_id = db_area
+                            area_id_source = 'agv_robot_ext'
+                except Exception:
+                    pass
             status_info = task_query_extended.query_device_status_via_service(service_url, area_id, device_code)
             status_info['service_url'] = service_url
             status_info['server_ip'] = task_server_ip
             status_info['area_id'] = area_id
+            status_info['area_id_source'] = area_id_source
             device_statuses.append(status_info)
             step4_details.append({
                 "server_ip": task_server_ip, "service_url": service_url, "area_id": area_id,
+                "area_id_source": area_id_source,
                 "device_code": device_code, "request_url": status_info.get('request_url', ''),
                 "request_body": status_info.get('request_body', {}),
                 "response_body": status_info.get('response_body'),

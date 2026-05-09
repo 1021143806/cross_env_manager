@@ -1929,6 +1929,7 @@ function renderSparkline(area) {
     
     const w = canvas.width, h = canvas.height;
     
+    // 调车次数线（左Y轴）
     const fields = [
         {key: 'empty_in', color: '#6ea8fe', label: '🚛空车来'},
         {key: 'empty_out', color: '#feb272', label: '🚛空车回'},
@@ -1936,22 +1937,40 @@ function renderSparkline(area) {
         {key: 'load_out', color: '#fd7e14', label: '📦负载回'}
     ];
     
-    // 计算全局最大值
+    // 设备数量线（右Y轴，绿色虚线）
+    const ccField = {key: 'current_count', color: '#22c55e', label: '🚗设备数'};
+    
+    // 计算左轴最大值（调车次数）
     let maxVal = 1;
     dates.forEach(d => {
         const r = history[d][area.region_key];
         if (r) fields.forEach(f => { maxVal = Math.max(maxVal, r[f.key] || 0); });
     });
     
-    // 边距
-    const padLeft = 5, padRight = 28, padTop = 3, padBottom = 14;
+    // 计算右轴最大值（设备数量）
+    let maxCC = 1;
+    dates.forEach(d => {
+        const r = history[d][area.region_key];
+        if (r) maxCC = Math.max(maxCC, r[ccField.key] || 0);
+    });
+    // 右轴向上取整到5的倍数
+    maxCC = Math.ceil(maxCC / 5) * 5;
+    if (maxCC < 5) maxCC = 5;
+    
+    // 边距（右侧留更多空间给双Y轴标签）
+    const padLeft = 5, padRight = 36, padTop = 3, padBottom = 14;
     const plotW = w - padLeft - padRight;
     const plotH = h - padTop - padBottom;
     
-    // Y轴刻度
+    // 左Y轴刻度（调车次数）
     const ySteps = 4;
     const yStepVal = Math.ceil(maxVal / ySteps);
     const yMax = yStepVal * ySteps;
+    
+    // 右Y轴刻度（设备数量）
+    const ccSteps = 4;
+    const ccStepVal = Math.ceil(maxCC / ccSteps);
+    const ccYMax = ccStepVal * ccSteps;
     
     // 预计算所有数据点坐标
     const points = dates.map((d, i) => {
@@ -1959,14 +1978,52 @@ function renderSparkline(area) {
         const r = history[d][area.region_key] || {};
         const vals = {};
         fields.forEach(f => { vals[f.key] = r[f.key] || 0; });
+        vals[ccField.key] = r[ccField.key] || 0;
         return { date: d, x: x, vals: vals };
     });
+    
+    // 绘制平滑折线的辅助函数
+    function drawSmoothLine(points, fieldKey, yMaxRef, color, lineWidth, dashPattern) {
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        if (dashPattern) ctx.setLineDash(dashPattern);
+        if (points.length === 1) {
+            const y = padTop + plotH - (points[0].vals[fieldKey] / yMaxRef) * plotH;
+            ctx.moveTo(points[0].x, y);
+            ctx.lineTo(points[0].x, y);
+        } else if (points.length === 2) {
+            const y0 = padTop + plotH - (points[0].vals[fieldKey] / yMaxRef) * plotH;
+            const y1 = padTop + plotH - (points[1].vals[fieldKey] / yMaxRef) * plotH;
+            ctx.moveTo(points[0].x, y0);
+            ctx.lineTo(points[1].x, y1);
+        } else {
+            for (let i = 0; i < points.length - 1; i++) {
+                const p0 = points[Math.max(i - 1, 0)];
+                const p1 = points[i];
+                const p2 = points[i + 1];
+                const p3 = points[Math.min(i + 2, points.length - 1)];
+                const y0 = padTop + plotH - (p0.vals[fieldKey] / yMaxRef) * plotH;
+                const y1 = padTop + plotH - (p1.vals[fieldKey] / yMaxRef) * plotH;
+                const y2 = padTop + plotH - (p2.vals[fieldKey] / yMaxRef) * plotH;
+                const y3 = padTop + plotH - (p3.vals[fieldKey] / yMaxRef) * plotH;
+                const cp1x = p1.x + (p2.x - p0.x) / 6;
+                const cp1y = y1 + (y2 - y0) / 6;
+                const cp2x = p2.x - (p3.x - p1.x) / 6;
+                const cp2y = y2 - (y3 - y1) / 6;
+                if (i === 0) ctx.moveTo(p1.x, y1);
+                ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, y2);
+            }
+        }
+        ctx.stroke();
+        if (dashPattern) ctx.setLineDash([]);
+    }
     
     // 绘制函数
     function draw(highlightIdx) {
         ctx.clearRect(0, 0, w, h);
         
-        // Y轴网格线和标签
+        // 左Y轴网格线和标签（调车次数，灰色）
         ctx.fillStyle = '#6b7280';
         ctx.font = '8px sans-serif';
         ctx.textAlign = 'left';
@@ -1984,41 +2041,22 @@ function renderSparkline(area) {
             }
         }
         
-        // 折线（平滑曲线）
+        // 右Y轴标签（设备数量，绿色）
+        ctx.fillStyle = '#22c55e';
+        ctx.textAlign = 'right';
+        for (let i = 0; i <= ccSteps; i++) {
+            const val = ccStepVal * i;
+            const y = padTop + plotH - (val / ccYMax) * plotH;
+            ctx.fillText(val, w - 2, y + 3);
+        }
+        
+        // 绘制调车次数折线（左轴）
         fields.forEach(field => {
-            ctx.beginPath();
-            ctx.strokeStyle = field.color;
-            ctx.lineWidth = 1.2;
-            if (points.length === 1) {
-                const y = padTop + plotH - (points[0].vals[field.key] / yMax) * plotH;
-                ctx.moveTo(points[0].x, y);
-                ctx.lineTo(points[0].x, y);
-            } else if (points.length === 2) {
-                const y0 = padTop + plotH - (points[0].vals[field.key] / yMax) * plotH;
-                const y1 = padTop + plotH - (points[1].vals[field.key] / yMax) * plotH;
-                ctx.moveTo(points[0].x, y0);
-                ctx.lineTo(points[1].x, y1);
-            } else {
-                // 使用 Catmull-Rom 样条曲线平滑
-                for (let i = 0; i < points.length - 1; i++) {
-                    const p0 = points[Math.max(i - 1, 0)];
-                    const p1 = points[i];
-                    const p2 = points[i + 1];
-                    const p3 = points[Math.min(i + 2, points.length - 1)];
-                    const y0 = padTop + plotH - (p0.vals[field.key] / yMax) * plotH;
-                    const y1 = padTop + plotH - (p1.vals[field.key] / yMax) * plotH;
-                    const y2 = padTop + plotH - (p2.vals[field.key] / yMax) * plotH;
-                    const y3 = padTop + plotH - (p3.vals[field.key] / yMax) * plotH;
-                    const cp1x = p1.x + (p2.x - p0.x) / 6;
-                    const cp1y = y1 + (y2 - y0) / 6;
-                    const cp2x = p2.x - (p3.x - p1.x) / 6;
-                    const cp2y = y2 - (y3 - y1) / 6;
-                    if (i === 0) ctx.moveTo(p1.x, y1);
-                    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, y2);
-                }
-            }
-            ctx.stroke();
+            drawSmoothLine(points, field.key, yMax, field.color, 1.2, null);
         });
+        
+        // 绘制设备数量折线（右轴，绿色虚线）
+        drawSmoothLine(points, ccField.key, ccYMax, ccField.color, 1.8, [4, 3]);
         
         // 高亮十字线
         if (highlightIdx !== undefined && highlightIdx >= 0 && highlightIdx < points.length) {
@@ -2032,7 +2070,7 @@ function renderSparkline(area) {
             ctx.stroke();
             ctx.setLineDash([]);
             
-            // 高亮数据点
+            // 高亮调车数据点（左轴）
             fields.forEach(field => {
                 const y = padTop + plotH - (hp.vals[field.key] / yMax) * plotH;
                 ctx.fillStyle = field.color;
@@ -2040,6 +2078,17 @@ function renderSparkline(area) {
                 ctx.arc(hp.x, y, 3, 0, Math.PI * 2);
                 ctx.fill();
             });
+            
+            // 高亮设备数量数据点（右轴，绿色菱形）
+            const ccY = padTop + plotH - (hp.vals[ccField.key] / ccYMax) * plotH;
+            ctx.fillStyle = ccField.color;
+            ctx.beginPath();
+            ctx.moveTo(hp.x, ccY - 4);
+            ctx.lineTo(hp.x + 3, ccY);
+            ctx.lineTo(hp.x, ccY + 4);
+            ctx.lineTo(hp.x - 3, ccY);
+            ctx.closePath();
+            ctx.fill();
         }
         
         // X轴标签
@@ -2091,6 +2140,10 @@ function renderSparkline(area) {
             fields.forEach(f => {
                 html += '<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + f.color + ';margin-right:4px;"></span>' + f.label + ': ' + hp.vals[f.key] + '</div>';
             });
+            // 设备数量（绿色）
+            html += '<div style="border-top:1px solid rgba(255,255,255,0.15);margin-top:2px;padding-top:2px;">';
+            html += '<span style="display:inline-block;width:8px;height:8px;background:' + ccField.color + ';margin-right:4px;transform:rotate(45deg);"></span>' + ccField.label + ': ' + hp.vals[ccField.key];
+            html += '</div>';
             tip.innerHTML = html;
             tip.style.display = 'block';
             // 使用 fixed 定位，相对于视口
