@@ -328,6 +328,30 @@ def api_device_tasks():
                 'query_debug': query_debug
             }), 404
         
+        # ========== 从本地数据库补充 main_task 缺失字段 ==========
+        if device_code:
+            try:
+                from modules.database.connection import get_connection
+                conn = get_connection()
+                with conn.cursor() as cursor:
+                    # 查 agv_robot_ext：区域ID
+                    cursor.execute("SELECT DEVICE_AREA FROM agv_robot_ext WHERE DEVICE_CODE = %s", (device_code,))
+                    row = cursor.fetchone()
+                    if row and row.get('DEVICE_AREA'):
+                        if not main_task.get('areaId') and not main_task.get('area_id'):
+                            main_task['area_id'] = row['DEVICE_AREA']
+                    # 查 agv_robot：设备IP、设备类型
+                    cursor.execute("SELECT DEVICE_IP, DEVICETYPE FROM agv_robot WHERE DEVICE_CODE = %s", (device_code,))
+                    row2 = cursor.fetchone()
+                    if row2:
+                        if not main_task.get('deviceIp') and not main_task.get('device_ip'):
+                            main_task['device_ip'] = row2.get('DEVICE_IP', '')
+                        if not main_task.get('robotType') and not main_task.get('robot_type'):
+                            main_task['robot_type'] = row2.get('DEVICETYPE', '')
+                conn.close()
+            except Exception as e:
+                pass  # 本地库查询失败不影响主流程
+        
         sub_tasks_sorted = []
         detail_res, step3_debug = _api_post_with_debug('/crossTask/detail', {"id": main_task['id']})
         query_debug['step3_sub_tasks'] = {"description": f"查询子任务 main_task.id={main_task['id']}", **step3_debug}

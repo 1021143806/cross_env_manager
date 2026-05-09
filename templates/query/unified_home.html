@@ -162,7 +162,7 @@
     .agv-icon.empty_in { background: #6ea8fe; }
     .agv-icon.empty_out { background: #feb272; }
     
-    /* AGV Sprite — 举升AGV图标（裁剪自 rcsagv.png 第6行，640×64，每格64×64） */
+    /* AGV Sprite — 举升AGV图标（rcsagv_lift.png 640×64，每格64×64，按 rcsagvpng.md 第8节顺序） */
     .agv-sprite {
         display: block;
         width: 64px;
@@ -171,16 +171,38 @@
         background-size: 640px 64px;
         image-rendering: auto;
     }
-    .agv-sprite.blue        { background-position: 0      0; }  /* col 0: 空闲/任务中 */
-    .agv-sprite.orange      { background-position: -64px  0; }  /* col 1: 故障 */
-    .agv-sprite.light-blue  { background-position: -128px 0; }  /* col 2 */
-    .agv-sprite.light-orange{ background-position: -192px 0; }  /* col 3 */
-    .agv-sprite.green       { background-position: -256px 0; }  /* col 4: 充电中 */
+    /* col 0:蓝(空闲/任务中) 1:绿(充电) 2:红(异常) 3:橙(故障) 4:灰(离线) 5:紫(低电量) 6:棕 7:深蓝 8:青蓝+黄 9:红粉+黄 */
+    .agv-sprite.blue        { background-position: 0      0; }  /* col 0 */
+    .agv-sprite.green       { background-position: -64px  0; }  /* col 1 */
+    .agv-sprite.red         { background-position: -128px 0; }  /* col 2 */
+    .agv-sprite.orange      { background-position: -192px 0; }  /* col 3 */
+    .agv-sprite.gray        { background-position: -256px 0; }  /* col 4: 离线 */
     .agv-sprite.purple      { background-position: -320px 0; }  /* col 5: 低电量 */
-    .agv-sprite.yellow      { background-position: -384px 0; }  /* col 6 */
-    .agv-sprite.red         { background-position: -448px 0; }  /* col 7: 异常 */
+    .agv-sprite.brown       { background-position: -384px 0; }  /* col 6 */
+    .agv-sprite.dark-blue   { background-position: -448px 0; }  /* col 7 */
     .agv-sprite.teal        { background-position: -512px 0; }  /* col 8 */
-    .agv-sprite.gray        { background-position: -576px 0; }  /* col 9: 离线 */
+    .agv-sprite.pink        { background-position: -576px 0; }  /* col 9 */
+    
+    /* 子任务卡片内嵌设备状态小图标 */
+    .agv-sprite-sm {
+        display: inline-block;
+        width: 24px;
+        height: 24px;
+        background: url('/static/img/agv/rcsagv_lift.png') no-repeat;
+        background-size: 240px 24px;
+        image-rendering: auto;
+        vertical-align: middle;
+    }
+    .agv-sprite-sm.blue        { background-position: 0      0; }
+    .agv-sprite-sm.green       { background-position: -24px  0; }
+    .agv-sprite-sm.red         { background-position: -48px  0; }
+    .agv-sprite-sm.orange      { background-position: -72px  0; }
+    .agv-sprite-sm.gray        { background-position: -96px  0; }
+    .agv-sprite-sm.purple      { background-position: -120px 0; }
+    .agv-sprite-sm.brown       { background-position: -144px 0; }
+    .agv-sprite-sm.dark-blue   { background-position: -168px 0; }
+    .agv-sprite-sm.teal        { background-position: -192px 0; }
+    .agv-sprite-sm.pink        { background-position: -216px 0; }
     
     /* 电池指示器 */
     .battery-indicator {
@@ -435,19 +457,19 @@
                                     <div class="form-check mb-2">
                                         <input class="form-check-input" type="checkbox" id="fetchLocalDb" checked>
                                         <label class="form-check-label" for="fetchLocalDb">
-                                            查询本地数据库 (task_group / task_group_detail)
+                                            查看本地任务组原始数据
                                         </label>
                                     </div>
                                     <div class="form-check mb-2">
                                         <input class="form-check-input" type="checkbox" id="fetchTemplateInfo" checked>
                                         <label class="form-check-label" for="fetchTemplateInfo">
-                                            获取模板关联信息
+                                            查看模板配置详情
                                         </label>
                                     </div>
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" id="fetchOtherTasks" checked>
                                         <label class="form-check-label" for="fetchOtherTasks">
-                                            查询同模板其他执行中任务
+                                            查看同模板其他任务
                                         </label>
                                     </div>
                                 </div>
@@ -1202,7 +1224,7 @@
         function getDeviceStateClass(state) {
             const map = {
                 'Idle': 'idle', 'InTask': 'busy', 'Charging': 'charging',
-                'Offline': 'error', 'Downlined': 'error', 'Error': 'error',
+                'Offline': 'pending', 'Downlined': 'pending', 'Error': 'error',
                 '查询失败': 'pending', '未查询': 'pending'
             };
             return map[state] || 'pending';
@@ -1305,7 +1327,8 @@
             if (state === 'Idle') return 'success';
             if (state === 'InTask') return 'primary';
             if (state === 'Charging') return 'warning';
-            if (state === 'Offline' || state === 'Downlined' || state === 'Error') return 'danger';
+            if (state === 'Error') return 'danger';
+            if (state === 'Offline' || state === 'Downlined') return 'secondary';
             if (state === '查询失败') return 'secondary';
             return 'info';
         }
@@ -1785,13 +1808,13 @@
                             
                             ${result.localTaskGroup ? `
                             <div class="mt-3 p-3 bg-light bg-opacity-25 rounded">
-                                <h6><i class="bi bi-database"></i> 本地数据库记录</h6>
+                                <h6><i class="bi bi-database"></i> 本地数据库原始记录</h6>
                                 <div class="d-flex gap-2">
-                                    <button class="btn btn-sm btn-outline-info" onclick='showJsonForCard("本地-task_group", ${escapeJsonForInline(result.localTaskGroup)})'>
-                                        查看 task_group 数据
+                                    <button class="btn btn-sm btn-outline-info" onclick='showJsonForCard("本地-任务组(task_group)", ${escapeJsonForInline(result.localTaskGroup)})'>
+                                        <i class="bi bi-filetype-json"></i> 任务组 (task_group)
                                     </button>
-                                    <button class="btn btn-sm btn-outline-info" onclick='showJsonForCard("本地-task_group_detail", ${escapeJsonForInline(result.localTaskGroupDetail)})'>
-                                        查看 task_group_detail 数据
+                                    <button class="btn btn-sm btn-outline-info" onclick='showJsonForCard("本地-任务组详情(task_group_detail)", ${escapeJsonForInline(result.localTaskGroupDetail)})'>
+                                        <i class="bi bi-filetype-json"></i> 任务组详情 (task_group_detail)
                                     </button>
                                 </div>
                             </div>
@@ -1820,7 +1843,7 @@
                     </div>
                     <div class="collapse show" id="${cardIdPrefix}_subtasks_container_body">
                         <div class="card-body">
-                            ${subTasks.map((task, index) => renderSubTaskCard(task, index, result.baseUrl)).join('')}
+                            ${subTasks.map((task, index) => renderSubTaskCard(task, index, result.baseUrl, result.deviceStatuses)).join('')}
                         </div>
                     </div>
                 </div>
@@ -1917,7 +1940,7 @@
             </div>`;
         }
         
-        function renderSubTaskCard(task, index, baseUrl) {
+        function renderSubTaskCard(task, index, baseUrl, deviceStatuses) {
             const cardId = `subtask_${task.id || index}`;
             
             // 辅助函数：从多个候选字段名中获取第一个存在的值
@@ -1986,13 +2009,27 @@
             // 注意：内联事件中调用 showJsonForCard 时，需要对 JSON 字符串进行安全转义
             const taskJsonSafe = escapeJsonForInline(task);
             
+            // 每个子任务都匹配对应服务器的设备实时状态图标（标题栏小图标）
+            let deviceStatusIconHtml = '';
+            const devStatuses = deviceStatuses || (window._deviceQueryResult && window._deviceQueryResult.statuses) || [];
+            if (devStatuses.length > 0) {
+                const matched = devStatuses.find(s => s.server_ip === serverIp);
+                if (matched && matched.state) {
+                    const spriteCls = getDeviceSpriteClass(matched.state, matched.battery);
+                    const stateLabel = getDeviceStateLabel(matched.state);
+                    const bat = matched.battery;
+                    deviceStatusIconHtml = `<span class="agv-sprite-sm ${spriteCls}" title="设备状态: ${stateLabel}${bat ? ' · 🔋' + bat + '%' : ''}${matched.area_id ? ' · 📍区域' + matched.area_id : ''}" style="cursor:help;"></span>`;
+                }
+            }
+            
             return `
             <div class="subtask-card mb-2" id="${cardId}">
                 <div class="query-card-header py-2 d-flex justify-content-between align-items-center">
                     <div>
                         <span class="fw-bold">子任务 #${taskSeq}</span>
                         <span class="ms-2">${getStatusBadge(status)} ${taskStatusName !== '-' ? `<small class="text-muted">(${taskStatusName})</small>` : ''}</span>
-                        <code class="ms-3">${subOrderId}</code>
+                        ${deviceStatusIconHtml}
+                        <code class="ms-2">${subOrderId}</code>
                     </div>
                     <div>
                         <button class="btn btn-sm btn-outline-secondary me-1" onclick="event.stopPropagation(); showJsonForCard('子任务 ' + ${taskSeq}, ${taskJsonSafe})" title="查看原始 JSON">
