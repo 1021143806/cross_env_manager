@@ -2282,6 +2282,8 @@ def _should_clean_device(device_info, region_key='', region=None, device_code=''
         cutoff = (datetime.now() - timedelta(hours=1)).isoformat()
         has_active_task = False
         task_start_time = ''
+        matched_template = ''
+        matched_status = ''
         for t in region.get('templates', []):
             fpath = _get_template_file_path(region_key, t)
             if not os.path.exists(fpath):
@@ -2291,18 +2293,35 @@ def _should_clean_device(device_info, region_key='', region=None, device_code=''
                 if task.get('deviceCode') == device_code and task.get('status') in (6, 10):
                     has_active_task = True
                     task_start_time = task.get('create_time', '')
+                    matched_template = t.get('code', t.get('name', ''))
+                    matched_status = str(task.get('status', ''))
                     break
             if has_active_task:
                 break
         
         if has_active_task:
             if task_start_time and task_start_time < cutoff:
-                print(f"[SelfHeal] 设备 {device_code[-8:]} 离线但有执行中任务(status in (6,10), 超过1小时)，清理")
+                msg = f'[SelfHeal] 设备 {device_code[-8:]} 离线但有执行中任务(status in (6,10), 超过1小时)，清理 | 模板={matched_template} status={matched_status}'
+                print(msg)
+                try:
+                    write_global_log('self_heal_detail', region_key, msg)
+                except Exception:
+                    pass
                 return True  # 超过1小时，清理
-            print(f"[SelfHeal] 设备 {device_code[-8:]} 离线但有执行中任务(status in (6,10), 未超过1小时)，保留")
+            msg = f'[SelfHeal] 设备 {device_code[-8:]} 离线但有执行中任务(status in (6,10), 未超过1小时)，保留 | 模板={matched_template} status={matched_status}'
+            print(msg)
+            try:
+                write_global_log('self_heal_detail', region_key, msg)
+            except Exception:
+                pass
             return False  # 未超过1小时，保留（可能在连廊中）
     
-    print(f"[SelfHeal] 设备 {device_code[-8:]} 离线且无执行中任务(status in (6,10))，清理")
+    msg = f'[SelfHeal] 设备 {device_code[-8:]} 离线且无执行中任务(status in (6,10))，清理 | region={region_key} has_region={bool(region)} has_code={bool(device_code)}'
+    print(msg)
+    try:
+        write_global_log('self_heal_detail', region_key, msg)
+    except Exception:
+        pass
     return True  # 无执行中任务，清理
 
 
@@ -3321,6 +3340,52 @@ def api_device_history_fetch_all(region_key):
         'clean_result': clean_result,
         **fetch_result
     })
+
+
+# ========== Supervisor 日志查看 API ==========
+
+import glob as _glob_module
+
+@dispatch_bp.route('/api/dispatch/logs')
+@login_required
+@admin_required
+def api_supervisor_logs():
+    """查看 supervisor 控制台日志（print 输出）
+    
+    Query params:
+        lines: 返回最后 N 行，默认 200
+        filter: 过滤关键词（如 SelfHeal）
+    """
+    log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
+    log_file = os.path.join(log_dir, 'cross_env_manager.log')
+    
+    if not os.path.exists(log_file):
+        return jsonify({'error': f'日志文件不存在: {log_file}', 'logs': []}), 404
+    
+    max_lines = request.args.get('lines', 200, type=int)
+    keyword = request.args.get('filter', '', type=str)
+    
+    try:
+        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+            all_lines = f.readlines()
+        
+        # 取最后 N 行
+        recent = all_lines[-max_lines:] if len(all_lines) > max_lines else all_lines
+        
+        # 过滤
+        if keyword:
+            recent = [l for l in recent if keyword in l]
+        
+        return jsonify({
+            'success': True,
+            'log_file': log_file,
+            'total_lines': len(all_lines),
+            'returned_lines': len(recent),
+            'filter': keyword or None,
+            'logs': [l.rstrip('\n\r') for l in recent]
+        })
+    except Exception as e:
+        return jsonify({'error': f'读取日志失败: {str(e)}', 'logs': []}), 500
 
 
 # ========== 自动驾驶测试 API ==========

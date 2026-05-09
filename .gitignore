@@ -45,5 +45,6 @@ build/
 .idea/
 plans/*
 
-# logs
-.logs/*
+# supervisor日志目录（保留目录结构，忽略日志文件）
+logs/*
+!logs/.gitkeep
