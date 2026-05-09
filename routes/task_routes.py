@@ -4,6 +4,9 @@
 任务查询路由蓝图 - 1.3项目功能整合
 """
 
+# 任务查询模块版本号（修改本文件时递增末尾数字）
+TASK_VERSION = '2.1.6'
+
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session
 from functools import wraps
 import sys, os
@@ -86,7 +89,8 @@ def write_query_log(action, detail='', level='info', raw_data=None):
         'action': action,
         'detail': detail,
         'level': level,
-        'user': username
+        'user': username,
+        'version': TASK_VERSION
     }
     if raw_data:
         log_entry['raw_data'] = raw_data
