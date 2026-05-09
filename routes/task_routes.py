@@ -315,13 +315,41 @@ def api_device_tasks():
             main_task = main_res['data']['list'][0]
         
         if not main_task:
-            return jsonify({'error': '未找到该任务单号对应的主任务', 'query_debug': query_debug}), 404
+            write_query_log('device_query',
+                f'设备号查询(部分失败): {device_num} → 任务 {order_id}, step2主任务查询失败',
+                'warning', {'device_num': device_num, 'order_id': order_id, 'step2_error': step2_debug.get('error', '')})
+            return jsonify({
+                'success': False,
+                'error': f'未找到该任务单号 {order_id} 对应的主任务（远程API step2返回空）',
+                'device_num': device_num,
+                'device_code': device_code,
+                'order_id': order_id,
+                'baseUrl': base_url,
+                'query_debug': query_debug
+            }), 404
+        
+        # ========== 从本地数据库补充 main_task 和子任务的缺失字段 ==========
+        task_query_extended.enrich_task_dict(main_task, device_code)
         
         sub_tasks_sorted = []
         detail_res, step3_debug = _api_post_with_debug('/crossTask/detail', {"id": main_task['id']})
         query_debug['step3_sub_tasks'] = {"description": f"查询子任务 main_task.id={main_task['id']}", **step3_debug}
         if detail_res and detail_res.get('code') == 1000 and detail_res.get('data'):
             sub_tasks_sorted = sorted(detail_res['data'], key=lambda x: x.get('taskSeq', 0))
+        
+        for task in sub_tasks_sorted:
+            task_query_extended.enrich_task_dict(task)
+            # 从远端 task_group 获取真实的开始/结束时间（覆盖 fy_cross_task_detail 的时间）
+            svc_url = task.get('serviceUrl', task.get('service_url', ''))
+            dc = task.get('deviceCode', task.get('device_code', ''))
+            dn = task.get('deviceNum', task.get('device_num', ''))
+            if svc_url and (dc or dn):
+                remote_times = task_query_extended.fetch_remote_task_group_times(svc_url, dc, dn)
+                if remote_times:
+                    if remote_times.get('start_time') and not task.get('startTime') and not task.get('start_time'):
+                        task['startTime'] = remote_times['start_time']
+                    if remote_times.get('end_time') and not task.get('endTime') and not task.get('end_time'):
+                        task['endTime'] = remote_times['end_time']
         
         device_statuses = []
         seen_servers = set()
@@ -408,6 +436,45 @@ def get_local_task_detail(order_id):
     try:
         result = task_query_extended.get_local_cross_task_detail(order_id)
         return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@task_bp.route('/api/query/latest_order')
+@login_required
+def api_latest_order():
+    """获取最近一条任务单号（用于页面打开时自动查询）"""
+    try:
+        conn = task_query_extended._get_production_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT orderId FROM fy_cross_task ORDER BY update_time DESC LIMIT 1")
+            row = cursor.fetchone()
+        conn.close()
+        if row and row.get('orderId'):
+            return jsonify({'success': True, 'order_id': row['orderId']})
+        return jsonify({'success': False, 'error': '无最近任务'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@task_bp.route('/api/query/enrich_tasks', methods=['POST'])
+@login_required
+def api_enrich_tasks():
+    """用本地数据库补充任务字典中的缺失字段（区域ID、设备IP、设备类型、货架型号等）"""
+    try:
+        data = request.get_json() or {}
+        main_task = data.get('mainTask') or {}
+        sub_tasks = data.get('subTasks') or []
+        
+        task_query_extended.enrich_task_dict(main_task)
+        for task in sub_tasks:
+            task_query_extended.enrich_task_dict(task)
+        
+        return jsonify({
+            'success': True,
+            'mainTask': main_task,
+            'subTasks': sub_tasks
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

