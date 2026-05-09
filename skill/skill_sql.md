@@ -174,6 +174,69 @@ charset = "utf8mb4"
 | enable | tinyint | 启用状态 |
 | join_area | int | 对接区域 |
 
+### 10. load_config（货架/负载型号配置表）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| model | int | 主键，货架型号ID |
+| name | varchar(50) | 货架型号名称（如"正方形货架"、"栈板"） |
+| type | varchar(50) | 类型 |
+| length/width/height | bigint | 尺寸 |
+
+### 11. shelf_config（货架配置表）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | bigint | 主键，自增 |
+| qr_content | varchar(50) | 二维码内容 |
+| shelf_type | int | 货架类型 |
+| area_id | tinyint | 区域ID |
+| shelf_num | varchar(50) | 货架编号（如 AG03-020） |
+| shelf_angle | tinyint | 货架角度 |
+| shelf_name | varchar(50) | 货架名称 |
+
+### 12. task_status_config（任务状态配置表）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | int unsigned | 主键 |
+| task_type | varchar(255) | 任务类型 |
+| task_status | int | 状态码 |
+| task_status_name | varchar(255) | 状态名称（如"已完成"、"运行中"） |
+| is_end_status | tinyint(1) | 是否终态 |
+| is_start_status | tinyint(1) | 是否起始态 |
+
+**状态码对照**：
+| 状态码 | 名称 |
+|--------|------|
+| 0 | 未发送 |
+| 1 | 未开始 |
+| 2 | 正在取消 |
+| 3 | 已取消 |
+| 4 | 发送中 |
+| 5 | 发送失败 |
+| 6 | 运行中 |
+| 7 | 失败 |
+| 8 | 已完成 |
+| 9 | 已下发 |
+
+## enrich 函数说明
+
+### enrich_device_info(device_code)
+连接生产库，查询 `agv_robot_ext` + `agv_robot`，返回 `{area_id, device_ip, device_type}`
+
+### enrich_shelf_info(shelf_model, shelf_num)
+连接生产库，查询 `load_config` + `shelf_config`。
+- 有 shelf_model → 直接查 load_config.name
+- 无 shelf_model 有 shelf_num → shelf_config.shelf_type → load_config.model → name（链式查询）
+返回 `{shelf_model_name, shelf_model, shelf_num}`
+
+### enrich_task_dict(task_dict, device_code=None)
+统一入口，自动补充：
+- 设备信息：area_id, device_ip, device_type（agv_robot_ext + agv_robot）
+- 货架信息：shelf_num（fy_cross_task_detail）→ shelf_model, shelf_model_name（shelf_config → load_config）
+- 任务状态名称：task_status_name（task_status_config）
+
 ## 常用 SQL 查询
 
 ### 设备号查询任务单号

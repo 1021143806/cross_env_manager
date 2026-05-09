@@ -328,35 +328,17 @@ def api_device_tasks():
                 'query_debug': query_debug
             }), 404
         
-        # ========== 从本地数据库补充 main_task 缺失字段 ==========
-        if device_code:
-            try:
-                from modules.database.connection import get_connection
-                conn = get_connection()
-                with conn.cursor() as cursor:
-                    # 查 agv_robot_ext：区域ID
-                    cursor.execute("SELECT DEVICE_AREA FROM agv_robot_ext WHERE DEVICE_CODE = %s", (device_code,))
-                    row = cursor.fetchone()
-                    if row and row.get('DEVICE_AREA'):
-                        if not main_task.get('areaId') and not main_task.get('area_id'):
-                            main_task['area_id'] = row['DEVICE_AREA']
-                    # 查 agv_robot：设备IP、设备类型
-                    cursor.execute("SELECT DEVICE_IP, DEVICETYPE FROM agv_robot WHERE DEVICE_CODE = %s", (device_code,))
-                    row2 = cursor.fetchone()
-                    if row2:
-                        if not main_task.get('deviceIp') and not main_task.get('device_ip'):
-                            main_task['device_ip'] = row2.get('DEVICE_IP', '')
-                        if not main_task.get('robotType') and not main_task.get('robot_type'):
-                            main_task['robot_type'] = row2.get('DEVICETYPE', '')
-                conn.close()
-            except Exception as e:
-                pass  # 本地库查询失败不影响主流程
+        # ========== 从本地数据库补充 main_task 和子任务的缺失字段 ==========
+        task_query_extended.enrich_task_dict(main_task, device_code)
         
         sub_tasks_sorted = []
         detail_res, step3_debug = _api_post_with_debug('/crossTask/detail', {"id": main_task['id']})
         query_debug['step3_sub_tasks'] = {"description": f"查询子任务 main_task.id={main_task['id']}", **step3_debug}
         if detail_res and detail_res.get('code') == 1000 and detail_res.get('data'):
             sub_tasks_sorted = sorted(detail_res['data'], key=lambda x: x.get('taskSeq', 0))
+        
+        for task in sub_tasks_sorted:
+            task_query_extended.enrich_task_dict(task)
         
         device_statuses = []
         seen_servers = set()
@@ -443,6 +425,28 @@ def get_local_task_detail(order_id):
     try:
         result = task_query_extended.get_local_cross_task_detail(order_id)
         return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@task_bp.route('/api/query/enrich_tasks', methods=['POST'])
+@login_required
+def api_enrich_tasks():
+    """用本地数据库补充任务字典中的缺失字段（区域ID、设备IP、设备类型、货架型号等）"""
+    try:
+        data = request.get_json() or {}
+        main_task = data.get('mainTask') or {}
+        sub_tasks = data.get('subTasks') or []
+        
+        task_query_extended.enrich_task_dict(main_task)
+        for task in sub_tasks:
+            task_query_extended.enrich_task_dict(task)
+        
+        return jsonify({
+            'success': True,
+            'mainTask': main_task,
+            'subTasks': sub_tasks
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

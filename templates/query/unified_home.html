@@ -1098,6 +1098,24 @@
                 result.subTasks = detailData.data.sort((a, b) => (a.taskSeq || 0) - (b.taskSeq || 0));
             }
 
+            // 用本地数据库补充缺失字段（区域ID、设备IP、设备类型、货架型号等）
+            try {
+                const enrichRes = await fetch('/api/query/enrich_tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mainTask: result.mainTask, subTasks: result.subTasks })
+                });
+                if (enrichRes.ok) {
+                    const enrichData = await enrichRes.json();
+                    if (enrichData.success) {
+                        result.mainTask = enrichData.mainTask;
+                        result.subTasks = enrichData.subTasks;
+                    }
+                }
+            } catch (e) {
+                console.warn('enrich 补充字段失败:', e);
+            }
+
             if (fetchLocalDbCheck.checked) {
                 try {
                     const localRes = await fetch(`/api/task_group/${orderId}`);
