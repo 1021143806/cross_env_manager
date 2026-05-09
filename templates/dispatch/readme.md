@@ -534,8 +534,20 @@ flowchart TD
 | `self_heal.check_interval` | `300` | 检查间隔（秒） |
 | `self_heal.recover_timeout_minutes` | `30` | 异常超时阈值（分钟） |
 | `self_heal.device_query_api` | `10.68.2.XX:7000/...` | 设备状态查询 API，含 `XX` 占位符时跳过检查 |
+| `self_heal.task_timeout_hours` | `6` | 任务超时清理阈值（小时），status=6 任务超过此时间自动清理 |
 
 ### 清理条件
+
+**设备清理**：
+- 设备 Offline/Downlined 时检查是否有执行中任务（`status in (6, 10)`）
+- 有执行中任务且未超过 1 小时 → 保留
+- 有执行中任务但超过 1 小时 → 清理
+- 无执行中任务 → 清理
+
+**任务超时清理**（自动轮询时触发）：
+- status=6 且 `create_time` 超过 `task_timeout_hours`（默认6小时）→ 自动从模板 JSON 删除
+- 有 deviceCode 的任务同时从 currentCount 中删除对应设备
+- 用于清理 status=7 上报未能匹配的残留任务
 
 设备状态为以下之一时清理：
 - `Offline` — 离线

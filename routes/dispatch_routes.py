@@ -2270,6 +2270,15 @@ def _query_device_status(server, api_path, area_id, device_code):
         return None
 
 
+def _get_app_version():
+    """获取应用版本号"""
+    try:
+        from app import APP_VERSION
+        return APP_VERSION
+    except Exception:
+        return '?'
+
+
 def _should_clean_device(device_info, region_key='', region=None, device_code=''):
     """判断设备是否应该被清理
     
@@ -2952,6 +2961,47 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
     
     # 自动定时检查只检查当前设备，不检查模板任务（避免查询执行中的负载设备）
     if template_code is None and not force:
+        # [任务超时清理] 清理 create_time 超过 N 小时的 status=6 任务
+        task_timeout_hours = sh.get('task_timeout_hours', 6)
+        task_timeout_threshold = (datetime.now() - timedelta(hours=task_timeout_hours)).isoformat()
+        for t in region.get('templates', []):
+            fpath = _get_template_file_path(region_key, t)
+            if not os.path.exists(fpath):
+                continue
+            tasks = _load_json(fpath)
+            tpl_code = t.get('code') or t.get('name', '')
+            new_tasks = []
+            task_cleaned = 0
+            for task in tasks:
+                if task.get('status') == 6 and not task.get('_simulated') and task.get('create_time', '') < task_timeout_threshold:
+                    # 超时任务：清理
+                    task_cleaned += 1
+                    dc = task.get('deviceCode', '')
+                    dn = task.get('deviceNum', '')
+                    oid = task.get('order_id', '')
+                    print(f"[SelfHeal] 任务超时清理 | 模板={tpl_code} device={dn}({dc[-8:] if dc else '?'}) order_id={oid} create_time={task.get('create_time','')}")
+                    try:
+                        write_global_log('self_heal_detail', region_key,
+                            f'[SelfHeal v{_get_app_version()}] 任务超时清理 | 模板={tpl_code} device={dn}({dc if dc else "?"}) order_id={oid}')
+                    except: pass
+                    # 如果有 deviceCode，从 currentCount 中删除
+                    if dc:
+                        now_file = _get_region_file(region_key, 'currentCount.json')
+                        now_devices = _load_json(now_file)
+                        now_devices = [d for d in now_devices if d.get('deviceCode') != dc]
+                        _save_json(now_file, now_devices)
+                else:
+                    new_tasks.append(task)
+            if task_cleaned > 0:
+                _save_json(fpath, new_tasks)
+                cleaned += task_cleaned
+                steps.append({
+                    'device_code': '', 'device_num': '',
+                    'state': f'超时{task_timeout_hours}h',
+                    'action': '任务超时清理',
+                    'reason': f'模板 {tpl_code} 清理 {task_cleaned} 个超时任务'
+                })
+        
         # [低电量检查] 仅自动轮询时触发
         low_battery_result = _check_low_battery_return(region_key, region, sh)
         if low_battery_result.get('dispatched'):
