@@ -2301,7 +2301,7 @@ def _should_clean_device(device_info, region_key='', region=None, device_code=''
             for task in tasks:
                 tdc = task.get('deviceCode', '')
                 ts = task.get('status', '')
-                all_task_info.append(f'{tcode}:{tdc[-8:] if tdc else "?"}={ts}')
+                all_task_info.append(f'{tcode}:{tdc if tdc else "?"}={ts}')
                 if tdc == device_code and ts in (6, 10):
                     has_active_task = True
                     task_start_time = task.get('create_time', '')
