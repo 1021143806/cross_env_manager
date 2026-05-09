@@ -959,6 +959,7 @@ def handle_status_report(data):
             old_dc = existing.get('deviceCode', '')[-8:] if existing.get('deviceCode') else '?'
             existing['deviceNum'] = device_num
             existing['deviceCode'] = device_code
+            existing['status'] = status  # status=10 时更新状态
             existing['order_id'] = order_id
             existing['shelfNumber'] = data.get('shelfNumber', '')
             existing['shelfCurrPosition'] = data.get('shelfCurrPosition', '')
