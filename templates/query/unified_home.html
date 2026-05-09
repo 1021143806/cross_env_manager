@@ -1776,6 +1776,20 @@
             
             // 存储本地子任务数据供 renderSubTaskCard 使用
             window._localCrossTaskDetails = result.localCrossTaskDetails || [];
+            // 存储主任务数据供 JSON 查看按钮使用
+            window._lastMainTask = main;
+            
+            // 主任务开始/结束时间：取第一个子任务的开始时间和最后一个有记录的子任务的结束时间
+            if (subTasks.length > 0) {
+                const firstStart = subTasks.find(t => t.start_time || t.startTime);
+                if (firstStart && !main.start_time && !main.startTime) {
+                    main.start_time = firstStart.start_time || firstStart.startTime;
+                }
+                const lastEnd = [...subTasks].reverse().find(t => t.end_time || t.endTime);
+                if (lastEnd && !main.end_time && !main.endTime) {
+                    main.end_time = lastEnd.end_time || lastEnd.endTime;
+                }
+            }
             
             let html = '';
             
@@ -1790,7 +1804,7 @@
                     <div class="query-card-header bg-primary bg-opacity-10 d-flex justify-content-between align-items-center">
                         <h5 class="mb-0"><i class="bi bi-card-list me-2"></i>任务总览</h5>
                         <div>
-                            <button class="btn btn-sm btn-outline-secondary me-1" onclick="event.stopPropagation(); showJsonForCard('总览', ${escapeJsonForInline(main)})" title="查看原始 JSON">
+                            <button class="btn btn-sm btn-outline-secondary me-1" onclick="event.stopPropagation(); showJsonForCard('总览', window._lastMainTask)" title="查看原始 JSON">
                                 <i class="bi bi-info-circle"></i>
                             </button>
                             <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#${cardIdPrefix}_overview_body" aria-expanded="true">
