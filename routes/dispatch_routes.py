@@ -940,19 +940,23 @@ def handle_status_report(data):
         #   2. 没匹配到 → 按 order_id 匹配 deviceCode 为空的记录（空车任务，下发时无设备号）
         tasks = _load_json(template_file)
         existing = None
+        match_level = ''
         for t in tasks:
             if t.get('deviceCode') == device_code and t.get('status') == 6:
                 existing = t
+                match_level = 'deviceCode'
                 break
         # 第2级：按 order_id 匹配（空车任务，下发时可能已指定设备也可能未指定）
         if not existing and order_id:
             for t in tasks:
                 if t.get('order_id') == order_id and t.get('status') == 6:
                     existing = t
+                    match_level = 'order_id'
                     break
         
         if existing:
             # 覆盖更新
+            old_dc = existing.get('deviceCode', '')[-8:] if existing.get('deviceCode') else '?'
             existing['deviceNum'] = device_num
             existing['deviceCode'] = device_code
             existing['order_id'] = order_id
@@ -960,6 +964,7 @@ def handle_status_report(data):
             existing['shelfCurrPosition'] = data.get('shelfCurrPosition', '')
             existing['update_time'] = now
             change_summary = f'模板更新 {template_name} (共{len(tasks)}条)'
+            print(f"[ReportStatus] status={status} 覆盖更新 | 模板={template_name} device={device_num}({device_code[-8:]}) order_id={order_id} 匹配方式={match_level} 旧device={old_dc}")
         else:
             # 新增
             tasks.append({
@@ -973,6 +978,7 @@ def handle_status_report(data):
                 "update_time": now
             })
             change_summary = f'模板+{template_name} +1 (共{len(tasks)}条)'
+            print(f"[ReportStatus] status={status} 新增 | 模板={template_name} device={device_num}({device_code[-8:]}) order_id={order_id}")
         _save_json(template_file, tasks)
         
     else:
