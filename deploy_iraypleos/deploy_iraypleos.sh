@@ -166,7 +166,8 @@ test_import_simple importlib_metadata
 echo ""
 echo "8. 配置Supervisor..."
 SUPERVISOR_CONF="/main/server/supervisor/cross_env_manager.conf"
-LOG_DIR="/main/app/log"
+LOG_DIR="/main/app/cross_env_manager/logs"
+#本地测试/main/app/toolsForPersonal/projects/agv_system/app/cross_env_manager/logs
 
 if [ -f "$SUPERVISOR_CONF" ]; then
     echo "   ✅ Supervisor配置文件已存在: $SUPERVISOR_CONF"

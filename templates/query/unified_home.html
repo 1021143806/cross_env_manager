@@ -212,6 +212,18 @@
     .agv-tooltip .tt-label { font-weight: 600; }
     .agv-tooltip .tt-time { font-size: 0.7rem; opacity: 0.7; }
     .agv-tooltip .tt-battery { font-size: 0.7rem; opacity: 0.8; }
+    
+    /* 操作日志样式 */
+    .log-item {
+        display: flex; align-items: flex-start; gap: 0.6rem;
+        padding: 0.4rem 0; border-bottom: 1px solid var(--border-color, #dee2e6);
+        font-size: 0.85rem;
+    }
+    .log-item:last-child { border-bottom: none; }
+    .log-item .log-time { min-width: 50px; font-weight: 600; opacity: 0.7; font-size: 0.75rem; }
+    .log-item .log-icon { font-size: 0.9rem; opacity: 0.6; }
+    .log-tab { font-size: 0.75rem; padding: 0.2rem 0.5rem; }
+    .log-tab.active { background: var(--primary-color, #0d6efd); color: #fff; }
 </style>
 {% endblock %}
 
@@ -422,6 +434,34 @@
                         <i class="bi bi-search display-1 text-muted opacity-50"></i>
                         <h5 class="mt-3 text-muted">输入查询条件开始分析</h5>
                         <p class="text-muted small">支持任务单号或货架号查询，自动聚合跨环境子任务数据</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 操作日志面板 -->
+            <div class="query-card mt-3 animate__animated animate__fadeIn" id="queryLogCard" style="display:none;">
+                <div class="query-card-header bg-secondary bg-opacity-10 d-flex justify-content-between align-items-center">
+                    <span class="fw-bold"><i class="bi bi-clock-history me-2"></i>操作日志</span>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="queryLogAutoScroll" checked onchange="toggleQueryLogAutoScroll()">
+                            <label class="form-check-label small" for="queryLogAutoScroll">自动</label>
+                        </div>
+                        <span class="badge bg-secondary" id="queryLogCount">0</span>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" onclick="toggleQueryLogPanel()">
+                            <i class="bi bi-chevron-up" id="queryLogChevron"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="collapse show" id="queryLogBody">
+                    <div class="d-flex border-bottom align-items-center" style="padding:0.4rem 1rem;gap:0.25rem;">
+                        <button class="btn btn-sm log-tab active" data-filter="all" onclick="switchQueryLogTab('all')">全部</button>
+                        <button class="btn btn-sm log-tab" data-filter="device_query" onclick="switchQueryLogTab('device_query')">设备查询</button>
+                        <button class="btn btn-sm log-tab" data-filter="task_query" onclick="switchQueryLogTab('task_query')">任务查询</button>
+                        <input type="text" id="queryLogSearch" class="form-control form-control-sm ms-auto" placeholder="搜索..." style="width:140px;" oninput="renderQueryLogs()">
+                    </div>
+                    <div id="queryLogContainer" style="max-height:250px;overflow-y:auto;padding:0.4rem 1rem;" onscroll="onQueryLogScroll()">
+                        <div class="text-center text-muted py-3 small">暂无操作日志</div>
                     </div>
                 </div>
             </div>
@@ -889,6 +929,8 @@
                 subTasks: [],
                 localTaskGroup: null,
                 localTaskGroupDetail: null,
+                localCrossTask: null,
+                localCrossTaskDetails: null,
                 templateInfo: null,
                 otherTasksSameTemplate: []
             };
@@ -928,6 +970,20 @@
                 } catch (e) {
                     console.warn('本地数据库查询失败:', e);
                 }
+            }
+
+            // 始终查询本地 fy_cross_task + fy_cross_task_detail（用于 Tab 面板展示完整字段）
+            try {
+                const localCrossRes = await fetch(`/api/task/local_detail/${orderId}`);
+                if (localCrossRes.ok) {
+                    const localCrossData = await localCrossRes.json();
+                    if (localCrossData.success) {
+                        result.localCrossTask = localCrossData.main_task;
+                        result.localCrossTaskDetails = localCrossData.sub_tasks;
+                    }
+                }
+            } catch (e) {
+                console.warn('本地跨任务详情查询失败:', e);
             }
 
             if (fetchTemplateInfoCheck.checked && mainTask.modelProcessCode) {
@@ -1214,7 +1270,7 @@
         }
         
         // ========== 全链路调试面板 ==========
-        function renderQueryDebugPanel() {
+        window.renderQueryDebugPanel = function() {
             const debug = window._queryDebug;
             const panel = document.getElementById('queryDebugPanel');
             const toggle = document.getElementById('debugPanelToggle');
@@ -1358,7 +1414,7 @@
             return html;
         }
         
-        function showDeviceDetailModal() {
+        window.showDeviceDetailModal = function() {
             const data = _deviceQueryResult;
             if (!data) return;
             
@@ -1436,10 +1492,61 @@
         }
 
         // ---------- 渲染结果（每个子任务卡片化，默认展开详细信息） ----------
+        function renderMainTaskLocalDbTab(localTask, cardIdPrefix) {
+            if (!localTask) return '';
+            const tabId = `${cardIdPrefix}_localDb`;
+            const remark = localTask.remark || '';
+            let remarkDisplay = '-';
+            if (remark) {
+                try {
+                    const parsed = JSON.parse(remark);
+                    remarkDisplay = `<pre class="bg-light p-2 rounded mb-0" style="font-size:0.7rem;max-height:200px;overflow:auto;">${escapeHtml(JSON.stringify(parsed, null, 2))}</pre>`;
+                } catch (e) {
+                    remarkDisplay = `<code class="text-break" style="font-size:0.7rem;">${escapeHtml(remark)}</code>`;
+                }
+            }
+            return `
+            <div class="mt-3 border-top pt-2">
+                <ul class="nav nav-tabs small" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#${tabId}_basic" type="button">📋 基本信息</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#${tabId}_db" type="button">🗄️ 本地DB完整字段</button>
+                    </li>
+                </ul>
+                <div class="tab-content border border-top-0 rounded-bottom p-2 bg-light bg-opacity-10">
+                    <div class="tab-pane fade show active" id="${tabId}_basic">
+                        <table class="table table-sm table-borderless small mb-0">
+                            <tr><th class="w-30">数据库ID</th><td><code>${localTask.id || '-'}</code></td></tr>
+                            <tr><th>来源系统</th><td>${localTask.from_system || '-'}</td></tr>
+                            <tr><th>启用状态</th><td>${localTask.enable ?? '-'}</td></tr>
+                            <tr><th>是否创建任务</th><td>${localTask.is_create_task ?? '-'}</td></tr>
+                            <tr><th>创建任务ID</th><td>${localTask.create_task_id || '-'}</td></tr>
+                            <tr><th>忽略标记</th><td>${localTask.ignore ?? '-'}</td></tr>
+                        </table>
+                    </div>
+                    <div class="tab-pane fade" id="${tabId}_db">
+                        <div class="mb-2"><strong>📋 remark（完整请求体）:</strong></div>
+                        ${remarkDisplay}
+                        <hr class="my-2">
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-info" onclick='showJsonForCard("本地-fy_cross_task", ${escapeJsonForInline(localTask)})'>
+                                <i class="bi bi-info-circle"></i> 查看完整 JSON
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }
+        
         function renderResult(result) {
             const main = result.mainTask;
             const subTasks = result.subTasks;
             const cardIdPrefix = `card_${result.orderId.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            
+            // 存储本地子任务数据供 renderSubTaskCard 使用
+            window._localCrossTaskDetails = result.localCrossTaskDetails || [];
             
             let html = '';
             
@@ -1514,6 +1621,8 @@
                                 </div>
                             </div>
                             ` : ''}
+                            
+                            ${result.localCrossTask ? renderMainTaskLocalDbTab(result.localCrossTask, cardIdPrefix) : ''}
                         </div>
                     </div>
                 </div>
@@ -1598,6 +1707,41 @@
         }
 
         // 渲染单个子任务卡片（完整字段显示，按照FindTheTask.php逻辑）
+        function renderSubTaskLocalDbTab(subOrderId, cardId) {
+            const localDetails = window._localCrossTaskDetails || [];
+            const localSub = localDetails.find(d => d.sub_order_id === subOrderId);
+            if (!localSub) return '';
+            
+            const tabId = `${cardId}_localDb`;
+            return `
+            <div class="mt-2 border-top pt-2">
+                <ul class="nav nav-tabs small" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#${tabId}_basic" type="button">📋 基本信息</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#${tabId}_db" type="button">🗄️ 本地DB完整字段</button>
+                    </li>
+                </ul>
+                <div class="tab-content border border-top-0 rounded-bottom p-2 bg-light bg-opacity-10">
+                    <div class="tab-pane fade show active" id="${tabId}_basic">
+                        <table class="table table-sm table-borderless small mb-0">
+                            <tr><th class="w-30">数据库ID</th><td><code>${localSub.id || '-'}</code></td></tr>
+                            <tr><th>模板名称</th><td>${localSub.template_name || '-'}</td></tr>
+                            <tr><th>装载类型</th><td>${localSub.load_type || '-'}</td></tr>
+                            <tr><th>变更状态</th><td>${localSub.change_status ?? '-'}</td></tr>
+                            <tr><th>更新时间</th><td>${formatTime(localSub.update_time)}</td></tr>
+                        </table>
+                    </div>
+                    <div class="tab-pane fade" id="${tabId}_db">
+                        <button class="btn btn-sm btn-outline-info" onclick='showJsonForCard("本地-fy_cross_task_detail", ${escapeJsonForInline(localSub)})'>
+                            <i class="bi bi-info-circle"></i> 查看完整 JSON
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+        }
+        
         function renderSubTaskCard(task, index, baseUrl) {
             const cardId = `subtask_${task.id || index}`;
             
@@ -1767,6 +1911,8 @@
                                     <i class="bi bi-check-circle"></i> 异常完成
                                 </button>` : ''}
                         </div>
+                        
+                        ${renderSubTaskLocalDbTab(subOrderId, cardId)}
                     </div>
                 </div>
             </div>
@@ -1966,6 +2112,143 @@
             executeQuery();
         };
 
+        
+        // ========== 操作日志 ==========
+        let queryAllLogs = [];
+        let queryLogFilter = 'all';
+        let queryLogAutoScroll = true;
+        let queryLogTimer = null;
+        const QUERY_LOG_INTERVAL = 3000;
+        
+        window.toggleQueryLogPanel = function() {
+            const body = document.getElementById('queryLogBody');
+            const chevron = document.getElementById('queryLogChevron');
+            if (!body || !chevron) return;
+            const bsCollapse = bootstrap.Collapse.getInstance(body) || new bootstrap.Collapse(body, {toggle: false});
+            bsCollapse.toggle();
+            chevron.classList.toggle('bi-chevron-up');
+            chevron.classList.toggle('bi-chevron-down');
+        };
+        
+        window.toggleQueryLogAutoScroll = function() {
+            queryLogAutoScroll = document.getElementById('queryLogAutoScroll').checked;
+            if (queryLogAutoScroll) {
+                scrollQueryLogToTop();
+                if (!queryLogTimer) queryLogTimer = setInterval(loadQueryLog, QUERY_LOG_INTERVAL);
+            } else {
+                if (queryLogTimer) { clearInterval(queryLogTimer); queryLogTimer = null; }
+            }
+        };
+        
+        window.onQueryLogScroll = function() {
+            const container = document.getElementById('queryLogContainer');
+            const checkbox = document.getElementById('queryLogAutoScroll');
+            if (!container || !checkbox) return;
+            const atTop = container.scrollTop <= 10;
+            if (atTop !== queryLogAutoScroll) {
+                queryLogAutoScroll = atTop;
+                checkbox.checked = atTop;
+                if (atTop) {
+                    if (!queryLogTimer) queryLogTimer = setInterval(loadQueryLog, QUERY_LOG_INTERVAL);
+                } else {
+                    if (queryLogTimer) { clearInterval(queryLogTimer); queryLogTimer = null; }
+                }
+            }
+        };
+        
+        window.switchQueryLogTab = function(filter) {
+            queryLogFilter = filter;
+            document.querySelectorAll('#queryLogCard .log-tab').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.filter === filter);
+            });
+            renderQueryLogs();
+        };
+        
+        function filterQueryLogs(logs, filter) {
+            if (filter === 'all') return logs;
+            return logs.filter(l => l.action === filter);
+        }
+        
+        function renderQueryLogs() {
+            const container = document.getElementById('queryLogContainer');
+            const countBadge = document.getElementById('queryLogCount');
+            const card = document.getElementById('queryLogCard');
+            const searchTerm = (document.getElementById('queryLogSearch')?.value || '').toLowerCase();
+            
+            let filtered = filterQueryLogs(queryAllLogs, queryLogFilter);
+            if (searchTerm) {
+                filtered = filtered.filter(l => 
+                    (l.detail || '').toLowerCase().includes(searchTerm) ||
+                    (l.action || '').toLowerCase().includes(searchTerm) ||
+                    (l.user || '').toLowerCase().includes(searchTerm)
+                );
+            }
+            
+            if (countBadge) countBadge.textContent = filtered.length;
+            if (card) card.style.display = 'block';
+            
+            if (!filtered.length) {
+                container.innerHTML = '<div class="text-center text-muted py-3 small">暂无操作日志</div>';
+                return;
+            }
+            
+            try {
+                container.innerHTML = filtered.map(log => {
+                    const time = log.time || '';
+                    const timeStr = time.length > 16 ? time.slice(11, 19) : time;
+                    const action = log.action || '';
+                    const detail = log.detail || '';
+                    const level = log.level || 'info';
+                    const user = log.user || '?';
+                    const meta = getQueryLogActionMeta(action, level);
+                    
+                    return '<div class="log-item">' +
+                        '<div class="log-time">' + timeStr + '</div>' +
+                        '<div class="log-icon ' + (meta.color || '') + '"><i class="bi ' + (meta.icon || '') + '"></i></div>' +
+                        '<div style="flex:1;min-width:0;">' +
+                        '<span class="badge bg-secondary me-1" style="font-size:0.7rem;">' + escapeHtml(user) + '</span>' +
+                        '<span>' + escapeHtml(detail || action) + '</span>' +
+                        '</div></div>';
+                }).join('');
+            } catch(e) {
+                container.innerHTML = '<div class="text-danger small">渲染错误: ' + e.message + '</div>';
+            }
+            
+            if (queryLogAutoScroll) scrollQueryLogToTop();
+        }
+        
+        function scrollQueryLogToTop() {
+            const container = document.getElementById('queryLogContainer');
+            if (!container) return;
+            container.scrollTop = 0;
+        }
+        
+        function getQueryLogActionMeta(action, level) {
+            if (level === 'error') return { icon: 'bi-exclamation-triangle-fill', color: 'text-danger' };
+            if (level === 'warning') return { icon: 'bi-exclamation-circle-fill', color: 'text-warning' };
+            if (action === 'device_query') return { icon: 'bi-search', color: 'text-info' };
+            if (action === 'task_query') return { icon: 'bi-card-list', color: 'text-primary' };
+            return { icon: 'bi-info-circle-fill', color: 'text-secondary' };
+        }
+        
+        function loadQueryLog() {
+            fetch('/api/query/log?_=' + Date.now())
+                .then(r => {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(data => {
+                    queryAllLogs = data.logs || [];
+                    renderQueryLogs();
+                })
+                .catch(err => {
+                    console.error('加载查询日志失败:', err);
+                });
+        }
+        
+        loadQueryLog();
+        queryLogTimer = setInterval(loadQueryLog, QUERY_LOG_INTERVAL);
+        
     })();
 </script>
 {% endblock %}

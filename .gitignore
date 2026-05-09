@@ -44,3 +44,6 @@ build/
 .vscode/
 .idea/
 plans/*
+
+# logs
+.logs/*

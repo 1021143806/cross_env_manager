@@ -1,0 +1,2188 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "cross_env_manager API",
+    "version": "2.1.0",
+    "description": "跨环境任务模板管理系统 API - 自动生成"
+  },
+  "servers": [
+    {
+      "url": "http://10.68.2.32:5000",
+      "description": "生产环境"
+    }
+  ],
+  "tags": [
+    {
+      "name": "页面路由",
+      "description": "HTML 页面路由"
+    },
+    {
+      "name": "模板管理",
+      "description": "模板 CRUD API"
+    },
+    {
+      "name": "任务查询",
+      "description": "任务查询相关 API"
+    },
+    {
+      "name": "任务重发",
+      "description": "任务重发与异常完成"
+    },
+    {
+      "name": "统计",
+      "description": "统计数据 API"
+    },
+    {
+      "name": "Join QR Node",
+      "description": "QR 节点管理"
+    },
+    {
+      "name": "配置管理",
+      "description": "配置文件管理"
+    },
+    {
+      "name": "认证",
+      "description": "登录认证 API"
+    },
+    {
+      "name": "系统",
+      "description": "健康检查等系统 API"
+    },
+    {
+      "name": "调车-看板",
+      "description": "调车模块看板 API"
+    },
+    {
+      "name": "调车-配置",
+      "description": "调车模块配置 API"
+    },
+    {
+      "name": "调车-执行",
+      "description": "调车模块执行 API"
+    },
+    {
+      "name": "调车-自愈",
+      "description": "调车模块自愈 API"
+    },
+    {
+      "name": "调车-设备历史",
+      "description": "调车模块设备历史 API"
+    },
+    {
+      "name": "调车-测试",
+      "description": "调车模块测试 API"
+    },
+    {
+      "name": "调车-日志",
+      "description": "调车模块日志 API"
+    },
+    {
+      "name": "监控",
+      "description": "CEM 监控 API"
+    },
+    {
+      "name": "深度查询",
+      "description": "深度查询 API"
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "主页",
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/search": {
+      "get": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "搜索模板",
+        "parameters": [
+          {
+            "name": "search_term",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/template/{template_id}": {
+      "get": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "查看模板详情",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/edit/{template_id}": {
+      "get": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "编辑模板页面",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "编辑模板提交",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/copy/{template_id}": {
+      "get": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "复制模板页面",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "复制模板提交",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/edit_detail/{detail_id}": {
+      "post": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "编辑子任务",
+        "parameters": [
+          {
+            "name": "detail_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/query": {
+      "get": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "统一查询页面",
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/addtask": {
+      "get": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "任务下发页面",
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/config": {
+      "get": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "配置管理页面",
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/docs": {
+      "get": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "文档页面",
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/stats": {
+      "get": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "统计页面",
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/login": {
+      "get": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "登录页面",
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/dispatch": {
+      "get": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "调车模块看板",
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/dispatch/config": {
+      "get": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "调车模块配置页",
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/dispatch/test": {
+      "get": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "调车模块测试页",
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/monitor": {
+      "get": {
+        "tags": [
+          "页面路由"
+        ],
+        "summary": "CEM 监控页面",
+        "responses": {
+          "200": {
+            "description": "返回 HTML 页面"
+          }
+        }
+      }
+    },
+    "/api/search_suggestions": {
+      "get": {
+        "tags": [
+          "模板管理"
+        ],
+        "summary": "搜索建议",
+        "parameters": [
+          {
+            "name": "term",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "array"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/template/{template_id}/details/add": {
+      "post": {
+        "tags": [
+          "模板管理"
+        ],
+        "summary": "添加子任务",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": ""
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "task_seq": {
+                    "type": "integer"
+                  },
+                  "template_code": {
+                    "type": "string"
+                  },
+                  "template_name": {
+                    "type": "string"
+                  },
+                  "task_servicec": {
+                    "type": "string"
+                  },
+                  "task_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "task_seq",
+                  "template_code",
+                  "template_name",
+                  "task_servicec",
+                  "task_path"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "detail_id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/template/{template_id}/details/{detail_id}/delete": {
+      "delete": {
+        "tags": [
+          "模板管理"
+        ],
+        "summary": "删除子任务",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": ""
+          },
+          {
+            "name": "detail_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/template/{template_id}/details/reorder": {
+      "post": {
+        "tags": [
+          "模板管理"
+        ],
+        "summary": "子任务排序",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": ""
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "order": {
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "order"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/task_group/{order_id}": {
+      "get": {
+        "tags": [
+          "任务查询"
+        ],
+        "summary": "获取任务组信息",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          },
+          {
+            "name": "server_ip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "taskGroup": {
+                      "type": "object"
+                    },
+                    "details": {
+                      "type": "array"
+                    },
+                    "source": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/query/task": {
+      "get": {
+        "tags": [
+          "任务查询"
+        ],
+        "summary": "任务单号查询",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          },
+          {
+            "name": "server_ip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/query/shelf": {
+      "get": {
+        "tags": [
+          "任务查询"
+        ],
+        "summary": "货架号查询",
+        "parameters": [
+          {
+            "name": "shelf_code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/query/device_tasks": {
+      "post": {
+        "tags": [
+          "深度查询"
+        ],
+        "summary": "设备号查询",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "deviceNum": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "deviceNum"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "mainTask": {
+                      "type": "object"
+                    },
+                    "subTasks": {
+                      "type": "array"
+                    },
+                    "deviceStatuses": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/resend": {
+      "post": {
+        "tags": [
+          "任务重发"
+        ],
+        "summary": "重发跨环境任务",
+        "description": "直接修改生产数据库，请谨慎使用",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "orderId": {
+                    "type": "string"
+                  },
+                  "subOrderId": {
+                    "type": "string"
+                  },
+                  "taskSeq": {
+                    "type": "integer"
+                  },
+                  "serverIp": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "orderId",
+                  "subOrderId",
+                  "taskSeq"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "newSubOrderId": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/force_complete": {
+      "post": {
+        "tags": [
+          "任务重发"
+        ],
+        "summary": "异常完成",
+        "description": "仅修改子模板状态为3（已取消），适用于重发中卡住的子任务",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "orderId": {
+                    "type": "string"
+                  },
+                  "subOrderId": {
+                    "type": "string"
+                  },
+                  "taskSeq": {
+                    "type": "integer"
+                  },
+                  "serverIp": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "orderId",
+                  "subOrderId",
+                  "taskSeq"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/overview": {
+      "get": {
+        "tags": [
+          "统计"
+        ],
+        "summary": "系统概览统计",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "total_templates": {
+                      "type": "integer"
+                    },
+                    "enabled_templates": {
+                      "type": "integer"
+                    },
+                    "total_details": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/distribution": {
+      "get": {
+        "tags": [
+          "统计"
+        ],
+        "summary": "模板分布统计",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/stats/templates_by_server": {
+      "get": {
+        "tags": [
+          "统计"
+        ],
+        "summary": "按服务器统计模板",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/stats/template_growth": {
+      "get": {
+        "tags": [
+          "统计"
+        ],
+        "summary": "模板增长趋势",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/stats/detailed_analysis": {
+      "get": {
+        "tags": [
+          "统计"
+        ],
+        "summary": "详细分析",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/stats/main_task_status": {
+      "get": {
+        "tags": [
+          "统计"
+        ],
+        "summary": "大模板状态分布统计",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/stats/daily": {
+      "get": {
+        "tags": [
+          "统计"
+        ],
+        "summary": "每日统计（含 sparkline）",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/join_qr_nodes/{node_id}/delete": {
+      "delete": {
+        "tags": [
+          "Join QR Node"
+        ],
+        "summary": "删除节点",
+        "parameters": [
+          {
+            "name": "node_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/join_qr_nodes/stats": {
+      "get": {
+        "tags": [
+          "Join QR Node"
+        ],
+        "summary": "节点统计",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/addtask/config": {
+      "get": {
+        "tags": [
+          "配置管理"
+        ],
+        "summary": "获取配置",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "配置管理"
+        ],
+        "summary": "保存配置",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "content",
+                  "message"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/addtask/config/backups": {
+      "get": {
+        "tags": [
+          "配置管理"
+        ],
+        "summary": "备份列表",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/addtask/config/backup": {
+      "post": {
+        "tags": [
+          "配置管理"
+        ],
+        "summary": "创建备份",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/addtask/config/backup/{backup_name}": {
+      "get": {
+        "tags": [
+          "配置管理"
+        ],
+        "summary": "获取备份内容",
+        "parameters": [
+          {
+            "name": "backup_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/addtask/config/backup/{backup_name}/restore": {
+      "post": {
+        "tags": [
+          "配置管理"
+        ],
+        "summary": "恢复备份",
+        "parameters": [
+          {
+            "name": "backup_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/addtask/config/backup/{backup_name}/delete": {
+      "delete": {
+        "tags": [
+          "配置管理"
+        ],
+        "summary": "删除备份",
+        "parameters": [
+          {
+            "name": "backup_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/login": {
+      "post": {
+        "tags": [
+          "认证"
+        ],
+        "summary": "登录",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "username",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/logout": {
+      "post": {
+        "tags": [
+          "认证"
+        ],
+        "summary": "注销",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/status": {
+      "get": {
+        "tags": [
+          "认证"
+        ],
+        "summary": "认证状态",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "logged_in": {
+                      "type": "boolean"
+                    },
+                    "username": {
+                      "type": "string"
+                    },
+                    "login_time": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/actuator/health": {
+      "get": {
+        "tags": [
+          "系统"
+        ],
+        "summary": "健康检查",
+        "responses": {
+          "200": {
+            "description": "返回 1000"
+          }
+        }
+      }
+    },
+    "/api/dispatch/status": {
+      "get": {
+        "tags": [
+          "调车-看板"
+        ],
+        "summary": "获取调车状态",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/device_info": {
+      "get": {
+        "tags": [
+          "调车-看板"
+        ],
+        "summary": "获取设备信息",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/device_check": {
+      "post": {
+        "tags": [
+          "调车-看板"
+        ],
+        "summary": "设备检查",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "deviceCode": {
+                    "type": "string"
+                  },
+                  "serviceUrl": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "deviceCode",
+                  "serviceUrl"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/template_detail": {
+      "get": {
+        "tags": [
+          "调车-看板"
+        ],
+        "summary": "获取模板详情",
+        "parameters": [
+          {
+            "name": "template_code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/report_status": {
+      "post": {
+        "tags": [
+          "调车-看板"
+        ],
+        "summary": "上报状态",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "region_key": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "region_key",
+                  "status"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/config": {
+      "get": {
+        "tags": [
+          "调车-配置"
+        ],
+        "summary": "获取调车配置",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "调车-配置"
+        ],
+        "summary": "保存调车配置",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "content",
+                  "message"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/config/backups": {
+      "get": {
+        "tags": [
+          "调车-配置"
+        ],
+        "summary": "调车配置备份列表",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/config/backup": {
+      "post": {
+        "tags": [
+          "调车-配置"
+        ],
+        "summary": "创建调车配置备份",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/config/backup/{backup_name}": {
+      "get": {
+        "tags": [
+          "调车-配置"
+        ],
+        "summary": "获取调车配置备份",
+        "parameters": [
+          {
+            "name": "backup_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "调车-配置"
+        ],
+        "summary": "删除调车配置备份",
+        "parameters": [
+          {
+            "name": "backup_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/config/backup/{backup_name}/restore": {
+      "post": {
+        "tags": [
+          "调车-配置"
+        ],
+        "summary": "恢复调车配置备份",
+        "parameters": [
+          {
+            "name": "backup_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/region_files/{region_key}": {
+      "get": {
+        "tags": [
+          "调车-配置"
+        ],
+        "summary": "获取区域文件列表",
+        "parameters": [
+          {
+            "name": "region_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/region_file/{region_key}/{filename}": {
+      "get": {
+        "tags": [
+          "调车-配置"
+        ],
+        "summary": "获取区域文件内容",
+        "parameters": [
+          {
+            "name": "region_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "调车-配置"
+        ],
+        "summary": "保存区域文件",
+        "parameters": [
+          {
+            "name": "region_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "content"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/dispatch_log/{region_key}": {
+      "get": {
+        "tags": [
+          "调车-日志"
+        ],
+        "summary": "获取调度日志",
+        "parameters": [
+          {
+            "name": "region_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "调车-日志"
+        ],
+        "summary": "清空调度日志",
+        "parameters": [
+          {
+            "name": "region_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/global_log": {
+      "get": {
+        "tags": [
+          "调车-日志"
+        ],
+        "summary": "获取全局日志",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/global_log/export": {
+      "get": {
+        "tags": [
+          "调车-日志"
+        ],
+        "summary": "导出全局日志",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/execute/{region_key}": {
+      "post": {
+        "tags": [
+          "调车-执行"
+        ],
+        "summary": "执行调度",
+        "parameters": [
+          {
+            "name": "region_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/manual_dispatch/{region_key}": {
+      "post": {
+        "tags": [
+          "调车-执行"
+        ],
+        "summary": "手动调度",
+        "parameters": [
+          {
+            "name": "region_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "deviceCode": {
+                    "type": "string"
+                  },
+                  "templateCode": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "deviceCode",
+                  "templateCode"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/reset_all/{region_key}": {
+      "post": {
+        "tags": [
+          "调车-执行"
+        ],
+        "summary": "重置所有",
+        "parameters": [
+          {
+            "name": "region_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/clean_simulated/{region_key}": {
+      "post": {
+        "tags": [
+          "调车-执行"
+        ],
+        "summary": "清理模拟任务",
+        "parameters": [
+          {
+            "name": "region_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/cancel_empty_tasks/{region_key}": {
+      "post": {
+        "tags": [
+          "调车-执行"
+        ],
+        "summary": "取消空任务",
+        "parameters": [
+          {
+            "name": "region_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/self_heal/status": {
+      "get": {
+        "tags": [
+          "调车-自愈"
+        ],
+        "summary": "自愈状态",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/self_heal/check": {
+      "post": {
+        "tags": [
+          "调车-自愈"
+        ],
+        "summary": "触发自愈检查",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/self_heal/force_check/{region_key}": {
+      "post": {
+        "tags": [
+          "调车-自愈"
+        ],
+        "summary": "强制自愈检查",
+        "parameters": [
+          {
+            "name": "region_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/device_history/{region_key}": {
+      "get": {
+        "tags": [
+          "调车-设备历史"
+        ],
+        "summary": "获取设备历史",
+        "parameters": [
+          {
+            "name": "region_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/device_history/{region_key}/clean": {
+      "post": {
+        "tags": [
+          "调车-设备历史"
+        ],
+        "summary": "清理设备历史",
+        "parameters": [
+          {
+            "name": "region_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/device_history/{region_key}/check": {
+      "post": {
+        "tags": [
+          "调车-设备历史"
+        ],
+        "summary": "检查设备历史",
+        "parameters": [
+          {
+            "name": "region_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/device_history/{region_key}/fetch_all": {
+      "post": {
+        "tags": [
+          "调车-设备历史"
+        ],
+        "summary": "获取所有设备历史",
+        "parameters": [
+          {
+            "name": "region_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/test/start": {
+      "post": {
+        "tags": [
+          "调车-测试"
+        ],
+        "summary": "启动测试",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "preset": {
+                    "type": "string"
+                  },
+                  "region_key": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "preset",
+                  "region_key"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/test/stop": {
+      "post": {
+        "tags": [
+          "调车-测试"
+        ],
+        "summary": "停止测试（重启项目）",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/test/batch": {
+      "post": {
+        "tags": [
+          "调车-测试"
+        ],
+        "summary": "批量调度",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "region_key": {
+                    "type": "string"
+                  },
+                  "tasks": {
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "region_key",
+                  "tasks"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/dispatch/test/status": {
+      "get": {
+        "tags": [
+          "调车-测试"
+        ],
+        "summary": "测试状态",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/monitor/system": {
+      "get": {
+        "tags": [
+          "监控"
+        ],
+        "summary": "系统监控数据",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    },
+    "/api/monitor/processes": {
+      "get": {
+        "tags": [
+          "监控"
+        ],
+        "summary": "进程列表",
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    }
+  }
+}
