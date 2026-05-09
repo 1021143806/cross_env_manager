@@ -737,6 +737,19 @@
                 toggleQueryPanel();
                 shelfInput.value = urlParams.get('shelf');
                 setTimeout(executeQuery, 200);
+            } else {
+                // 无URL参数时，自动查询最近一条任务
+                fetch('/api/query/latest_order')
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success && data.order_id) {
+                            typeTaskRadio.checked = true;
+                            toggleQueryPanel();
+                            orderIdInput.value = data.order_id;
+                            setTimeout(executeQuery, 300);
+                        }
+                    })
+                    .catch(() => {});
             }
             
             // 初始化图表
@@ -2091,29 +2104,6 @@
                                 </table>
                             </div>
                         </div>
-                        
-                        <!-- 子任务特定信息 -->
-                        ${startPoint !== '-' || endPoint !== '-' || action !== '-' || angel !== '-' || x !== '-' || y !== '-' || shelfNum !== '-' ? `
-                        <div class="mt-3 pt-3 border-top">
-                            <h6 class="mb-2"><i class="bi bi-list-task"></i> 子任务执行详情</h6>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <table class="table table-sm table-borderless small table-modern">
-                                        <tr><th>起始点</th><td><code>${startPoint}</code></td></tr>
-                                        <tr><th>目标点</th><td><code>${endPoint}</code></td></tr>
-                                        <tr><th>动作</th><td>${action}</td></tr>
-                                    </table>
-                                </div>
-                                <div class="col-md-6">
-                                    <table class="table table-sm table-borderless small table-modern">
-                                        <tr><th>坐标 (X, Y)</th><td>${x}, ${y}</td></tr>
-                                        <tr><th>角度</th><td>${angel}</td></tr>
-                                        <tr><th>货架号</th><td>${shelfNum}</td></tr>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                        ` : ''}
                         
                         <!-- 操作按钮区 -->
                         <div class="mt-3 pt-3 border-top d-flex flex-wrap gap-2">

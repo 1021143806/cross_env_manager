@@ -429,6 +429,23 @@ def get_local_task_detail(order_id):
         return jsonify({'error': str(e)}), 500
 
 
+@task_bp.route('/api/query/latest_order')
+@login_required
+def api_latest_order():
+    """获取最近一条任务单号（用于页面打开时自动查询）"""
+    try:
+        conn = task_query_extended._get_production_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT orderId FROM fy_cross_task ORDER BY update_time DESC LIMIT 1")
+            row = cursor.fetchone()
+        conn.close()
+        if row and row.get('orderId'):
+            return jsonify({'success': True, 'order_id': row['orderId']})
+        return jsonify({'success': False, 'error': '无最近任务'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @task_bp.route('/api/query/enrich_tasks', methods=['POST'])
 @login_required
 def api_enrich_tasks():
