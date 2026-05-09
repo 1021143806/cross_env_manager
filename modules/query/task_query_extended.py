@@ -984,24 +984,38 @@ def enrich_task_dict(task_dict, device_code=None):
     shelf_model = task_dict.get('shelfModel') or task_dict.get('shelf_model') or ''
     shelf_num = task_dict.get('shelfNum') or task_dict.get('shelf_num') or task_dict.get('carrierCode') or task_dict.get('carrier_code') or task_dict.get('shelfNumber') or task_dict.get('shelf_number') or ''
     
-    # 从本地 fy_cross_task_detail 表补充缺失字段
+    # 从本地数据库补充缺失字段
     sub_order_id = task_dict.get('subOrderId') or task_dict.get('sub_order_id') or ''
-    if sub_order_id:
+    order_id = task_dict.get('orderId') or task_dict.get('order_id') or ''
+    
+    if sub_order_id or order_id:
         try:
             conn = _get_production_connection()
             with conn.cursor() as cursor:
-                cursor.execute("SELECT * FROM fy_cross_task_detail WHERE sub_order_id = %s", (sub_order_id,))
-                row = cursor.fetchone()
+                row = None
+                if sub_order_id:
+                    cursor.execute("SELECT * FROM fy_cross_task_detail WHERE sub_order_id = %s", (sub_order_id,))
+                    row = cursor.fetchone()
+                elif order_id:
+                    # 主任务：查 fy_cross_task
+                    cursor.execute("SELECT * FROM fy_cross_task WHERE orderId = %s", (order_id,))
+                    row = cursor.fetchone()
+                
                 if row:
                     # 货架编号
-                    if row.get('shelf_number') and not shelf_num:
-                        shelf_num = row['shelf_number']
-                        task_dict['shelf_num'] = shelf_num
+                    shelf_val = row.get('shelf_number') or row.get('shelf_num')
+                    if shelf_val:
+                        if not shelf_num:
+                            shelf_num = shelf_val
+                        if not task_dict.get('shelf_num') and not task_dict.get('shelfNum'):
+                            task_dict['shelf_num'] = shelf_val
+                        if not task_dict.get('carrier_code') and not task_dict.get('carrierCode'):
+                            task_dict['carrier_code'] = shelf_val
                     # 时间字段
-                    for field, target in [('start_time', 'start_time'), ('end_time', 'end_time'), ('create_time', 'create_time'), ('update_time', 'update_time')]:
+                    for field in ['start_time', 'end_time', 'create_time', 'update_time']:
                         val = row.get(field)
-                        if val and not task_dict.get(target) and not task_dict.get(field):
-                            task_dict[target] = val.isoformat() if hasattr(val, 'isoformat') else str(val)
+                        if val and not task_dict.get(field):
+                            task_dict[field] = val.isoformat() if hasattr(val, 'isoformat') else str(val)
                     # 变更状态
                     if row.get('change_status') is not None and not task_dict.get('changeStatus') and not task_dict.get('change_status'):
                         task_dict['change_status'] = row['change_status']
