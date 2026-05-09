@@ -1047,3 +1047,75 @@ def enrich_task_dict(task_dict, device_code=None):
             conn.close()
         except Exception:
             pass
+
+
+def fetch_remote_task_group_times(service_url, device_code=None, device_num=None):
+    """
+    通过远端数据库查询 task_group 的真实开始/结束时间。
+    
+    查询链路：
+      fy_cross_task_detail.sub_order_id 下发后 → task_group.out_order_id
+      但 sub_order_id 格式与 out_order_id 不直接匹配，
+      因此通过 device_code + device_num 在远端 task_group 中匹配。
+    
+    参数：
+      service_url: 远端服务地址（如 http://10.68.2.36:7000），用于提取数据库 IP
+      device_code: 设备序列号（robot_id）
+      device_num: 设备编号（robot_num）
+    
+    返回：
+      {"start_time": datetime_str, "end_time": datetime_str} 或 None
+    """
+    if not service_url:
+        return None
+    if not device_code and not device_num:
+        return None
+    
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(service_url)
+        host = parsed.hostname
+        if not host:
+            return None
+        
+        import pymysql
+        from pymysql.cursors import DictCursor
+        from datetime import datetime
+        
+        conn = pymysql.connect(
+            host=host, port=3306, user='wms', password='CCshenda889',
+            database='wms', charset='utf8mb4', cursorclass=DictCursor,
+            connect_timeout=5
+        )
+        
+        with conn.cursor() as cursor:
+            conditions = []
+            params = []
+            if device_code:
+                conditions.append("robot_id = %s")
+                params.append(device_code)
+            if device_num:
+                conditions.append("robot_num = %s")
+                params.append(device_num)
+            
+            where = " OR ".join(conditions)
+            sql = f"SELECT start_time, end_time FROM task_group WHERE ({where}) AND start_time > 0 ORDER BY id DESC LIMIT 1"
+            cursor.execute(sql, params)
+            row = cursor.fetchone()
+            
+            if row and row.get('start_time'):
+                result = {}
+                # task_group 的 start_time/end_time 是 Unix 时间戳（int）
+                start_ts = row['start_time']
+                end_ts = row.get('end_time')
+                if start_ts:
+                    result['start_time'] = datetime.fromtimestamp(int(start_ts)).isoformat()
+                if end_ts:
+                    result['end_time'] = datetime.fromtimestamp(int(end_ts)).isoformat()
+                return result if result else None
+        
+        conn.close()
+    except Exception:
+        pass
+    
+    return None

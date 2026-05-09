@@ -574,3 +574,4 @@ WHERE model_process_code = 'xxx'
 - 重发逻辑涉及 UPDATE fy_cross_task 和 fy_cross_task_detail 两张表
 - 设备区域修正通过 agv_robot_ext.DEVICE_AREA 查询
 - 2026-05-09: 新增 task_order、task_order_detail 表结构及关联关系图。关键纠正：task_group/task_order/task_order_detail 位于远端服务器(通过 service_url 访问)，不在本地生产库。下发链路为 fy_cross_task_detail.sub_order_id → task_group.out_order_id。子任务时间从 task_order_detail 获取
+- 2026-05-09: 修正子任务时间查询逻辑。新增 fetch_remote_task_group_times() 函数，通过 device_code/device_num 直连远端 MySQL(3306) 查询 task_group 的 start_time/end_time（Unix 时间戳），覆盖 fy_cross_task_detail 中可能为空的时间字段。在 routes/task_routes.py step3 循环中调用
