@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# 应用版本号
+APP_VERSION = '2.1.4'
+
 # Python 3.9兼容性修改：使用pymysql替代mysql.connector
 import pymysql
 from pymysql.cursors import DictCursor
@@ -152,9 +155,6 @@ args = parse_arguments()
 
 # 加载配置
 config = load_config(args.config)
-
-# 应用版本号
-APP_VERSION = '2.1.0'
 
 # 初始化Flask应用
 app = Flask(__name__)

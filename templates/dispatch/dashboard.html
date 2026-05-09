@@ -465,7 +465,8 @@
                 <button class="btn btn-sm log-tab" data-filter="execute" onclick="switchLogTab('execute')">执行</button>
                 <button class="btn btn-sm log-tab" data-filter="report_status" onclick="switchLogTab('report_status')">上报</button>
                 <button class="btn btn-sm log-tab" data-filter="clean" onclick="switchLogTab('clean')">清理</button>
-                <input type="text" id="logSearch" class="form-control form-control-sm ms-auto" placeholder="搜索日志..." style="width:160px;" oninput="renderLogs()">
+                <button class="btn btn-sm btn-outline-secondary ms-1" onclick="exportLogs()" title="导出全部日志（含大日志）">📥 导出</button>
+                <input type="text" id="logSearch" class="form-control form-control-sm ms-auto" placeholder="搜索日志..." style="width:160px;" oninput="onLogSearch()">
             </div>
             <div id="logContainer" style="max-height:300px;overflow-y:auto;padding:0.5rem 1rem;" onscroll="onLogScroll()">
                 <div class="text-center text-muted py-3">加载中...</div>
@@ -834,21 +835,117 @@ function scrollLogToTop() {
     container.scrollTop = 0;
 }
 
+let _lastLogTime = '';  // 记录最后一条日志的时间戳，用于增量拉取
+
 function loadGlobalLog() {
-    fetch('/api/dispatch/global_log?_=' + Date.now())
+    if (_searchMode) return;  // 搜索模式下跳过自动刷新
+    let url = '/api/dispatch/global_log';
+    if (_lastLogTime) {
+        url += '?since=' + encodeURIComponent(_lastLogTime);
+    }
+    fetch(url)
         .then(r => {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
         })
         .then(data => {
-            allLogs = data.logs || [];
-            renderLogs();
+            const newLogs = data.logs || [];
+            if (newLogs.length > 0) {
+                // 更新最后时间戳
+                _lastLogTime = newLogs[0].time || _lastLogTime;
+                if (_lastLogTime && !allLogs.length) {
+                    // 首次加载：全量替换
+                    allLogs = newLogs;
+                } else {
+                    // 增量模式：合并去重（按 time+action+detail 去重）
+                    const existingKeys = new Set(allLogs.map(l => (l.time||'') + '|' + (l.action||'') + '|' + (l.detail||'')));
+                    newLogs.forEach(l => {
+                        const key = (l.time||'') + '|' + (l.action||'') + '|' + (l.detail||'');
+                        if (!existingKeys.has(key)) {
+                            allLogs.unshift(l);
+                        }
+                    });
+                    // 缓存最多400条
+                    if (allLogs.length > 400) {
+                        allLogs = allLogs.slice(0, 400);
+                    }
+                }
+                renderLogs();
+            }
         })
         .catch(err => {
             console.error('加载日志失败:', err);
             const container = document.getElementById('logContainer');
-            if (container) container.innerHTML = '<div class="text-center text-muted py-3">加载日志失败</div>';
+            if (container && !allLogs.length) {
+                container.innerHTML = '<div class="text-center text-muted py-3">加载日志失败</div>';
+            }
         });
+}
+
+// 搜索时加载大日志并暂停自动刷新
+let _searchMode = false;
+let _archiveLogsLoaded = false;
+
+function onLogSearch() {
+    const searchInput = document.getElementById('logSearch');
+    const searchText = searchInput ? searchInput.value.trim() : '';
+    
+    if (searchText && !_archiveLogsLoaded) {
+        // 有搜索内容且还没加载大日志：加载大日志
+        _searchMode = true;
+        stopLogTimer();
+        fetch('/api/dispatch/global_log/export')
+            .then(r => r.json())
+            .then(archiveLogs => {
+                _archiveLogsLoaded = true;
+                // 合并去重
+                const existingKeys = new Set(allLogs.map(l => (l.time||'') + '|' + (l.action||'') + '|' + (l.detail||'')));
+                (archiveLogs || []).forEach(l => {
+                    const key = (l.time||'') + '|' + (l.action||'') + '|' + (l.detail||'');
+                    if (!existingKeys.has(key)) {
+                        allLogs.push(l);
+                    }
+                });
+                allLogs.sort((a, b) => (b.time || '').localeCompare(a.time || ''));
+                renderLogs();
+            })
+            .catch(() => { renderLogs(); });
+    } else if (!searchText && _searchMode) {
+        // 清空搜索：恢复自动刷新
+        _searchMode = false;
+        startLogTimer();
+    }
+    renderLogs();
+}
+
+function stopLogTimer() {
+    if (logTimer) { clearInterval(logTimer); logTimer = null; }
+}
+
+function startLogTimer() {
+    stopLogTimer();
+    logTimer = setInterval(loadGlobalLog, LOG_INTERVAL);
+}
+
+function exportLogs() {
+    // 如果有筛选条件，导出筛选后的数据；否则导出全部
+    const searchInput = document.getElementById('logSearch');
+    const searchText = searchInput ? searchInput.value.trim().toLowerCase() : '';
+    const filtered = filterLogs(allLogs, logFilter);
+    
+    if (searchText || logFilter !== 'all') {
+        // 有筛选：导出筛选后的数据
+        const blob = new Blob([JSON.stringify(filtered, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'dispatch_logs_filtered_' + new Date().toISOString().slice(0,19).replace(/:/g,'') + '.json';
+        a.click();
+        URL.revokeObjectURL(url);
+    } else {
+        // 无筛选：导出全部（含大日志）
+        window.open('/api/dispatch/global_log/export', '_blank');
+    }
 }
 
 let currentRawData = null;

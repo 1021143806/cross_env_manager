@@ -51,6 +51,7 @@ DATA_DIR = os.path.join(BASE_DIR, 'data', 'dispatch')
 CACHE_INDEX_PATH = os.path.join(DATA_DIR, 'cache_index.json')
 BACKUP_DIR = os.path.join(DATA_DIR, 'backups')
 GLOBAL_LOG_PATH = os.path.join(DATA_DIR, 'global_log.json')
+GLOBAL_LOG_ARCHIVE_DIR = os.path.join(DATA_DIR, 'logs')  # 大日志归档目录
 DAILY_STATS_PATH = os.path.join(DATA_DIR, 'daily_stats.json')
 SHARED_DIR = os.path.join(DATA_DIR, '_shared')  # 跨区域共享模板目录
 
@@ -172,8 +173,49 @@ def _get_region_file(region_key, filename):
 
 # ========== 全局操作日志 ==========
 
+def _get_archive_log_path(date_str=None):
+    """获取大日志归档文件路径"""
+    os.makedirs(GLOBAL_LOG_ARCHIVE_DIR, exist_ok=True)
+    if date_str is None:
+        date_str = datetime.now().strftime('%Y-%m-%d')
+    return os.path.join(GLOBAL_LOG_ARCHIVE_DIR, f'global_log_{date_str}.json')
+
+
+def _load_all_logs():
+    """加载所有日志：热数据 + 2天内的大日志"""
+    logs = _load_json(GLOBAL_LOG_PATH)
+    # 加载最近2天的大日志
+    from datetime import timedelta
+    for i in range(2):
+        date_str = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+        archive_path = _get_archive_log_path(date_str)
+        if os.path.exists(archive_path):
+            archive_logs = _load_json(archive_path)
+            if isinstance(archive_logs, list):
+                logs.extend(archive_logs)
+    return logs
+
+
+def _clean_old_archive_logs():
+    """清理2天前的大日志文件"""
+    from datetime import timedelta
+    cutoff_date = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
+    if os.path.exists(GLOBAL_LOG_ARCHIVE_DIR):
+        for f in os.listdir(GLOBAL_LOG_ARCHIVE_DIR):
+            if f.startswith('global_log_') and f.endswith('.json'):
+                date_part = f.replace('global_log_', '').replace('.json', '')
+                if date_part < cutoff_date:
+                    try:
+                        os.remove(os.path.join(GLOBAL_LOG_ARCHIVE_DIR, f))
+                    except:
+                        pass
+
+
 def write_global_log(action, region_key, detail='', level='info', raw_data=None):
-    """写入全局操作日志（超过100条自动清理，保留最新100条）
+    """写入全局操作日志
+    
+    - 热数据 global_log.json：保留最新200条，前端实时展示
+    - 大日志 global_log_YYYY-MM-DD.json：满200条时批量追加旧日志，保留2天
     
     report_status 去重逻辑：
     - 完全一致（同模板+设备+状态+订单ID）：修改已有日志，追加重复次数
@@ -186,9 +228,7 @@ def write_global_log(action, region_key, detail='', level='info', raw_data=None)
         tn = raw_data.get('modelProcessCode') or raw_data.get('template_name', '')
         dn = raw_data.get('deviceNum', '')
         st = raw_data.get('status', '')
-        # 统一规范化 orderId：兼容 orderId 和 order_id 两种字段名
         oid = raw_data.get('orderId') or raw_data.get('order_id', '')
-        # 从后往前找最近一条匹配的 report_status 日志
         for i in range(len(logs) - 1, -1, -1):
             log = logs[i]
             if log.get('action') != 'report_status' or not log.get('raw_data'):
@@ -198,17 +238,13 @@ def write_global_log(action, region_key, detail='', level='info', raw_data=None)
             r_dn = rd.get('deviceNum', '')
             r_st = rd.get('status', '')
             if r_tn == tn and r_dn == dn and str(r_st) == str(st):
-                # 找到匹配：更新时间和内容
                 log['time'] = datetime.now().isoformat()
-                # 统一规范化旧日志的 orderId 后再比较
                 r_oid = rd.get('orderId') or rd.get('order_id', '')
                 if r_oid == oid:
-                    # 完全一致：追加重复次数（放在开头，避免冒号前空格问题）
                     dup_count = log.get('dup_count', 1) + 1
                     log['dup_count'] = dup_count
                     log['detail'] = f'(重复#{dup_count}) ' + detail
                 else:
-                    # 有偏差：覆盖内容，重置重复计数
                     log['detail'] = detail
                     log['raw_data'] = raw_data
                     log['level'] = level
@@ -227,9 +263,22 @@ def write_global_log(action, region_key, detail='', level='info', raw_data=None)
     if raw_data is not None:
         entry["raw_data"] = raw_data
     logs.append(entry)
-    # 超过100条保留最新100条
-    if len(logs) > 100:
-        logs = logs[-100:]
+    
+    # 超过200条：把最旧的日志批量追加到大日志，保留最新200条
+    if len(logs) > 200:
+        overflow = logs[:-200]  # 超出200条的部分
+        logs = logs[-200:]      # 保留最新200条
+        # 追加到大日志文件
+        archive_path = _get_archive_log_path()
+        archive_logs = _load_json(archive_path)
+        if not isinstance(archive_logs, list):
+            archive_logs = []
+        archive_logs.extend(overflow)
+        # 大日志最多500条
+        if len(archive_logs) > 500:
+            archive_logs = archive_logs[-500:]
+        _save_json(archive_path, archive_logs)
+    
     _save_json(GLOBAL_LOG_PATH, logs)
     
     # 监控采样：每5次调车操作采样一次
@@ -281,10 +330,29 @@ def _update_daily_stats(region_key, field):
 @dispatch_bp.route('/api/dispatch/global_log')
 @login_required
 def api_global_log():
-    """获取全局操作日志"""
+    """获取全局操作日志（支持增量拉取 ?since=timestamp）"""
+    since = request.args.get('since', '')
     logs = _load_json(GLOBAL_LOG_PATH)
+    
+    if since:
+        # 增量模式：只返回比 since 新的日志
+        logs = [log for log in logs if log.get('time', '') > since]
+    
     logs.sort(key=lambda x: x.get('time', ''), reverse=True)
     return jsonify({'logs': logs})
+
+
+@dispatch_bp.route('/api/dispatch/global_log/export')
+@login_required
+def api_global_log_export():
+    """导出全部日志（热数据+大日志）为JSON文件下载"""
+    all_logs = _load_all_logs()
+    all_logs.sort(key=lambda x: x.get('time', ''), reverse=True)
+    return Response(
+        json.dumps(all_logs, ensure_ascii=False, indent=2),
+        mimetype='application/json',
+        headers={'Content-Disposition': f'attachment; filename=dispatch_logs_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'}
+    )
 
 
 # ========== 核心计算逻辑 ==========
@@ -612,8 +680,13 @@ def get_all_areas_status():
 
 # ========== 状态上报处理 ==========
 
-def _clean_by_order_id_across_all_regions(order_id, device_code):
-    """当 status=8 无法匹配模板时，遍历所有区域所有模板按 order_id 清理"""
+def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
+    """当 status=8 无法匹配模板时，遍历所有区域所有模板按 order_id 清理
+    
+    同时根据匹配到的模板类型操作 currentCount：
+    - 来方向（empty_in/load_in）：写入 currentCount
+    - 回方向（empty_out/load_out）：从 currentCount 删除
+    """
     index = _load_cache_index()
     cleaned = 0
     print(f"[Dispatch] _clean_by_order_id_across_all_regions: order_id={order_id}, device_code={device_code}")
@@ -624,13 +697,45 @@ def _clean_by_order_id_across_all_regions(order_id, device_code):
             fpath = _get_template_file_path(rk, t)
             tasks = _load_json(fpath)
             old_count = len(tasks)
-            # 按 order_id 匹配删除
+            # 按 order_id 匹配删除，同时记录被删任务的信息
+            removed_tasks = [task for task in tasks if task.get('order_id') == order_id and task.get('status') == 6]
             new_tasks = [task for task in tasks if not (task.get('order_id') == order_id and task.get('status') == 6)]
             if len(new_tasks) < old_count:
                 _save_json(fpath, new_tasks)
                 removed = old_count - len(new_tasks)
                 cleaned += removed
                 print(f"[Dispatch] _clean_by_order_id: 按order_id清理 {rk}/{t.get('code', t.get('name', ''))} 删除了{removed}条")
+                
+                # 根据模板类型操作 currentCount
+                task_type = _normalize_task_type(t)
+                _dc = device_code
+                _dn = device_num
+                # 从被删任务中获取设备信息
+                if (not _dc or not _dn) and removed_tasks:
+                    rt = removed_tasks[0]
+                    if not _dc: _dc = rt.get('deviceCode', '')
+                    if not _dn: _dn = rt.get('deviceNum', '')
+                
+                if _dc:
+                    now_file = _get_region_file(rk, 'currentCount.json')
+                    now_devices = _load_json(now_file)
+                    if _is_in_direction(task_type):
+                        # 来方向：写入 currentCount
+                        if not any(d.get('deviceCode') == _dc for d in now_devices):
+                            now_devices.append({
+                                'deviceCode': _dc, 'deviceNum': _dn or '',
+                                'order_id': order_id, 'create_time': datetime.now().isoformat(),
+                                'state': 'pending'
+                            })
+                            _save_json(now_file, now_devices)
+                            print(f"[Dispatch] _clean_by_order_id: currentCount {rk} +1 (来方向)")
+                    else:
+                        # 回方向：从 currentCount 删除
+                        old_cc = len(now_devices)
+                        now_devices = [d for d in now_devices if d.get('deviceCode') != _dc]
+                        if len(now_devices) < old_cc:
+                            _save_json(now_file, now_devices)
+                            print(f"[Dispatch] _clean_by_order_id: currentCount {rk} -1 (回方向)")
             tasks = new_tasks
             # 也按 deviceCode 匹配删除
             if device_code:
@@ -640,17 +745,35 @@ def _clean_by_order_id_across_all_regions(order_id, device_code):
                     removed2 = len(tasks) - len(new_tasks2)
                     cleaned += removed2
                     print(f"[Dispatch] _clean_by_order_id: 按deviceCode清理 {rk}/{t.get('code', t.get('name', ''))} 删除了{removed2}条")
-        # 清理 currentCount
-        if device_code:
-            now_file = _get_region_file(rk, 'currentCount.json')
-            now_devices = _load_json(now_file)
-            old_cc = len(now_devices)
-            now_devices = [d for d in now_devices if d.get('deviceCode') != device_code]
-            if len(now_devices) < old_cc:
-                _save_json(now_file, now_devices)
-                print(f"[Dispatch] _clean_by_order_id: 清理currentCount {rk} 删除了{old_cc - len(now_devices)}条")
     print(f"[Dispatch] _clean_by_order_id_across_all_regions: 共清理{cleaned}条")
     return cleaned
+
+
+def _update_by_order_id_across_all_regions(order_id, device_code, device_num):
+    """当 status=6 无法匹配模板时，遍历所有区域按 order_id 更新设备信息"""
+    index = _load_cache_index()
+    updated = 0
+    for rk, region in index.items():
+        if not isinstance(region, dict) or 'templates' not in region:
+            continue
+        for t in region.get('templates', []):
+            fpath = _get_template_file_path(rk, t)
+            tasks = _load_json(fpath)
+            found = False
+            for task in tasks:
+                if task.get('order_id') == order_id and task.get('status') == 6:
+                    task['deviceCode'] = device_code
+                    task['deviceNum'] = device_num
+                    task['update_time'] = datetime.now().isoformat()
+                    found = True
+                    updated += 1
+                    break
+            if found:
+                _save_json(fpath, tasks)
+                print(f"[Dispatch] _update_by_order_id: 更新 {rk}/{t.get('code', t.get('name', ''))} device={device_num}")
+    if updated == 0:
+        print(f"[Dispatch] _update_by_order_id: 未找到匹配 order_id={order_id}, device={device_num}({device_code})")
+    return updated
 
 
 def handle_status_report(data):
@@ -729,11 +852,17 @@ def handle_status_report(data):
     
     if not region_key or not template_name:
         # 无法匹配区域/模板，静默接受上报（不返回错误，避免 ICS 重试）
-        # status=8 等完成状态：遍历所有区域按 order_id 清理，避免数据残留
-        if status != 6 and order_id:
-            cleaned = _clean_by_order_id_across_all_regions(order_id, device_code)
-            if cleaned:
-                return True, f"无法匹配模板但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
+        if order_id:
+            if status == 6:
+                # status=6：按 order_id 跨区域更新设备信息
+                updated = _update_by_order_id_across_all_regions(order_id, device_code, device_num)
+                if updated:
+                    return True, f"无法匹配模板但按order_id更新了{updated}条 (region_key={region_key}, template={template_name})", True
+            else:
+                # status=8 等完成状态：遍历所有区域按 order_id 清理
+                cleaned = _clean_by_order_id_across_all_regions(order_id, device_code, device_num)
+                if cleaned:
+                    return True, f"无法匹配模板但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
         # 记录未匹配上报到操作日志（方便排查）
         try:
             write_global_log('report_unmatched', region_key or '?',
@@ -767,11 +896,15 @@ def handle_status_report(data):
     
     if not template_config:
         # 模板不存在于该区域，静默接受上报
-        # status=8 等完成状态：遍历所有区域按 order_id 清理
-        if status != 6 and order_id:
-            cleaned = _clean_by_order_id_across_all_regions(order_id, device_code)
-            if cleaned:
-                return True, f"模板不在区域但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
+        if order_id:
+            if status == 6:
+                updated = _update_by_order_id_across_all_regions(order_id, device_code, device_num)
+                if updated:
+                    return True, f"模板不在区域但按order_id更新了{updated}条 (region_key={region_key}, template={template_name})", True
+            else:
+                cleaned = _clean_by_order_id_across_all_regions(order_id, device_code, device_num)
+                if cleaned:
+                    return True, f"模板不在区域但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
         # 记录未匹配上报到操作日志
         try:
             write_global_log('report_unmatched', region_key,
@@ -787,11 +920,20 @@ def handle_status_report(data):
     
     now = datetime.now().isoformat()
     
-    # status=7 且无设备号：任务异常（如货架未初始化），任务从未开始执行，直接忽略
-    if status == 7 and not device_code and not device_num:
-        return True, f"异常上报(status=7)无设备号: {data.get('errorDesc', '')}", True
+    # status=7：任务下发失败（如设备已有任务），只清理模板JSON，不操作currentCount（车没走）
+    if status == 7:
+        tasks = _load_json(template_file)
+        old_count = len(tasks)
+        if order_id:
+            tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') == 6)]
+        if device_code:
+            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') == 6)]
+        template_removed = old_count - len(tasks)
+        if template_removed > 0:
+            _save_json(template_file, tasks)
+        return True, f'模板-{template_name} -{template_removed} (status=7下发失败，车未移动)', True
     
-    if status == 6:
+    if status in (6, 10):
         # 任务开始（运行中）：记录到模板 JSON
         # 匹配策略（两级）：
         #   1. 先按 deviceCode 匹配（负载任务）
@@ -802,10 +944,10 @@ def handle_status_report(data):
             if t.get('deviceCode') == device_code and t.get('status') == 6:
                 existing = t
                 break
-        # 第2级：空车任务覆盖更新（下发时 deviceCode 为空，上报时填充）
+        # 第2级：按 order_id 匹配（空车任务，下发时可能已指定设备也可能未指定）
         if not existing and order_id:
             for t in tasks:
-                if t.get('order_id') == order_id and not t.get('deviceCode') and t.get('status') == 6:
+                if t.get('order_id') == order_id and t.get('status') == 6:
                     existing = t
                     break
         
@@ -842,15 +984,27 @@ def handle_status_report(data):
         #   3. deviceCode 匹配（兜底）
         tasks = _load_json(template_file)
         old_count = len(tasks)
+        
+        # 在清理前先保存匹配到的任务信息（用于后续 currentCount 更新）
+        _matched_task = None
         # 第1级：deviceCode + order_id 精确匹配
         matched = [t for t in tasks if t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') == 6]
         if matched:
+            _matched_task = matched[0]
             tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') == 6)]
         elif order_id:
-            # 第2级：order_id 匹配（空车任务，deviceCode 为空）
+            # 第2级：order_id 匹配
+            for t in tasks:
+                if t.get('order_id') == order_id and t.get('status') == 6:
+                    _matched_task = t
+                    break
             tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') == 6)]
         else:
             # 第3级：deviceCode 匹配（兜底）
+            for t in tasks:
+                if t.get('deviceCode') == device_code and t.get('status') == 6:
+                    _matched_task = t
+                    break
             tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') == 6)]
         _save_json(template_file, tasks)
         template_removed = old_count - len(tasks)
@@ -879,16 +1033,9 @@ def handle_status_report(data):
             rk_cc_change = ''
             if _is_in_direction(task_type):
                 # 来区域完成：写入 currentCount.json
-                _device_code = device_code
-                _device_num = device_num
-                if not _device_code or not _device_num:
-                    for t in tasks:
-                        if t.get('order_id') == order_id and t.get('status') == 6:
-                            if not _device_code and t.get('deviceCode'):
-                                _device_code = t['deviceCode']
-                            if not _device_num and t.get('deviceNum'):
-                                _device_num = t['deviceNum']
-                            break
+                # 优先使用上报的设备信息，否则从匹配到的任务中获取
+                _device_code = device_code or (_matched_task.get('deviceCode', '') if _matched_task else '')
+                _device_num = device_num or (_matched_task.get('deviceNum', '') if _matched_task else '')
                 if not _device_code and not _device_num:
                     rk_cc_change = f'{rk}:跳过(无设备信息)'
                 elif not any(d.get('deviceCode') == _device_code for d in rk_now_devices):
@@ -907,6 +1054,15 @@ def handle_status_report(data):
                 rk_now_devices = [d for d in rk_now_devices if d.get('deviceCode') != device_code]
                 if len(rk_now_devices) < old_cc:
                     rk_cc_change = f'{rk}:-1(共{len(rk_now_devices)})'
+                    # 记录设备从网格消失事件到操作日志
+                    try:
+                        write_global_log('device_leave', rk,
+                            f'设备离开网格: {device_num}({device_code[-8:] if device_code else "?"}), '
+                            f'模板:{template_name}, status:{status}, order_id:{order_id}',
+                            raw_data={'deviceCode': device_code, 'deviceNum': device_num,
+                                      'template': template_name, 'status': status, 'order_id': order_id,
+                                      'region_key': rk, 'currentCount_after': len(rk_now_devices)})
+                    except: pass
             _save_json(rk_now_file, rk_now_devices)
             if rk_cc_change:
                 cc_change_parts.append(rk_cc_change)
@@ -1029,8 +1185,8 @@ def api_device_info():
     if not device_info:
         return jsonify({'error': f'设备 {device_num} 未找到'}), 404
     
-    # 从 global_log 查询该设备的操作历史
-    logs = _load_json(GLOBAL_LOG_PATH)
+    # 从热数据+大日志中查询该设备的操作历史
+    logs = _load_all_logs()
     history = []
     for log in reversed(logs):
         detail = log.get('detail', '')
@@ -1603,6 +1759,21 @@ def _execute_dispatch(region_key, region, balance):
     selected_device = None
     if direction == 'out' and not is_manual:
         selected_device = _select_device_for_empty_return(region_key, region)
+        # 下发前检查设备状态：非空闲则跳过，避免 RCS 返回 status=7
+        if selected_device:
+            sh = region.get('self_heal', {})
+            api_path = sh.get('device_query_api', SELF_HEAL_DEFAULTS['device_query_api'])
+            area_id = region.get('areaId', '0')
+            if api_path and 'XX' not in api_path:
+                device_info = _query_device_status('', api_path, area_id, selected_device['deviceCode'])
+                if device_info:
+                    dev_state = device_info.get('state', '')
+                    if dev_state != 'Idle':
+                        print(f"[Dispatch] 设备非空闲跳过下发: {selected_device['deviceNum']}({selected_device['deviceCode'][-8:]}), state={dev_state}")
+                        write_global_log('execute_skip', region_key,
+                            f'设备非空闲跳过下发: {selected_device["deviceNum"]}({selected_device["deviceCode"][-8:]}), state={dev_state}',
+                            raw_data={'deviceCode': selected_device['deviceCode'], 'deviceNum': selected_device['deviceNum'], 'state': dev_state})
+                        selected_device = None  # 跳过，回退到不指定设备
     
     task_order_detail = {"taskPath": "", "shelfNumber": ""}
     if selected_device:
@@ -2089,16 +2260,50 @@ def _query_device_status(server, api_path, area_id, device_code):
         return None
 
 
-def _should_clean_device(device_info):
-    """判断设备是否应该被清理（仅明确离线/下线才清理，查询失败保留）"""
+def _should_clean_device(device_info, region_key='', region=None, device_code=''):
+    """判断设备是否应该被清理
+    
+    - 查询失败 → 保留
+    - 在线 → 保留
+    - Offline/Downlined → 检查是否有执行中任务：
+      - 无执行中任务 → 清理
+      - 有执行中任务但超过1小时 → 清理
+      - 有执行中任务且未超过1小时 → 保留（可能在连廊环境中）
+    """
     if not device_info:
         return False  # 查询失败（车可能还没到），保留不清理
     state = device_info.get('state', '')
-    # 仅离线/下线 → 清理
-    if state in ('Offline', 'Downlined'):
-        return True
-    # 在线（空闲/充电/任务中/故障/升级中/查询失败）→ 保留
-    return False
+    if state not in ('Offline', 'Downlined'):
+        return False  # 在线 → 保留
+    
+    # 离线/下线：检查是否有执行中任务
+    if region and device_code:
+        from datetime import timedelta
+        cutoff = (datetime.now() - timedelta(hours=1)).isoformat()
+        has_active_task = False
+        task_start_time = ''
+        for t in region.get('templates', []):
+            fpath = _get_template_file_path(region_key, t)
+            if not os.path.exists(fpath):
+                continue
+            tasks = _load_json(fpath)
+            for task in tasks:
+                if task.get('deviceCode') == device_code and task.get('status') == 6:
+                    has_active_task = True
+                    task_start_time = task.get('create_time', '')
+                    break
+            if has_active_task:
+                break
+        
+        if has_active_task:
+            if task_start_time and task_start_time < cutoff:
+                print(f"[SelfHeal] 设备 {device_code[-8:]} 离线但有执行中任务(超过1小时)，清理")
+                return True  # 超过1小时，清理
+            print(f"[SelfHeal] 设备 {device_code[-8:]} 离线但有执行中任务(未超过1小时)，保留")
+            return False  # 未超过1小时，保留（可能在连廊中）
+    
+    print(f"[SelfHeal] 设备 {device_code[-8:]} 离线且无执行中任务，清理")
+    return True  # 无执行中任务，清理
 
 
 # ========== 设备历史记录 ==========
@@ -2477,6 +2682,18 @@ def _select_device_for_empty_return(region_key, region):
                     continue
                 pending_codes.add(dc)
     
+    # 收集每台设备最近一次被下发的时间（从所有模板JSON中查找）
+    last_dispatch_time = {}
+    for t in region.get('templates', []):
+        fpath = _get_template_file_path(region_key, t)
+        tasks = _load_json(fpath)
+        for task in tasks:
+            dc = task.get('deviceCode', '')
+            ct = task.get('create_time', '')
+            if dc and ct:
+                if dc not in last_dispatch_time or ct > last_dispatch_time[dc]:
+                    last_dispatch_time[dc] = ct
+    
     # 筛选可用设备：有 deviceCode、不在 pending 中
     available = []
     for d in now_devices:
@@ -2489,21 +2706,27 @@ def _select_device_for_empty_return(region_key, region):
         except (ValueError, TypeError):
             battery = 999  # 无电量信息排最后
         state = d.get('state', 'pending')
+        # 最近下发时间（越早越好，没被下发过的最优先）
+        last_dt = last_dispatch_time.get(dc, '')
         available.append({
             'deviceCode': dc,
             'deviceNum': d.get('deviceNum', ''),
             'battery': battery,
-            'state': state
+            'state': state,
+            'last_dispatch': last_dt
         })
     
     if not available:
         return None
     
-    # 排序：电量低优先 → state=idle 优先
+    # 排序：最近未被下发过的优先 → 电量低优先 → state=idle 优先
+    # 最近下发时间越早（或从未下发），排在越前面
     def _sort_key(item):
+        # 最近下发过（1小时内）的排后面，没下发过的排前面
+        recently_dispatched = 1 if item['last_dispatch'] else 0
         battery_score = item['battery']
         state_score = 0 if item['state'] == 'idle' else 1
-        return (battery_score, state_score)
+        return (recently_dispatched, battery_score, state_score)
     
     available.sort(key=_sort_key)
     return available[0]
@@ -2667,7 +2890,7 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
             state_map = {'Idle': 'idle', 'InTask': 'busy', 'Charging': 'charging'}
             d['state'] = state_map.get(state, 'pending') if state not in ('查询失败', 'Offline', 'Downlined') else state
             d['battery'] = battery
-            if _should_clean_device(device_info):
+            if _should_clean_device(device_info, region_key, region, device_code):
                 now_devices = [nd for nd in now_devices if nd.get('deviceCode') != device_code]
                 cleaned += 1
                 steps.append({
@@ -2675,6 +2898,14 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
                     'state': state, 'action': '清理',
                     'reason': f'当前设备离线: {state}'
                 })
+                # 记录设备离开网格事件
+                try:
+                    write_global_log('device_leave', region_key,
+                        f'设备离开网格(自恢复清理): {device_num}({device_code[-8:] if device_code else "?"}), '
+                        f'状态:{state}',
+                        raw_data={'deviceCode': device_code, 'deviceNum': device_num,
+                                  'state': state, 'region_key': region_key, 'reason': 'self_heal'})
+                except: pass
             else:
                 steps.append({
                     'device_code': device_code, 'device_num': device_num,
@@ -2794,6 +3025,10 @@ def _start_self_heal_thread():
     def _loop():
         # 启动后等待15秒，让积压的状态上报先处理，避免误判设备离线
         time.sleep(15)
+        # 清理2天前的大日志文件
+        try:
+            _clean_old_archive_logs()
+        except: pass
         while True:
             try:
                 index = _load_cache_index()

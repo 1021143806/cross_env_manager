@@ -100,10 +100,39 @@ data/dispatch/
 ├── backups/                      # 备份文件目录
 │   ├── dispatch_config_20260428_120000.json
 │   └── ...
-├── region_1_currentCount.json    # 区域1当前设备列表
-├── region_1_DKCqu.json           # 区域1调空车来模板数据
+├── global_log.json               # 全局操作日志
+├── daily_stats.json              # 每日统计
+├── _shared/                      # 跨区域共享模板目录
+│   └── K2.json                   # 共享模板数据
+├── region_1/                     # 区域1数据
+│   ├── currentCount.json         # 当前设备列表
+│   ├── device_history.json       # 设备历史记录（48h活动追踪）
+│   ├── K1.json                   # 模板数据
+│   └── ...
 └── ...
 ```
+
+### device_history.json 格式
+
+记录区域48小时内到达过的设备，每次状态上报自动更新：
+
+```json
+[
+  {
+    "deviceCode": "BL11637BAK00010",
+    "deviceNum": "C185",
+    "deviceName": "C185",
+    "state": "Idle",
+    "battery": "83",
+    "create_time": "2026-05-08T08:00:00",
+    "update_time": "2026-05-08T08:30:00"
+  }
+]
+```
+
+- `deviceCode`：设备序列号，唯一键
+- `create_time`：首次记录时间（首次上线时间）
+- `update_time`：最近在线活动时间（离线设备不更新，48h后自动清理）
 
 ### cache_index.json 格式
 
@@ -246,6 +275,10 @@ data/dispatch/
 | POST | `/api/dispatch/self_heal/check` | ⚙️ 管理员 | 手动触发自恢复检查 |
 | POST | `/api/dispatch/self_heal/force_check/<region_key>` | ⚙️ 管理员 | 强制检查（支持模板/当前设备） |
 | GET | `/api/dispatch/template_detail/<region_key>/<template_code>` | 🔑 登录 | 获取模板详情（任务列表） |
+| GET | `/api/dispatch/device_history/<region_key>` | 🔑 登录 | 获取设备历史记录 |
+| POST | `/api/dispatch/device_history/<region_key>/clean` | ⚙️ 管理员 | 手动48h清理 |
+| POST | `/api/dispatch/device_history/<region_key>/check` | 🔑 登录 | 检查48h内活动（不清理） |
+| POST | `/api/dispatch/device_history/<region_key>/fetch_all` | ⚙️ 管理员 | 全量获取设备状态（5s防抖） |
 | **POST** | **`/api/dispatch/report_status`** | **🔓 无需登录** | **任务状态上报接口（外部设备）** |
 
 
@@ -528,6 +561,11 @@ flowchart TD
 | `reset_all` | 清空数据 | 清空区域所有数据 |
 | `clean_simulated` | 清理模拟 | 清理模拟数据 |
 | `self_heal` | 自恢复 | 自恢复清理异常任务 |
+| `device_leave` | 设备离开网格 | 设备从 currentCount 中删除 |
+| `device_history` | 设备历史 | 手动全量获取/清理设备历史 |
+| `time_slot_change` | 分时段切换 | 分时段切换时全量检查 |
+| `low_battery_return` | 低电量回空车 | 低电量自动下发回空车 |
+| `report_unmatched` | 未匹配上报 | 模板/区域无法匹配的状态上报 |
 
 ### 日志搜索筛选
 
@@ -601,3 +639,43 @@ flowchart TD
 - 首次使用需在配置页面创建区域和模板配置
 - 备份文件存储在 `data/dispatch/backups/`
 - 看板采用增量刷新模式，展开的 JSON 面板不会被自动刷新关闭
+
+## 设计小巧思
+
+### 空车回指定设备 + 轮转策略
+
+自动下发空车回时不再让 RCS 随机分配，而是从当前区域选一台设备指定下发。选设备不是简单挑电量最低的——那样同一台低电量车会被反复选中导致 RCS 拒绝（status=7 "设备已有任务"）。实际策略是三层排序：
+
+1. **最近没被下发过的优先** — 从模板 JSON 中查每台设备的最近下发时间，刚发过的排后面
+2. **电量低的优先** — 在没被下发过的车里挑电量最低的
+3. **空闲的优先** — 电量相同时优先选 idle 状态
+
+这样同一台车不会连续被选中，多台低电量车会被轮流指定。
+
+### 设备历史记录的双时间戳
+
+`device_history.json` 里每条记录有两个时间：
+- `create_time` — 设备**首次**出现在这个区域的时间，写入后不再变
+- `update_time` — 设备**最近一次在线**的时间
+
+状态上报时更新 `update_time`。全量查询时有个细节：**离线设备不更新 `update_time`**。因为离线了就不算"在线活动"，保持上次在线时间不变，这样 48h 后自动清理机制就能正确淘汰长期离线的设备。
+
+### 跨区域清理不碰 currentCount
+
+模板未匹配的 status=8 上报会走 `_clean_by_order_id_across_all_regions` 跨区域清理模板 JSON。但这里**故意不清理 currentCount**——因为无法确定设备属于哪个区域，误删会导致正常区域的设备从网格消失。currentCount 的清理只由正常匹配的 status=8 处理。
+
+### 状态上报未匹配时的 order_id 兜底
+
+模板 code 在配置中找不到时，不直接丢弃上报。status=6 按 order_id 跨区域查找模板 JSON 更新设备信息，status=8 按 order_id 跨区域清理。因为 `CEM_auto_...` 开头的 order_id 是调车模块自己生成的，一定能在某个模板 JSON 中找到。
+
+### 分时段切换全量检查
+
+分时段配置切换时（如白班→夜班），自动触发一轮全量检查：清理 48h 旧记录 → 全量获取区域设备状态 → 同步到 device_history 和 currentCount。5 分钟内最多触发一次，避免频繁切换时重复请求。
+
+### 设备网格增量更新
+
+看板每 5 秒刷新时不是全量替换 HTML，而是比对设备列表的差异：新设备带 entering 动画滑入，离开的设备带 leaving 动画淡出。展开的历史设备网格也复用同一套增量更新逻辑。
+
+### 状态上报始终返回 1000
+
+无论匹配成功还是失败，`report_status` 接口始终返回 `{"code": 1000}`。因为 RCS 收到非 1000 响应会不断重试，造成请求风暴。匹配失败的信息记录到操作日志的 `report_unmatched` 中供排查。
