@@ -162,25 +162,25 @@
     .agv-icon.empty_in { background: #6ea8fe; }
     .agv-icon.empty_out { background: #feb272; }
     
-    /* AGV Sprite */
+    /* AGV Sprite — 举升AGV图标（裁剪自 rcsagv.png 第6行，640×64，每格64×64） */
     .agv-sprite {
         display: block;
-        width: 28px;
-        height: 28px;
-        background: url('/static/img/agv/rcsagv.png') no-repeat;
-        background-size: 280px 28px;
-        image-rendering: pixelated;
+        width: 64px;
+        height: 64px;
+        background: url('/static/img/agv/rcsagv_lift.png') no-repeat;
+        background-size: 640px 64px;
+        image-rendering: auto;
     }
-    .agv-sprite.blue { background-position: 0 0; }
-    .agv-sprite.orange { background-position: -28px 0; }
-    .agv-sprite.light-blue { background-position: -56px 0; }
-    .agv-sprite.light-orange { background-position: -84px 0; }
-    .agv-sprite.green { background-position: -112px 0; }
-    .agv-sprite.purple { background-position: -140px 0; }
-    .agv-sprite.yellow { background-position: -168px 0; }
-    .agv-sprite.red { background-position: -196px 0; }
-    .agv-sprite.teal { background-position: -224px 0; }
-    .agv-sprite.gray { background-position: -252px 0; }
+    .agv-sprite.blue        { background-position: 0      0; }  /* col 0: 空闲/任务中 */
+    .agv-sprite.orange      { background-position: -64px  0; }  /* col 1: 故障 */
+    .agv-sprite.light-blue  { background-position: -128px 0; }  /* col 2 */
+    .agv-sprite.light-orange{ background-position: -192px 0; }  /* col 3 */
+    .agv-sprite.green       { background-position: -256px 0; }  /* col 4: 充电中 */
+    .agv-sprite.purple      { background-position: -320px 0; }  /* col 5: 低电量 */
+    .agv-sprite.yellow      { background-position: -384px 0; }  /* col 6 */
+    .agv-sprite.red         { background-position: -448px 0; }  /* col 7: 异常 */
+    .agv-sprite.teal        { background-position: -512px 0; }  /* col 8 */
+    .agv-sprite.gray        { background-position: -576px 0; }  /* col 9: 离线 */
     
     /* 电池指示器 */
     .battery-indicator {
@@ -232,6 +232,95 @@
     }
     [data-bs-theme="dark"] .bg-light.text-dark {
         color: var(--text-color) !important;
+    }
+    
+    /* ===== 设备实时状态卡片 - 方案A：卡片式服务器面板 ===== */
+    .device-summary-row {
+        display: flex; align-items: center; gap: 1.5rem;
+        padding: 0.5rem 0;
+    }
+    .device-icon-wrap {
+        flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        width: 80px; height: 80px;
+        background: var(--detail-card-bg);
+        border-radius: 16px;
+        border: 2px solid var(--border-color);
+    }
+    .device-icon-wrap .agv-icon { transform: scale(1.1); }
+    .device-meta-grid {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 0.3rem 1rem;
+        font-size: 0.85rem;
+    }
+    .device-meta-grid .meta-label {
+        color: var(--text-color); opacity: 0.6;
+        white-space: nowrap;
+    }
+    .device-meta-grid .meta-value {
+        font-weight: 500;
+    }
+    .device-meta-grid .meta-value code {
+        font-size: 0.8rem;
+    }
+    .battery-bar-wrap {
+        display: inline-flex; align-items: center; gap: 0.4rem;
+    }
+    .battery-bar {
+        display: inline-block; width: 60px; height: 8px;
+        background: var(--border-color); border-radius: 4px; overflow: hidden;
+        vertical-align: middle;
+    }
+    .battery-bar-fill {
+        display: block; height: 100%; border-radius: 4px;
+        transition: width 0.5s ease;
+    }
+    .battery-bar-fill.high { background: #28a745; }
+    .battery-bar-fill.mid  { background: #ffc107; }
+    .battery-bar-fill.low  { background: #dc3545; }
+    
+    /* 服务器卡片网格 */
+    .server-cards-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 0.75rem;
+    }
+    .server-card {
+        background: var(--detail-card-bg);
+        border-radius: 10px;
+        border-left: 4px solid #6c757d;
+        padding: 0.75rem 1rem;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .server-card:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--card-shadow);
+    }
+    .server-card.border-success { border-left-color: #28a745; }
+    .server-card.border-primary { border-left-color: #0d6efd; }
+    .server-card.border-warning { border-left-color: #ffc107; }
+    .server-card.border-danger  { border-left-color: #dc3545; }
+    .server-card.border-info    { border-left-color: #0dcaf0; }
+    .server-card.border-secondary { border-left-color: #6c757d; }
+    .server-card .sc-ip {
+        font-weight: 600; font-size: 0.85rem; margin-bottom: 0.4rem;
+        display: flex; align-items: center; gap: 0.4rem;
+    }
+    .server-card .sc-ip code { font-size: 0.78rem; }
+    .server-card .sc-row {
+        display: flex; align-items: center; gap: 0.5rem;
+        font-size: 0.8rem; margin-top: 0.25rem;
+    }
+    .server-card .sc-row .sc-label { opacity: 0.6; min-width: 2rem; }
+    
+    /* 状态不一致警告 */
+    .status-mismatch-alert {
+        display: flex; align-items: center; gap: 0.5rem;
+        padding: 0.5rem 0.75rem; margin-top: 0.75rem;
+        background: rgba(255, 193, 7, 0.1);
+        border: 1px solid rgba(255, 193, 7, 0.3);
+        border-radius: 8px; font-size: 0.8rem;
     }
 </style>
 {% endblock %}
@@ -1109,6 +1198,26 @@
             return map[state] || state || '未知';
         }
         
+        // 根据设备状态返回举升AGV sprite 颜色（参照 rcsagvpng.md 第8节）
+        function getDeviceSpriteClass(state, battery) {
+            const b = parseInt(battery) || 100;
+            // 低电量优先（紫色）
+            if (b <= 30 && state !== 'Offline' && state !== 'Downlined' && state !== 'Error') {
+                return 'purple';
+            }
+            const map = {
+                'Idle': 'blue',
+                'InTask': 'blue',
+                'Charging': 'green',
+                'Offline': 'gray',
+                'Downlined': 'gray',
+                'Error': 'red',
+                '查询失败': 'gray',
+                '未查询': 'gray'
+            };
+            return map[state] || 'blue';
+        }
+        
         function getBatteryClass(battery, threshold) {
             const b = parseInt(battery) || 0;
             const t = threshold || 30;
@@ -1124,7 +1233,7 @@
             const battery = d.battery || '';
             const threshold = lowBatteryThreshold || 30;
             const cls = 'agv-icon ' + getDeviceStateClass(state);
-            const spriteCls = 'agv-sprite blue';
+            const spriteCls = 'agv-sprite ' + getDeviceSpriteClass(state, battery);
             const label = getDeviceStateLabel(state);
             
             let batteryHtml = '';
@@ -1137,7 +1246,7 @@
             const clickAttr = clickHandler ? `onclick="${clickHandler}" style="cursor:pointer;"` : '';
             return `<span class="${cls}" ${clickAttr} title="${label} · ${dc} (点击查看详情)"
                 onmouseenter="showAgvTooltipForQuery(event,'${escapeHtml(dc)}','${escapeHtml(label)}','','','${battery}')"
-                onmouseleave="hideAgvTooltipForQuery()"><span class="${spriteCls}"></span><span class="dev-num">${dn}</span>${batteryHtml}</span>`;
+                onmouseleave="hideAgvTooltipForQuery()"><span class="${spriteCls}"></span>${batteryHtml}</span>`;
         }
         
         function escapeHtml(str) {
@@ -1198,13 +1307,25 @@
             window._queryDebug = result.query_debug || {};
             
             const hasStatus = statuses.length > 0;
-            // 取第一个成功的设备状态，没有则构造一个"未查询"状态
             const firstOk = hasStatus ? (statuses.find(s => s.state && s.state !== '查询失败') || statuses[0]) : { state: '未查询', device_num: deviceNum, device_code: deviceCode };
+            
+            // 检测多服务器状态是否一致
+            const okStates = statuses.filter(s => s.state && s.state !== '查询失败').map(s => s.state);
+            const uniqueStates = [...new Set(okStates)];
+            const hasMismatch = uniqueStates.length > 1;
+            
+            // 电量进度条 HTML
+            const batteryBar = (battery) => {
+                if (!battery && battery !== 0) return '';
+                const b = parseInt(battery) || 0;
+                const cls = b <= 30 ? 'low' : (b <= 60 ? 'mid' : 'high');
+                return `<span class="battery-bar-wrap"><span class="battery-bar"><span class="battery-bar-fill ${cls}" style="width:${b}%"></span></span>${b}%</span>`;
+            };
             
             let html = `
                 <div class="query-card mb-3 animate__animated animate__fadeIn">
                     <div class="query-card-header bg-info bg-opacity-10 d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0"><i class="bi bi-truck me-2"></i>设备实时状态</h5>
+                        <h5 class="mb-0"><i class="bi bi-truck me-2"></i>设备实时状态 · <code>${deviceNum || '-'}</code></h5>
                         <div>
                             <button class="btn btn-sm btn-outline-primary me-1" onclick="showDeviceDetailModal()" title="查看设备详情">
                                 <i class="bi bi-info-circle"></i> 详情
@@ -1216,56 +1337,82 @@
                     </div>
                     <div class="collapse show" id="deviceStatusBody">
                         <div class="card-body">
-                            <div class="row align-items-center">
-                                <div class="col-auto">
-                                    <div class="device-grid" style="display:flex;flex-wrap:wrap;gap:6px;">
-                                        ${renderDeviceIconForQuery(firstOk, 30, 'showDeviceDetailModal()')}
-                                    </div>
+                            <!-- 设备摘要行：大图标 + 核心指标 -->
+                            <div class="device-summary-row">
+                                <div class="device-icon-wrap" onclick="showDeviceDetailModal()" style="cursor:pointer;" title="点击查看详情">
+                                    ${renderDeviceIconForQuery(firstOk, 30, '')}
                                 </div>
-                                <div class="col">
-                                    <table class="table table-sm table-borderless small mb-0">
-                                        <tr><th class="w-30">设备号</th><td><code>${deviceNum || '-'}</code></td></tr>
-                                        <tr><th>设备序列号</th><td><code>${deviceCode || '-'}</code></td></tr>`;
+                                <div class="device-meta-grid">
+                                    <span class="meta-label">序列号</span>
+                                    <span class="meta-value"><code>${deviceCode || '-'}</code></span>`;
             if (hasStatus) {
                 html += `
-                                        <tr><th>状态</th><td><span class="badge bg-${getStateBadgeClass(firstOk.state)}">${getDeviceStateLabel(firstOk.state)}</span></td></tr>
-                                        ${firstOk.battery ? `<tr><th>电量</th><td>${firstOk.battery}%</td></tr>` : ''}
-                                        ${firstOk.area_id ? `<tr><th>区域ID</th><td>${firstOk.area_id}</td></tr>` : ''}`;
+                                    <span class="meta-label">状态</span>
+                                    <span class="meta-value"><span class="badge bg-${getStateBadgeClass(firstOk.state)}">${getDeviceStateLabel(firstOk.state)}</span></span>
+                                    <span class="meta-label">电量</span>
+                                    <span class="meta-value">${batteryBar(firstOk.battery)}</span>
+                                    <span class="meta-label">区域</span>
+                                    <span class="meta-value">📍 ${firstOk.area_id || '-'}</span>`;
             } else {
                 html += `
-                                        <tr><th>状态</th><td><span class="badge bg-secondary">未查询到设备信息</span></td></tr>`;
+                                    <span class="meta-label">状态</span>
+                                    <span class="meta-value"><span class="badge bg-secondary">未查询到设备信息</span></span>`;
             }
             html += `
-                                    </table>
                                 </div>
                             </div>`;
             
-            // 各服务器查询详情
+            // 各服务器卡片面板
             if (statuses.length > 0) {
                 html += `
                             <hr>
-                            <small class="text-muted fw-bold">各服务器查询结果：</small>
-                            <div class="table-responsive mt-2">
-                                <table class="table table-sm table-bordered small mb-0">
-                                    <thead><tr><th>服务器</th><th>状态</th><th>电量</th><th>区域</th></tr></thead>
-                                    <tbody>`;
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <small class="fw-bold" style="opacity:0.7;">各服务器查询结果 (${statuses.length}台)</small>`;
+                if (hasMismatch) {
+                    html += `<small class="text-warning"><i class="bi bi-exclamation-triangle"></i> 状态不一致</small>`;
+                }
+                html += `</div>
+                            <div class="server-cards-grid">`;
                 statuses.forEach(s => {
-                    html += `<tr>
-                        <td><code>${s.server_ip || s.service_url || '-'}</code></td>
-                        <td><span class="badge bg-${getStateBadgeClass(s.state)}">${getDeviceStateLabel(s.state)}</span></td>
-                        <td>${s.battery || '-'}</td>
-                        <td>${s.area_id || '-'}</td>
-                    </tr>`;
+                    const stateCls = getStateBadgeClass(s.state);
+                    const stateLabel = getDeviceStateLabel(s.state);
+                    const ip = s.server_ip || s.service_url || '-';
+                    html += `
+                                <div class="server-card border-${stateCls}">
+                                    <div class="sc-ip">
+                                        <span class="badge bg-${stateCls}" style="width:8px;height:8px;border-radius:50%;padding:0;display:inline-block;"></span>
+                                        <code>${ip}</code>
+                                    </div>
+                                    <div class="sc-row">
+                                        <span class="sc-label">状态</span>
+                                        <span class="badge bg-${stateCls}">${stateLabel}</span>
+                                    </div>
+                                    <div class="sc-row">
+                                        <span class="sc-label">电量</span>
+                                        <span>${batteryBar(s.battery) || '-'}</span>
+                                    </div>
+                                    <div class="sc-row">
+                                        <span class="sc-label">区域</span>
+                                        <span>📍 ${s.area_id || '-'}</span>
+                                    </div>
+                                </div>`;
                 });
-                html += `</tbody></table></div>`;
+                html += `</div>`;
+                
+                // 状态不一致警告
+                if (hasMismatch) {
+                    html += `
+                            <div class="status-mismatch-alert">
+                                <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+                                <span>${statuses.length}台服务器返回了 <strong>${uniqueStates.length}</strong> 种不同状态：${uniqueStates.map(s => getDeviceStateLabel(s)).join('、')}，请核实设备实际状态</span>
+                            </div>`;
+                }
             }
             
             html += `
                         </div>
-                    </div>`;
-            
-            // 调试面板入口（设备号查询时始终显示）
-            html += `
+                    </div>
+                    <!-- 调试面板入口 -->
                     <div class="card-footer bg-transparent border-top-0 pt-0">
                         <button class="btn btn-sm btn-outline-warning w-100" type="button"
                                 onclick="renderQueryDebugPanel()" id="debugPanelToggle">
@@ -1434,46 +1581,58 @@
             const hasStatus = statuses.length > 0;
             const firstOk = hasStatus ? (statuses.find(s => s.state && s.state !== '查询失败') || statuses[0]) : { state: '未查询', device_num: data.deviceNum, device_code: data.deviceCode };
             
-            let html = '<div class="mb-3"><strong style="color:var(--primary-color);">基本信息</strong></div>';
-            html += '<table class="table table-sm table-borderless mb-3"><tbody>';
-            html += '<tr><td class="text-muted" style="width:80px;">设备编号</td><td><strong>' + escapeHtml(data.deviceNum || '-') + '</strong></td></tr>';
-            html += '<tr><td class="text-muted">序列号</td><td><code>' + escapeHtml(data.deviceCode || '-') + '</code></td></tr>';
-            html += '<tr><td class="text-muted">状态</td><td><span class="badge bg-' + getStateBadgeClass(firstOk.state) + '">' + getDeviceStateLabel(firstOk.state) + '</span></td></tr>';
-            if (firstOk.battery) html += '<tr><td class="text-muted">电量</td><td>' + firstOk.battery + '%</td></tr>';
-            if (firstOk.area_id) html += '<tr><td class="text-muted">区域ID</td><td>' + firstOk.area_id + '</td></tr>';
-            html += '</tbody></table>';
+            // 电量进度条
+            const batteryBar = (battery) => {
+                if (!battery && battery !== 0) return '';
+                const b = parseInt(battery) || 0;
+                const cls = b <= 30 ? 'low' : (b <= 60 ? 'mid' : 'high');
+                return '<span class="battery-bar-wrap"><span class="battery-bar"><span class="battery-bar-fill ' + cls + '" style="width:' + b + '%"></span></span>' + b + '%</span>';
+            };
             
-            // 设备图标展示
-            html += '<div class="text-center mb-3"><div class="device-grid" style="display:inline-flex;">' + renderDeviceIconForQuery(firstOk, 30, '') + '</div></div>';
+            // 基本信息 + 设备图标
+            let html = '<div class="device-summary-row mb-3">';
+            html += '<div class="device-icon-wrap">' + renderDeviceIconForQuery(firstOk, 30, '') + '</div>';
+            html += '<div class="device-meta-grid">';
+            html += '<span class="meta-label">设备编号</span><span class="meta-value"><strong>' + escapeHtml(data.deviceNum || '-') + '</strong></span>';
+            html += '<span class="meta-label">序列号</span><span class="meta-value"><code>' + escapeHtml(data.deviceCode || '-') + '</code></span>';
+            html += '<span class="meta-label">状态</span><span class="meta-value"><span class="badge bg-' + getStateBadgeClass(firstOk.state) + '">' + getDeviceStateLabel(firstOk.state) + '</span></span>';
+            html += '<span class="meta-label">电量</span><span class="meta-value">' + (firstOk.battery ? batteryBar(firstOk.battery) : '-') + '</span>';
+            html += '<span class="meta-label">区域</span><span class="meta-value">📍 ' + (firstOk.area_id || '-') + '</span>';
+            html += '</div></div>';
             
-            // 各服务器查询详情（含请求/响应）
+            // 各服务器查询详情（卡片式）
             if (statuses.length > 0) {
-                html += '<div class="mb-2"><strong style="color:var(--primary-color);">各服务器查询详情</strong></div>';
+                html += '<div class="mb-2"><strong style="color:var(--primary-color);">各服务器查询详情 (' + statuses.length + '台)</strong></div>';
+                html += '<div class="server-cards-grid">';
                 statuses.forEach((s, i) => {
                     const stateColor = getStateBadgeClass(s.state);
-                    html += '<div class="card mb-2 border-' + stateColor + '"><div class="card-header py-1 px-2 small bg-' + stateColor + ' bg-opacity-10">';
-                    html += '<strong>' + escapeHtml(s.server_ip || s.service_url || '-') + '</strong>';
-                    html += ' <span class="badge bg-' + stateColor + '">' + getDeviceStateLabel(s.state) + '</span>';
-                    if (s.battery) html += ' 🔋' + s.battery + '%';
-                    if (s.area_id) html += ' 区域:' + s.area_id;
-                    html += '</div><div class="card-body py-1 px-2 small">';
+                    html += '<div class="server-card border-' + stateColor + '">';
+                    html += '<div class="sc-ip"><span class="badge bg-' + stateColor + '" style="width:8px;height:8px;border-radius:50%;padding:0;display:inline-block;"></span> <code>' + escapeHtml(s.server_ip || s.service_url || '-') + '</code></div>';
+                    html += '<div class="sc-row"><span class="sc-label">状态</span><span class="badge bg-' + stateColor + '">' + getDeviceStateLabel(s.state) + '</span></div>';
+                    html += '<div class="sc-row"><span class="sc-label">电量</span><span>' + (s.battery ? batteryBar(s.battery) : '-') + '</span></div>';
+                    html += '<div class="sc-row"><span class="sc-label">区域</span><span>📍 ' + (s.area_id || '-') + '</span></div>';
                     
-                    // 请求地址
-                    if (s.request_url) {
-                        html += '<div class="mb-1"><span class="text-muted">请求地址:</span><br><code class="text-break" style="font-size:0.7rem;">' + escapeHtml(s.request_url) + '</code></div>';
+                    // 请求/响应详情（折叠）
+                    if (s.request_url || s.request_body || s.response_body || s.error) {
+                        const detailId = 'ddm_detail_' + i;
+                        html += '<button class="btn btn-sm btn-outline-secondary mt-2 w-100 small" type="button" data-bs-toggle="collapse" data-bs-target="#' + detailId + '">📋 请求/响应详情</button>';
+                        html += '<div class="collapse mt-1" id="' + detailId + '">';
+                        if (s.request_url) {
+                            html += '<div class="mb-1"><span class="text-muted">请求地址:</span><br><code class="text-break" style="font-size:0.7rem;">' + escapeHtml(s.request_url) + '</code></div>';
+                        }
+                        if (s.request_body) {
+                            html += '<div class="mb-1"><span class="text-muted">请求体:</span><br><pre style="font-size:0.7rem;max-height:80px;overflow:auto;background:var(--detail-card-bg);padding:0.4rem;border-radius:4px;">' + escapeHtml(JSON.stringify(s.request_body, null, 2)) + '</pre></div>';
+                        }
+                        if (s.response_body) {
+                            html += '<div class="mb-1"><span class="text-muted">返回内容:</span><br><pre style="font-size:0.7rem;max-height:150px;overflow:auto;background:var(--detail-card-bg);padding:0.4rem;border-radius:4px;">' + escapeHtml(JSON.stringify(s.response_body, null, 2)) + '</pre></div>';
+                        } else if (s.error) {
+                            html += '<div class="text-danger"><span class="text-muted">错误:</span> ' + escapeHtml(s.error) + '</div>';
+                        }
+                        html += '</div>';
                     }
-                    // 请求体
-                    if (s.request_body) {
-                        html += '<div class="mb-1"><span class="text-muted">请求体:</span><br><pre class="bg-light p-1 rounded mb-0" style="font-size:0.7rem;max-height:80px;overflow:auto;">' + escapeHtml(JSON.stringify(s.request_body, null, 2)) + '</pre></div>';
-                    }
-                    // 返回内容
-                    if (s.response_body) {
-                        html += '<div class="mb-1"><span class="text-muted">返回内容:</span><br><pre class="bg-light p-1 rounded mb-0" style="font-size:0.7rem;max-height:150px;overflow:auto;">' + escapeHtml(JSON.stringify(s.response_body, null, 2)) + '</pre></div>';
-                    } else if (s.error) {
-                        html += '<div class="text-danger"><span class="text-muted">错误:</span> ' + escapeHtml(s.error) + '</div>';
-                    }
-                    html += '</div></div>';
+                    html += '</div>';
                 });
+                html += '</div>';
             } else {
                 html += '<div class="alert alert-warning small mb-0"><i class="bi bi-exclamation-triangle"></i> 未查询到设备状态信息。可能原因：子任务中没有 service_url，或所有服务器均不可达。</div>';
             }

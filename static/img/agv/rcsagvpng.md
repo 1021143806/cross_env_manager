@@ -1,6 +1,10 @@
 # 图标素材表（Sprite Sheet）使用文档
 
-路径：/main/app/toolsForPersonal/projects/agv_system/app/cross_env_manager/static/img/agv/rcsagv.png
+## skill
+大图路径：/main/app/toolsForPersonal/projects/agv_system/app/cross_env_manager/static/img/agv/rcsagv.png
+
+在使用时使用裁剪过的素材，不要直接使用大图素材，裁剪过的素材位于同一文件夹下，如果不存在则在大图中剪切为小图。
+
 ## 1. 素材概述
 
 该图片是一张典型的 UI 图标素材表（Sprite Sheet / Atlas），用于游戏、工业控制界面、物流系统、自动化平台、模拟经营类游戏或编辑器工具界面。
