@@ -1250,7 +1250,7 @@ def api_device_check():
         state = device_info.get('state', '查询失败') if device_info else '查询失败'
         
         cleaned = False
-        if _should_clean_device(device_info):
+        if _should_clean_device(device_info, region_key, region, device_code):
             # 清理：从所有模板 JSON 和 currentCount 中删除
             for t in region.get('templates', []):
                 fpath = _get_template_file_path(region_key, t)
@@ -2288,7 +2288,7 @@ def _should_clean_device(device_info, region_key='', region=None, device_code=''
                 continue
             tasks = _load_json(fpath)
             for task in tasks:
-                if task.get('deviceCode') == device_code and task.get('status') == 6:
+                if task.get('deviceCode') == device_code and task.get('status') in (6, 10):
                     has_active_task = True
                     task_start_time = task.get('create_time', '')
                     break
@@ -2969,7 +2969,7 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
             device_info = _query_device_status('', api_path, area_id, device_code)
             state = device_info.get('state', '查询失败') if device_info else '查询失败'
             
-            if _should_clean_device(device_info):
+            if _should_clean_device(device_info, region_key, region, device_code):
                 # 从模板 JSON 删除
                 tasks = [t for t in tasks if t.get('deviceCode') != device_code or t.get('status') != 6]
                 # 从 currentCount 删除
