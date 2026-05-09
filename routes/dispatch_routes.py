@@ -2312,15 +2312,19 @@ def _should_clean_device(device_info, region_key='', region=None, device_code=''
                 break
         
         if has_active_task:
+            try:
+                from app import APP_VERSION
+            except Exception:
+                APP_VERSION = '?'
             if task_start_time and task_start_time < cutoff:
-                msg = f'[SelfHeal] 设备 {device_code[-8:]} 离线但有执行中任务(status in (6,10), 超过1小时)，清理 | 模板={matched_template} status={matched_status}'
+                msg = f'[SelfHeal v{APP_VERSION}] 设备 {device_code[-8:]} 离线但有执行中任务(status in (6,10), 超过1小时)，清理 | 模板={matched_template} status={matched_status}'
                 print(msg)
                 try:
                     write_global_log('self_heal_detail', region_key, msg)
                 except Exception:
                     pass
                 return True  # 超过1小时，清理
-            msg = f'[SelfHeal] 设备 {device_code[-8:]} 离线但有执行中任务(status in (6,10), 未超过1小时)，保留 | 模板={matched_template} status={matched_status}'
+            msg = f'[SelfHeal v{APP_VERSION}] 设备 {device_code[-8:]} 离线但有执行中任务(status in (6,10), 未超过1小时)，保留 | 模板={matched_template} status={matched_status}'
             print(msg)
             try:
                 write_global_log('self_heal_detail', region_key, msg)
@@ -2330,7 +2334,11 @@ def _should_clean_device(device_info, region_key='', region=None, device_code=''
     
     # 无执行中任务：输出调试信息
     task_summary = ', '.join(all_task_info) if all_task_info else '(无任务)'
-    msg = f'[SelfHeal] 设备 {device_code[-8:]} 离线且无执行中任务(status in (6,10))，清理 | region={region_key} has_region={bool(region)} has_code={bool(device_code)} | 模板任务: {task_summary}'
+    try:
+        from app import APP_VERSION
+    except Exception:
+        APP_VERSION = '?'
+    msg = f'[SelfHeal v{APP_VERSION}] 设备 {device_code[-8:]} 离线且无执行中任务(status in (6,10))，清理 | region={region_key} has_region={bool(region)} has_code={bool(device_code)} | 模板任务: {task_summary}'
     print(msg)
     try:
         write_global_log('self_heal_detail', region_key, msg)
