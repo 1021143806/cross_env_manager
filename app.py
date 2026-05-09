@@ -2686,7 +2686,7 @@ if __name__ == '__main__':
             False)
     
     print("=" * 60)
-    print("跨环境任务模板管理系统")
+    print(f"跨环境任务模板管理系统 v{APP_VERSION}")
     print("=" * 60)
     print(f"配置文件: {args.config or '默认 (config/env.toml)'}")
     print(f"数据库: {DB_CONFIG['database']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}")
