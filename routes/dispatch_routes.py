@@ -304,9 +304,10 @@ def write_global_log(action, region_key, detail='', level='info', raw_data=None)
 _dispatch_sample_counter = [0]
 
 
-def _update_daily_stats(region_key, field):
+def _update_daily_stats(region_key, field, current_count=None):
     """更新每20分钟统计
-    field: 'empty_in' | 'empty_out' | 'load_in' | 'load_out' | 'dispatch_in' | 'dispatch_out'
+    field: 'empty_in' | 'empty_out' | 'load_in' | 'load_out' | 'dispatch_in' | 'dispatch_out' | 'current_count'
+    current_count: 可选，当前设备数量（用于 current_count 字段）
     """
     now = datetime.now()
     # 分钟取整到 0/20/40
@@ -320,9 +321,12 @@ def _update_daily_stats(region_key, field):
     if region_key not in stats[slot_key]:
         stats[slot_key][region_key] = {
             'empty_in': 0, 'empty_out': 0, 'load_in': 0, 'load_out': 0,
-            'dispatch_in': 0, 'dispatch_out': 0
+            'dispatch_in': 0, 'dispatch_out': 0, 'current_count': 0
         }
-    stats[slot_key][region_key][field] = stats[slot_key][region_key].get(field, 0) + 1
+    if field == 'current_count':
+        stats[slot_key][region_key]['current_count'] = current_count if current_count is not None else 0
+    else:
+        stats[slot_key][region_key][field] = stats[slot_key][region_key].get(field, 0) + 1
     # 只保留最近24小时
     from datetime import timedelta
     cutoff = (now - timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M')
@@ -3192,6 +3196,20 @@ def _start_poll_dispatch_thread():
                                 except Exception as e:
                                     print(f"[FetchAll] 定时全量获取异常 {rk}: {e}")
                             threading.Thread(target=_do_fetch_all, daemon=True).start()
+                    
+                    # [定时记录 currentCount 到 daily_stats] 每20分钟记录一次设备数量
+                    _daily_stats_cc_last = getattr(_start_poll_dispatch_thread, '_daily_stats_cc_last', {})
+                    cc_last = _daily_stats_cc_last.get(rk, 0)
+                    if time.time() - cc_last > 1200:  # 20分钟 = 1200秒
+                        _daily_stats_cc_last[rk] = time.time()
+                        _start_poll_dispatch_thread._daily_stats_cc_last = _daily_stats_cc_last
+                        try:
+                            now_file = _get_region_file(rk, 'currentCount.json')
+                            now_devices = _load_json(now_file)
+                            cc = len(now_devices) if isinstance(now_devices, list) else 0
+                            _update_daily_stats(rk, 'current_count', current_count=cc)
+                        except Exception as e:
+                            pass  # 静默失败，不影响主流程
                     
                     # [分时段切换检测] 比较当前生效的 slot 是否与上次不同
                     if balance.get('time_slot_active') and balance.get('time_slot_matched'):
