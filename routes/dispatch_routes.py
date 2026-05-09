@@ -2297,9 +2297,12 @@ def _should_clean_device(device_info, region_key='', region=None, device_code=''
         
         if has_active_task:
             if task_start_time and task_start_time < cutoff:
+                print(f"[SelfHeal] 设备 {device_code[-8:]} 离线但有执行中任务(超过1小时)，清理")
                 return True  # 超过1小时，清理
+            print(f"[SelfHeal] 设备 {device_code[-8:]} 离线但有执行中任务(未超过1小时)，保留")
             return False  # 未超过1小时，保留（可能在连廊中）
     
+    print(f"[SelfHeal] 设备 {device_code[-8:]} 离线且无执行中任务，清理")
     return True  # 无执行中任务，清理
 
 
