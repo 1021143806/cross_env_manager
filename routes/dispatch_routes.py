@@ -701,8 +701,8 @@ def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
             tasks = _load_json(fpath)
             old_count = len(tasks)
             # 按 order_id 匹配删除，同时记录被删任务的信息
-            removed_tasks = [task for task in tasks if task.get('order_id') == order_id and task.get('status') == 6]
-            new_tasks = [task for task in tasks if not (task.get('order_id') == order_id and task.get('status') == 6)]
+            removed_tasks = [task for task in tasks if task.get('order_id') == order_id and task.get('status') in (6, 10)]
+            new_tasks = [task for task in tasks if not (task.get('order_id') == order_id and task.get('status') in (6, 10))]
             if len(new_tasks) < old_count:
                 _save_json(fpath, new_tasks)
                 removed = old_count - len(new_tasks)
@@ -742,7 +742,7 @@ def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
             tasks = new_tasks
             # 也按 deviceCode 匹配删除
             if device_code:
-                new_tasks2 = [task for task in tasks if not (task.get('deviceCode') == device_code and task.get('status') == 6)]
+                new_tasks2 = [task for task in tasks if not (task.get('deviceCode') == device_code and task.get('status') in (6, 10))]
                 if len(new_tasks2) < len(tasks):
                     _save_json(fpath, new_tasks2)
                     removed2 = len(tasks) - len(new_tasks2)
@@ -764,7 +764,7 @@ def _update_by_order_id_across_all_regions(order_id, device_code, device_num):
             tasks = _load_json(fpath)
             found = False
             for task in tasks:
-                if task.get('order_id') == order_id and task.get('status') == 6:
+                if task.get('order_id') == order_id and task.get('status') in (6, 10):
                     task['deviceCode'] = device_code
                     task['deviceNum'] = device_num
                     task['update_time'] = datetime.now().isoformat()
