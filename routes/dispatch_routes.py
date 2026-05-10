@@ -1727,7 +1727,8 @@ def api_dispatch_log_write(region_key):
 # ========== 执行计算核心逻辑 ==========
 
 def _execute_dispatch(region_key, region, balance):
-    """执行下发核心逻辑（供 api_execute 和自动调度共用）"""
+    """执行下发核心逻辑（供 api_execute 和自动调度共用）
+    每次调用最多下发 dispatch_count 台，每台独立生成 order_id 并独立请求 RCS"""
     import random as _random
     
     enabled = region.get('enabled', False)
@@ -1749,12 +1750,6 @@ def _execute_dispatch(region_key, region, balance):
     
     sim_id = datetime.now().strftime('%Y%m%d%H%M%S')
     simulated = not balance.get('effective_enabled', enabled)
-    
-    now_dt = datetime.now()
-    date_str = now_dt.strftime('%Y-%m-%d_%H:%M:%S')
-    ms = now_dt.microsecond // 1000
-    rand = _random.randint(0, 9999)
-    order_id = f"CEM_auto_{date_str}.{ms:03d}__{rand:04d}"
     
     # 空车下发配置：优先使用 empty_dispatch，回退到旧 server 拼接
     empty_dispatch = region.get('empty_dispatch', {})
@@ -1789,53 +1784,7 @@ def _execute_dispatch(region_key, region, balance):
                             raw_data={'deviceCode': selected_device['deviceCode'], 'deviceNum': selected_device['deviceNum'], 'state': dev_state})
                         selected_device = None  # 跳过，回退到不指定设备
     
-    task_order_detail = {"taskPath": "", "shelfNumber": ""}
-    if selected_device:
-        task_order_detail["deviceCode"] = selected_device['deviceCode']
-        task_order_detail["deviceNum"] = selected_device.get('deviceNum', '')
-    
-    request_body = [{
-        "modelProcessCode": dispatch_template,
-        "priority": 6,
-        "orderId": order_id,
-        "fromSystem": "CEM_auto",
-        "taskOrderDetail": task_order_detail
-    }]
-    
-    result = 'simulated'
-    response_body = None
-    if not simulated and dispatch_url:
-        try:
-            import urllib.request
-            req = urllib.request.Request(dispatch_url,
-                data=json.dumps(request_body).encode('utf-8'),
-                headers={'Content-Type': 'application/json'})
-            resp = urllib.request.urlopen(req, timeout=10)
-            resp_raw = resp.read().decode('utf-8')
-            response_body = json.loads(resp_raw)
-            result = 'success' if response_body.get('code') == 1000 else f'code={response_body.get("code")}'
-        except Exception as e:
-            result = f'请求失败: {str(e)}'
-            response_body = {"error": str(e)}
-    
-    # 写入模板 JSON（空车回指定设备时记录设备信息，空车来留空等待 status=6 上报填充）
-    template_file = _get_template_file_path(region_key, target_template)
-    tasks = _load_json(template_file)
-    now = datetime.now().isoformat()
-    for i in range(dispatch_count):
-        task_entry = {
-            "deviceCode": selected_device['deviceCode'] if selected_device and i == 0 else "",
-            "deviceNum": selected_device['deviceNum'] if selected_device and i == 0 else "",
-            "status": 6, "_simulated": True if simulated else False,
-            "order_id": order_id, "create_time": now, "update_time": now
-        }
-        if selected_device and i == 0:
-            task_entry['_selected_battery'] = selected_device.get('battery', '')
-        tasks.append(task_entry)
-    _save_json(template_file, tasks)
-    
     # 判断 reason
-    log_url = dispatch_url if not simulated else f'(模拟-未实际请求)\n真实地址: {dispatch_url}'
     if not region.get('enabled', False):
         reason = 'manual_disabled'
     elif balance.get('time_slot_active') and balance['time_slot_matched'] and \
@@ -1846,43 +1795,115 @@ def _execute_dispatch(region_key, region, balance):
     else:
         reason = 'manual'
     
+    # 逐台下发：每台独立生成 order_id，独立请求 RCS，独立写入模板 JSON
+    template_file = _get_template_file_path(region_key, target_template)
+    tasks = _load_json(template_file)
+    now_iso = datetime.now().isoformat()
+    success_count = 0
+    all_request_bodies = []
+    all_results = []
+    
+    for i in range(dispatch_count):
+        # 每台生成独立的 order_id（毫秒级时间戳 + 随机数 + 序号确保不重复）
+        now_dt = datetime.now()
+        date_str = now_dt.strftime('%Y-%m-%d_%H:%M:%S')
+        ms = now_dt.microsecond // 1000
+        rand = _random.randint(0, 9999)
+        order_id = f"CEM_auto_{date_str}.{ms:03d}__{rand:04d}"
+        
+        # 构造请求体（空车回指定设备时只有第一台指定，其余不指定）
+        task_order_detail = {"taskPath": "", "shelfNumber": ""}
+        if selected_device and i == 0:
+            task_order_detail["deviceCode"] = selected_device['deviceCode']
+            task_order_detail["deviceNum"] = selected_device.get('deviceNum', '')
+        
+        request_body = [{
+            "modelProcessCode": dispatch_template,
+            "priority": 6,
+            "orderId": order_id,
+            "fromSystem": "CEM_auto",
+            "taskOrderDetail": task_order_detail
+        }]
+        all_request_bodies.append(request_body)
+        
+        # 发送 HTTP 请求
+        result = 'simulated'
+        response_body = None
+        if not simulated and dispatch_url:
+            try:
+                import urllib.request
+                req = urllib.request.Request(dispatch_url,
+                    data=json.dumps(request_body).encode('utf-8'),
+                    headers={'Content-Type': 'application/json'})
+                resp = urllib.request.urlopen(req, timeout=10)
+                resp_raw = resp.read().decode('utf-8')
+                response_body = json.loads(resp_raw)
+                result = 'success' if response_body.get('code') == 1000 else f'code={response_body.get("code")}'
+                if response_body.get('code') == 1000:
+                    success_count += 1
+            except Exception as e:
+                result = f'请求失败: {str(e)}'
+                response_body = {"error": str(e)}
+        all_results.append({'order_id': order_id, 'result': result, 'response': response_body})
+        
+        # 写入模板 JSON
+        task_entry = {
+            "deviceCode": selected_device['deviceCode'] if selected_device and i == 0 else "",
+            "deviceNum": selected_device['deviceNum'] if selected_device and i == 0 else "",
+            "status": 6, "_simulated": True if simulated else False,
+            "order_id": order_id, "create_time": now_iso, "update_time": now_iso
+        }
+        if selected_device and i == 0:
+            task_entry['_selected_battery'] = selected_device.get('battery', '')
+        tasks.append(task_entry)
+        
+        # 模拟模式下只写1条（不重复写相同内容）
+        if simulated:
+            break
+    
+    _save_json(template_file, tasks)
+    
+    # 写入下发日志（汇总）
+    log_url = dispatch_url if not simulated else f'(模拟-未实际请求)\n真实地址: {dispatch_url}'
     try:
         write_dispatch_log(
             region_key=region_key, template_name=template_code,
-            direction=direction, dispatch_url=log_url, request_body=request_body,
+            direction=direction, dispatch_url=log_url, request_body=all_request_bodies,
             simulated=simulated, device_code=f"SIM_{sim_id}" if simulated else f"DISP_{sim_id}",
-            device_num=f"共{dispatch_count}台", result=result, response_body=response_body, reason=reason
+            device_num=f"共{dispatch_count}台(成功{success_count})", result=f'{success_count}/{dispatch_count}' if not simulated else 'simulated',
+            response_body=all_results, reason=reason
         )
     except Exception as e:
         print(f"[Dispatch] 写入下发记录失败: {e}")
     
     try:
-        template_code = target_template.get('code') or target_template.get('name', '')
         # 构造下发报文数据（请求+响应），供前端详情查看
         dispatch_raw = {
             'dispatch_url': dispatch_url,
-            'request_body': request_body,
-            'response_body': response_body,
+            'request_bodies': all_request_bodies,
+            'results': all_results,
             'simulated': simulated,
-            'result': result,
+            'success_count': success_count,
             'dispatch_count': dispatch_count,
             'template_code': template_code,
             'direction': direction,
             'reason': reason
         }
         write_global_log('execute', region_key,
-            f'{"模拟" if simulated else "真实"}下发 {dispatch_count} 台, 模板:{template_code}, 方向:{direction}, 原因:{reason}',
+            f'{"模拟" if simulated else "真实"}下发 {dispatch_count} 台(成功{success_count}), 模板:{template_code}, 方向:{direction}, 原因:{reason}',
             raw_data=dispatch_raw)
-        # 更新每日统计（下发时）
+        # 更新每日统计（下发时，按成功台数计数）
         dispatch_field = 'dispatch_in' if direction == 'in' else 'dispatch_out'
-        _update_daily_stats(region_key, dispatch_field)
+        for _ in range(success_count if not simulated else 1):
+            _update_daily_stats(region_key, dispatch_field)
     except Exception as e:
         print(f"[Dispatch] 写入操作日志失败: {e}")
     
     return {
-        'success': True, 'message': f'{"模拟" if simulated else "真实"}下发 {dispatch_count} 台设备',
+        'success': True, 'message': f'{"模拟" if simulated else "真实"}下发 {dispatch_count} 台(成功{success_count})',
         'balance': balance, 'dispatched': True, 'simulated': simulated,
-        'dispatch_count': dispatch_count, 'template_name': template_code, 'direction': direction
+        'dispatch_count': dispatch_count, 'success_count': success_count,
+        'template_name': template_code, 'direction': direction
     }
 
 
