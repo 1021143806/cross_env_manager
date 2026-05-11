@@ -1363,13 +1363,7 @@ def api_device_check():
         
         cleaned = False
         if _should_clean_device(device_info, region_key, region, device_code):
-            # 清理：从所有模板 JSON 和 currentCount 中删除
-            for t in region.get('templates', []):
-                fpath = _get_template_file_path(region_key, t)
-                tasks = _load_json(fpath)
-                new_tasks = [task for task in tasks if not (task.get('deviceCode') == device_code and task.get('status') == 6)]
-                if len(new_tasks) < len(tasks):
-                    _save_json(fpath, new_tasks)
+            # 清理：只从 currentCount 中删除（与自动自愈逻辑一致，不清理模板 JSON）
             now_file = _get_region_file(region_key, 'currentCount.json')
             now_devices = _load_json(now_file)
             now_devices = [d for d in now_devices if d.get('deviceCode') != device_code]
