@@ -1218,6 +1218,104 @@ def api_device_info():
     return jsonify(device_info)
 
 
+@dispatch_bp.route('/api/dispatch/device_trace')
+@login_required
+def api_device_trace():
+    """获取设备任务追踪流（按 deviceCode 查询所有区域的模板JSON + 全局日志）
+    
+    返回该设备的所有 order_id 流转记录，按时间排序。
+    """
+    device_code = request.args.get('deviceCode', '')
+    if not device_code:
+        return jsonify({'error': '缺少 deviceCode 参数'}), 400
+    
+    index = _load_cache_index()
+    traces = []
+    
+    # 1. 从所有区域的模板 JSON 中查找该设备的任务记录
+    for rk, region in index.items():
+        if not isinstance(region, dict) or 'templates' not in region:
+            continue
+        for t in region.get('templates', []):
+            fpath = _get_template_file_path(rk, t)
+            if not os.path.exists(fpath):
+                continue
+            tasks = _load_json(fpath)
+            tcode = t.get('code') or t.get('name', '')
+            task_type = _normalize_task_type(t)
+            for task in tasks:
+                tdc = task.get('deviceCode', '')
+                if tdc != device_code:
+                    continue
+                ts = task.get('status', '')
+                order_id = task.get('order_id', '')
+                create_time = task.get('create_time', '')
+                update_time = task.get('update_time', '')
+                
+                # 状态标签
+                status_label = {6: '已下发', 7: '下发失败', 8: '已完成', 10: '执行中'}.get(ts, f'status={ts}')
+                status_icon = {6: '📤', 7: '❌', 8: '✅', 10: '🔵'}.get(ts, '📌')
+                
+                traces.append({
+                    'time': update_time or create_time,
+                    'type': 'task',
+                    'icon': status_icon,
+                    'summary': f'{status_label} | {tcode}',
+                    'detail': f'order_id={order_id} status={ts} task_type={task_type}',
+                    'region_key': rk,
+                    'template': tcode,
+                    'order_id': order_id,
+                    'status': ts,
+                    'task_type': task_type
+                })
+    
+    # 2. 从全局日志中查找该设备的相关操作
+    logs = _load_all_logs()
+    device_num = ''  # 尝试从模板任务中获取 deviceNum
+    for t in traces:
+        # 从日志中补充 deviceNum
+        pass
+    
+    for log in reversed(logs):
+        detail = log.get('detail', '')
+        raw = log.get('raw_data', {})
+        log_dc = ''
+        if isinstance(raw, dict):
+            log_dc = raw.get('deviceCode', '')
+        # 匹配 deviceCode
+        if log_dc != device_code and device_code not in detail:
+            continue
+        
+        action = log.get('action', '')
+        log_time = log.get('time', '')
+        
+        # 跳过与模板任务重复的记录（report_status 的 status=6/8/10 已在上面覆盖）
+        if action == 'report_status':
+            continue
+        
+        icon = {'device_leave': '🔴', 'self_heal_detail': '🔴', 'execute': '📤',
+                'execute_skip': '⏭️', 'device_history': '📋'}.get(action, '📌')
+        
+        traces.append({
+            'time': log_time,
+            'type': 'log',
+            'icon': icon,
+            'summary': detail[:150] if detail else action,
+            'detail': detail,
+            'region_key': log.get('region_key', ''),
+            'action': action
+        })
+    
+    # 按时间排序（最新在前）
+    traces.sort(key=lambda x: x.get('time', ''), reverse=True)
+    
+    return jsonify({
+        'deviceCode': device_code,
+        'traces': traces,
+        'count': len(traces)
+    })
+
+
 @dispatch_bp.route('/api/dispatch/device_check', methods=['POST'])
 @login_required
 def api_device_check():

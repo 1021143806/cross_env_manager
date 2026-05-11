@@ -504,10 +504,19 @@
         <div class="modal-content">
             <div class="modal-header py-2">
                 <h6 class="modal-title"><i class="bi bi-truck me-2"></i><span id="dmTitle">设备详情</span></h6>
+                <div class="btn-group btn-group-sm me-2" id="dmTabs" style="display:none;">
+                    <button class="btn btn-outline-secondary active" onclick="switchDeviceTab('info')">📋 详情</button>
+                    <button class="btn btn-outline-secondary" onclick="switchDeviceTab('trace')">🔍 任务追踪</button>
+                </div>
                 <button class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body py-2" id="dmBody">
-                <div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>加载中...</div>
+            <div class="modal-body py-2">
+                <div id="dmBody">
+                    <div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>加载中...</div>
+                </div>
+                <div id="dmTrace" style="display:none;max-height:55vh;overflow-y:auto;">
+                    <div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>加载追踪数据...</div>
+                </div>
             </div>
         </div>
     </div>
@@ -2998,10 +3007,24 @@ function escapeHtml(str) {
 
 // ========== 设备详情 Modal ==========
 
+let _deviceModalData = null;  // 缓存设备数据供 Tab 切换
+
+function switchDeviceTab(tab) {
+    document.getElementById('dmBody').style.display = tab === 'info' ? 'block' : 'none';
+    document.getElementById('dmTrace').style.display = tab === 'trace' ? 'block' : 'none';
+    // 更新按钮状态
+    const btns = document.querySelectorAll('#dmTabs .btn');
+    btns.forEach((b, i) => b.classList.toggle('active', (i === 0 && tab === 'info') || (i === 1 && tab === 'trace')));
+}
+
 function showDeviceModal(deviceNum) {
     const modal = new bootstrap.Modal(document.getElementById('deviceModal'));
     document.getElementById('dmTitle').textContent = '设备详情 - ' + deviceNum;
     document.getElementById('dmBody').innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>加载中...</div>';
+    document.getElementById('dmBody').style.display = 'block';
+    document.getElementById('dmTrace').style.display = 'none';
+    document.getElementById('dmTabs').style.display = 'none';
+    _deviceModalData = null;
     modal.show();
     
     fetch('/api/dispatch/device_info?deviceNum=' + encodeURIComponent(deviceNum))
@@ -3011,6 +3034,7 @@ function showDeviceModal(deviceNum) {
                 document.getElementById('dmBody').innerHTML = '<div class="text-danger text-center py-3">' + data.error + '</div>';
                 return;
             }
+            _deviceModalData = data;
             
             const statusLabel = data.status === 'running' ? '🟡 执行中' : '🟢 空闲';
             const statusColor = data.status === 'running' ? '#fd7e14' : '#28a745';
@@ -3056,6 +3080,10 @@ function showDeviceModal(deviceNum) {
             }
             
             document.getElementById('dmBody').innerHTML = html;
+            document.getElementById('dmTabs').style.display = '';
+            
+            // 加载任务追踪数据
+            loadDeviceTrace(data.deviceCode);
             
             // 仅空闲设备自动触发检查（pending/执行中设备不自动查询，避免误清理）
             if (data.status === 'idle' && data.region_key && data.deviceCode) {
@@ -3064,6 +3092,61 @@ function showDeviceModal(deviceNum) {
         })
         .catch(err => {
             document.getElementById('dmBody').innerHTML = '<div class="text-danger text-center py-3">加载失败: ' + err.message + '</div>';
+        });
+}
+
+function loadDeviceTrace(deviceCode) {
+    if (!deviceCode) return;
+    const traceEl = document.getElementById('dmTrace');
+    traceEl.innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>加载追踪数据...</div>';
+    
+    fetch('/api/dispatch/device_trace?deviceCode=' + encodeURIComponent(deviceCode))
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                traceEl.innerHTML = '<div class="text-danger text-center py-3">' + data.error + '</div>';
+                return;
+            }
+            const traces = data.traces || [];
+            if (traces.length === 0) {
+                traceEl.innerHTML = '<div class="text-muted text-center py-3">暂无任务追踪记录</div>';
+                return;
+            }
+            
+            // 时间线 UI
+            let html = '<div style="position:relative;padding-left:24px;">';
+            // 竖线
+            html += '<div style="position:absolute;left:8px;top:8px;bottom:8px;width:2px;background:var(--border-color);"></div>';
+            
+            traces.forEach((t, i) => {
+                const timeStr = (t.time || '').slice(11, 19) || t.time || '';
+                const isTask = t.type === 'task';
+                const dotColor = isTask ? 'var(--primary-color)' : '#6b7280';
+                const bgColor = isTask ? 'rgba(13,110,253,0.08)' : 'transparent';
+                
+                html += '<div style="position:relative;margin-bottom:6px;padding:4px 8px;border-radius:6px;background:' + bgColor + ';font-size:0.78rem;">';
+                // 圆点
+                html += '<div style="position:absolute;left:-20px;top:8px;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';border:2px solid var(--card-bg);"></div>';
+                // 时间
+                html += '<span class="text-muted" style="font-size:0.7rem;">' + timeStr + '</span> ';
+                // 图标 + 摘要
+                html += '<span>' + escapeHtml(t.icon + ' ' + t.summary) + '</span>';
+                // order_id 高亮
+                if (t.order_id) {
+                    html += ' <code style="font-size:0.7rem;background:var(--detail-card-bg);padding:1px 4px;border-radius:3px;">' + escapeHtml(t.order_id.slice(0, 50)) + '</code>';
+                }
+                // 详情（小字）
+                if (t.detail && t.detail !== t.summary) {
+                    html += '<div class="text-muted" style="font-size:0.68rem;padding-left:4px;">' + escapeHtml(t.detail.slice(0, 120)) + '</div>';
+                }
+                html += '</div>';
+            });
+            html += '</div>';
+            
+            traceEl.innerHTML = html;
+        })
+        .catch(err => {
+            traceEl.innerHTML = '<div class="text-danger text-center py-3">加载失败: ' + err.message + '</div>';
         });
 }
 
