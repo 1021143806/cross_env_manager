@@ -606,6 +606,7 @@ def calculate_area_balance(region_key, region_config):
     
     return {
         "region_key": region_key,
+        "id": region_config.get('id', 0),
         "areaId": region_config.get('areaId', '0'),
         "name": region_key,
         "server": region_config.get('server', ''),
@@ -1901,7 +1902,8 @@ def _execute_dispatch(region_key, region, balance):
         date_str = now_dt.strftime('%Y-%m-%d_%H:%M:%S')
         ms = now_dt.microsecond // 1000
         rand = _random.randint(0, 9999)
-        order_id = f"CEM_auto_{date_str}.{ms:03d}__{rand:04d}"
+        region_id = region.get('id', '0')
+        order_id = f"CEM_auto_id{region_id}_{date_str}.{ms:03d}__{rand:04d}"
         
         # 构造请求体（空车回指定设备时只有第一台指定，其余不指定）
         task_order_detail = {"taskPath": "", "shelfNumber": ""}
@@ -3068,7 +3070,8 @@ def _execute_low_battery_return(region_key, region, device_code, device_num, bat
     date_str = now_dt.strftime('%Y-%m-%d_%H:%M:%S')
     ms = now_dt.microsecond // 1000
     rand = _random.randint(0, 9999)
-    order_id = f"CEM_low_battery_{date_str}.{ms:03d}__{rand:04d}"
+    region_id = region.get('id', '0')
+    order_id = f"CEM_low_battery_id{region_id}_{date_str}.{ms:03d}__{rand:04d}"
     
     request_body = [{
         "modelProcessCode": dispatch_template,
