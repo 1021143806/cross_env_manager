@@ -5,7 +5,7 @@
 """
 
 # 调车模块版本号（修改本文件时递增末尾数字）
-DISPATCH_VERSION = '2.1.8'
+DISPATCH_VERSION = '2.1.9'
 
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response
 from functools import wraps
@@ -582,6 +582,7 @@ def calculate_area_balance(region_key, region_config):
     # 负载模板不影响空车下发
     can_dispatch = True
     mutex_reason = ""
+    deadlock_cancelled = 0  # 解死锁取消计数
     if need != 0:
         for t in region_config.get('templates', []):
             task_type = _normalize_task_type(t)
@@ -596,8 +597,31 @@ def calculate_area_balance(region_key, region_config):
                 # 如果要下发回空车(out)，但存在未完成的去空车(in)任务
                 t_direction = 'in' if _is_in_direction(task_type) else 'out'
                 if t_direction != direction:
-                    can_dispatch = False
                     template_code = t.get('code') or t.get('name', '')
+                    # 解死锁：自动取消阻塞的反方向空车任务
+                    for pt in pending:
+                        oid = pt.get('order_id', '')
+                        if not oid:
+                            continue
+                        try:
+                            info, err = _get_task_server_info(oid)
+                            if not err:
+                                _cancel_empty_task(info['sub_order_id'], info['server_ip'])
+                                deadlock_cancelled += 1
+                                write_global_log('execute_mutex', region_key,
+                                    f'解死锁取消空车任务: {template_code} order={oid} sub={info["sub_order_id"]} server={info["server_ip"]}')
+                        except Exception as e:
+                            write_global_log('execute_mutex', region_key,
+                                f'解死锁取消失败: {template_code} order={oid} error={str(e)}')
+                    # 取消后清理本地 JSON
+                    if deadlock_cancelled > 0:
+                        tasks = [t for t in tasks if t.get('status') not in (6, 9)]
+                        _save_json(fpath, tasks)
+                        # 重新检查是否还有阻塞
+                        pending_after = [t for t in tasks if t.get('status') in (6, 9) and not t.get('_low_battery')]
+                        if not pending_after:
+                            continue  # 阻塞已解除，继续检查下一个模板
+                    can_dispatch = False
                     mutex_reason = f"pending {template_code} task, mutex"
                     break
     
