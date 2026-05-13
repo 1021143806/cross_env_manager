@@ -228,8 +228,22 @@ charset = "utf8mb4"
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | int | 主键 |
-| model_process_code | varchar | 模板代码 |
-| model_process_name | varchar | 模板名称 |
+| model_process_code | varchar(64) | 模板代码（唯一键） |
+| model_process_name | varchar(64) | 模板名称 |
+| enable | tinyint | 启用状态，默认1 |
+| request_url | varchar(255) | 状态上报地址，逗号分隔多个 URL |
+| create_time | datetime | 创建时间 |
+| capacity | int | 容量 |
+| target_points | varchar(255) | 目标点位 |
+| area_id | int | 区域ID |
+| target_points_ip | varchar(255) | 目标点位IP |
+| update_time | datetime | 更新时间 |
+| backflow_template_code | varchar(255) | 回流模板代码 |
+| comeback_template_code | varchar(255) | 返回模板代码 |
+| change_charge_template_code | varchar(255) | 换电模板代码 |
+| min_power | int | 最低电量 |
+| back_wait_time | int | 回等待时间 |
+| check_area_name | varchar(255) | 检查区域名称 |
 
 ### 6. fy_cross_model_process_detail（跨环境模板子任务）
 这是跨环境模板的子模板，以及其子任务对应的下发的服务器
@@ -575,3 +589,4 @@ WHERE model_process_code = 'xxx'
 - 设备区域修正通过 agv_robot_ext.DEVICE_AREA 查询
 - 2026-05-09: 新增 task_order、task_order_detail 表结构及关联关系图。关键纠正：task_group/task_order/task_order_detail 位于远端服务器(通过 service_url 访问)，不在本地生产库。下发链路为 fy_cross_task_detail.sub_order_id → task_group.out_order_id。子任务时间从 task_order_detail 获取
 - 2026-05-09: 修正子任务时间查询逻辑。新增 fetch_remote_task_group_times() 函数，通过 device_code/device_num 直连远端 MySQL(3306) 查询 task_group 的 start_time/end_time（Unix 时间戳），覆盖 fy_cross_task_detail 中可能为空的时间字段。在 routes/task_routes.py step3 循环中调用
+- 2026-05-13: 补充 fy_cross_model_process 完整字段（17个字段），含 request_url（状态上报地址，逗号分隔多个 URL）。新增手动异常任务状态上报功能：前端任务总览卡片添加"上报状态"按钮 → POST /api/task/report_status → 后端查询 request_url → 逐个 POST 上报报文 {orderId, status:8, deviceCode, deviceNum, shelfNumber}
