@@ -250,3 +250,4 @@ venv/bin/python3 test/???.py
   - `routes/dispatch_routes.py`: `DISPATCH_VERSION` — 调车模块版本，`[SelfHeal v{DISPATCH_VERSION}]` 日志
   - `routes/task_routes.py`: `TASK_VERSION` — 任务查询模块版本，查询日志 `version` 字段
   - 其他模块按需添加 `__version__` 或 `{MODULE}_VERSION`
+- 2026-05-13: **取消空车任务修复 (v2.1.7)**：根因是 `get_cross_task_info` 中 SQL 用错字段——`WHERE order_id LIKE CONCAT(%s, '_%%')` 试图在 `order_id`（主订单号）上做模糊匹配，但子任务 ID 存在 `sub_order_id` 字段中。修复为 `WHERE order_id = %s` 精确匹配（所有子任务共享同一主 order_id）。`api_cancel_empty_tasks` 恢复使用 `_get_task_server_info` 查询子任务 `sub_order_id` 和 `service_url` 后调用 ICS 取消接口。前端 `dashboard.html` 去掉 `.slice(0, 30)` 截断，完整显示订单号。

@@ -1693,7 +1693,7 @@ function cancelEmptyTasks(regionKey) {
                         const icon = d.success ? '✅' : '❌';
                         const color = d.success ? 'text-success' : 'text-danger';
                         html += '<tr><td>' + (i + 1) + '</td><td><code>' + escapeHtml(d.template) + '</code></td>';
-                        html += '<td><small><code>' + escapeHtml((d.order_id || '').slice(0, 30)) + '</code></small></td>';
+                        html += '<td><small><code>' + escapeHtml(d.order_id || '') + '</code></small></td>';
                         html += '<td class="' + color + '">' + icon + ' ' + escapeHtml(d.message) + '</td></tr>';
                     });
                     html += '</tbody></table></div>';
