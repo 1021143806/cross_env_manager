@@ -1047,6 +1047,18 @@ def enrich_task_dict(task_dict, device_code=None):
             conn.close()
         except Exception:
             pass
+    
+    # 从远端 task_group 获取真实的开始/结束时间
+    svc_url = task_dict.get('serviceUrl') or task_dict.get('service_url') or ''
+    dc = task_dict.get('deviceCode') or task_dict.get('device_code') or ''
+    dn = task_dict.get('deviceNum') or task_dict.get('device_num') or ''
+    if svc_url and (dc or dn):
+        remote_times = fetch_remote_task_group_times(svc_url, dc, dn)
+        if remote_times:
+            if remote_times.get('start_time'):
+                task_dict['startTime'] = remote_times['start_time']
+            if remote_times.get('end_time'):
+                task_dict['endTime'] = remote_times['end_time']
 
 
 def fetch_remote_task_group_times(service_url, device_code=None, device_num=None):
@@ -1115,7 +1127,9 @@ def fetch_remote_task_group_times(service_url, device_code=None, device_num=None
                 return result if result else None
         
         conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        import traceback
+        print(f'[fetch_remote_task_group_times] 查询失败: host={host}, device_code={device_code}, device_num={device_num}, error={e}')
+        traceback.print_exc()
     
     return None

@@ -339,17 +339,6 @@ def api_device_tasks():
         
         for task in sub_tasks_sorted:
             task_query_extended.enrich_task_dict(task)
-            # 从远端 task_group 获取真实的开始/结束时间（覆盖 fy_cross_task_detail 的时间）
-            svc_url = task.get('serviceUrl', task.get('service_url', ''))
-            dc = task.get('deviceCode', task.get('device_code', ''))
-            dn = task.get('deviceNum', task.get('device_num', ''))
-            if svc_url and (dc or dn):
-                remote_times = task_query_extended.fetch_remote_task_group_times(svc_url, dc, dn)
-                if remote_times:
-                    if remote_times.get('start_time') and not task.get('startTime') and not task.get('start_time'):
-                        task['startTime'] = remote_times['start_time']
-                    if remote_times.get('end_time') and not task.get('endTime') and not task.get('end_time'):
-                        task['endTime'] = remote_times['end_time']
         
         device_statuses = []
         seen_servers = set()
