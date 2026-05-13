@@ -1076,6 +1076,7 @@ function renderAreas(areas) {
                     <div style="display:flex;align-items:center;justify-content:space-between;">
                         <span class="area-title">
                             <i class="bi bi-geo-alt me-1 text-primary"></i>${area.name}
+                            ${area.id !== undefined ? `<span class="badge bg-secondary ms-1" style="font-size:0.65rem;font-weight:400;" title="区域ID">ID:${area.id}</span>` : ''}
                         </span>
                         ${dirBadge}
                     </div>
