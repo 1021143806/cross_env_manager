@@ -1721,14 +1721,19 @@ function cancelEmptyTasks(regionKey) {
 
 function showCancelDetail(idx) {
     const ri = (window._cancelDetailData && window._cancelDetailData[idx]) || {};
+    // 暗黑模式适配：使用 Bootstrap 的 bg-body-tertiary / dark 变量
+    const preStyle = 'max-height:150px;overflow-y:auto;padding:8px;border-radius:4px;'
+        + 'background:var(--bs-tertiary-bg, #f8f9fa);color:var(--bs-body-color, #212529);';
     let html = '<div style="font-size:0.8rem;">';
     html += '<div class="mb-2"><strong>请求 URL:</strong><br><code>' + escapeHtml(ri.url || '-') + '</code></div>';
-    html += '<div class="mb-2"><strong>请求报文:</strong><br><pre style="max-height:150px;overflow-y:auto;background:var(--bs-light);padding:8px;border-radius:4px;">' + escapeHtml(JSON.stringify(ri.request_body, null, 2)) + '</pre></div>';
+    html += '<div class="mb-2"><strong>请求报文:</strong><br><pre style="' + preStyle + '">' + escapeHtml(JSON.stringify(ri.request_body, null, 2)) + '</pre></div>';
     if (ri.http_status) {
         html += '<div class="mb-2"><strong>HTTP 状态:</strong> ' + ri.http_status + ' (' + (ri.elapsed_ms || '?') + 'ms)</div>';
     }
     if (ri.response_body) {
-        html += '<div class="mb-2"><strong>响应报文:</strong><br><pre style="max-height:200px;overflow-y:auto;background:var(--bs-light);padding:8px;border-radius:4px;">' + escapeHtml(typeof ri.response_body === 'string' ? ri.response_body : JSON.stringify(ri.response_body, null, 2)) + '</pre></div>';
+        html += '<div class="mb-2"><strong>响应报文:</strong><br><pre style="max-height:200px;overflow-y:auto;padding:8px;border-radius:4px;'
+            + 'background:var(--bs-tertiary-bg, #f8f9fa);color:var(--bs-body-color, #212529);">'
+            + escapeHtml(typeof ri.response_body === 'string' ? ri.response_body : JSON.stringify(ri.response_body, null, 2)) + '</pre></div>';
     }
     if (ri.error) {
         html += '<div class="text-danger"><strong>错误:</strong> ' + escapeHtml(ri.error) + '</div>';
