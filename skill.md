@@ -251,3 +251,4 @@ venv/bin/python3 test/???.py
   - `routes/task_routes.py`: `TASK_VERSION` — 任务查询模块版本，查询日志 `version` 字段
   - 其他模块按需添加 `__version__` 或 `{MODULE}_VERSION`
 - 2026-05-13: **取消空车任务修复 (v2.1.7)**：根因是 `get_cross_task_info` 中 SQL 用错字段——`WHERE order_id LIKE CONCAT(%s, '_%%')` 试图在 `order_id`（主订单号）上做模糊匹配，但子任务 ID 存在 `sub_order_id` 字段中。修复为 `WHERE order_id = %s` 精确匹配（所有子任务共享同一主 order_id）。`api_cancel_empty_tasks` 恢复使用 `_get_task_server_info` 查询子任务 `sub_order_id` 和 `service_url` 后调用 ICS 取消接口。前端 `dashboard.html` 去掉 `.slice(0, 30)` 截断，完整显示订单号。
+- 2026-05-13: **取消空车任务修复 (v2.1.8)**：修复 server_ip 获取逻辑——`_get_task_server_info` 原来用大模板 `model_process_code` 查 `fy_cross_model_process_detail.template_code`，但该表存的是子模板 code，导致匹配不到而 fallback 到默认 `10.68.2.32`。改为用第一个子任务的 `template_code`（从 `fy_cross_task_detail` 获取）查询 `task_servicec`。同时修复详情按钮无反应问题——`onclick` 中嵌入 JSON 字符串因特殊字符破坏 HTML 属性，改为 `data-ri-idx` + 全局数组 `window._cancelDetailData` + 事件委托方式。

@@ -1689,6 +1689,8 @@ function cancelEmptyTasks(regionKey) {
                 if (data.details && data.details.length > 0) {
                     html += '<div style="max-height:300px;overflow-y:auto;font-size:0.8rem;">';
                     html += '<table class="table table-sm table-borderless mb-0"><thead><tr><th>#</th><th>模板</th><th>订单号</th><th>结果</th><th></th></tr></thead><tbody>';
+                    // 将 request_info 存到全局数组，避免在 onclick 中嵌入 JSON（特殊字符会破坏 HTML 属性）
+                    window._cancelDetailData = [];
                     data.details.forEach((d, i) => {
                         const icon = d.success ? '✅' : '❌';
                         const color = d.success ? 'text-success' : 'text-danger';
@@ -1696,9 +1698,9 @@ function cancelEmptyTasks(regionKey) {
                         html += '<td><small><code>' + escapeHtml(d.order_id || '') + '</code></small></td>';
                         html += '<td class="' + color + '">' + icon + ' ' + escapeHtml(d.message) + '</td>';
                         if (d.request_info) {
-                            const ri = d.request_info;
-                            const riJson = JSON.stringify(ri, null, 2).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                            html += '<td><button class="btn btn-sm btn-outline-secondary" onclick="showCancelDetail(\'' + riJson + '\')" title="查看请求/响应详情"><i class="bi bi-info-circle"></i></button></td>';
+                            window._cancelDetailData.push(d.request_info);
+                            const idx = window._cancelDetailData.length - 1;
+                            html += '<td><button class="btn btn-sm btn-outline-secondary cancel-detail-btn" data-ri-idx="' + idx + '" title="查看请求/响应详情"><i class="bi bi-info-circle"></i></button></td>';
                         } else {
                             html += '<td></td>';
                         }
@@ -1717,8 +1719,8 @@ function cancelEmptyTasks(regionKey) {
         .catch(err => showToast('请求失败: ' + err.message, 'danger'));
 }
 
-function showCancelDetail(riJson) {
-    const ri = JSON.parse(riJson.replace(/&quot;/g, '"').replace(/&#39;/g, "'"));
+function showCancelDetail(idx) {
+    const ri = (window._cancelDetailData && window._cancelDetailData[idx]) || {};
     let html = '<div style="font-size:0.8rem;">';
     html += '<div class="mb-2"><strong>请求 URL:</strong><br><code>' + escapeHtml(ri.url || '-') + '</code></div>';
     html += '<div class="mb-2"><strong>请求报文:</strong><br><pre style="max-height:150px;overflow-y:auto;background:var(--bs-light);padding:8px;border-radius:4px;">' + escapeHtml(JSON.stringify(ri.request_body, null, 2)) + '</pre></div>';
@@ -1736,6 +1738,15 @@ function showCancelDetail(riJson) {
     document.getElementById('dmBody').innerHTML = html;
     new bootstrap.Modal(document.getElementById('deviceModal')).show();
 }
+
+// 事件委托：取消详情按钮点击
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.cancel-detail-btn');
+    if (btn) {
+        const idx = parseInt(btn.getAttribute('data-ri-idx'));
+        if (!isNaN(idx)) showCancelDetail(idx);
+    }
+});
 
 function getDeviceClass(taskType) {
     // 根据 task_type 返回对应的 CSS class

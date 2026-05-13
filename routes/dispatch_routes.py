@@ -5,7 +5,7 @@
 """
 
 # 调车模块版本号（修改本文件时递增末尾数字）
-DISPATCH_VERSION = '2.1.7'
+DISPATCH_VERSION = '2.1.8'
 
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response
 from functools import wraps
@@ -2259,9 +2259,10 @@ def _get_task_server_info(order_id):
             return None, f'子任务 {sub_order_id} 正在执行中(status=6)，无法取消'
         
         # 从 fy_cross_model_process_detail.task_servicec 获取服务器地址
+        # 用第一个子任务的 template_code 查询（不能用大模板 model_process_code）
         server_ip = ''
-        model_process_code = result.get('model_process_code', '')
-        if model_process_code:
+        first_template_code = detail.get('template_code', '')
+        if first_template_code:
             try:
                 import pymysql
                 from pymysql.cursors import DictCursor
@@ -2271,10 +2272,9 @@ def _get_task_server_info(order_id):
                     connect_timeout=5
                 )
                 with conn.cursor() as cursor:
-                    # 通过 template_code 查 task_servicec
                     cursor.execute(
                         "SELECT task_servicec FROM fy_cross_model_process_detail WHERE template_code = %s AND task_servicec IS NOT NULL AND task_servicec != '' LIMIT 1",
-                        (model_process_code,)
+                        (first_template_code,)
                     )
                     row = cursor.fetchone()
                     if row and row.get('task_servicec'):
