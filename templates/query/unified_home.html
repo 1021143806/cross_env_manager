@@ -1804,9 +1804,16 @@
                     <div class="query-card-header bg-primary bg-opacity-10 d-flex justify-content-between align-items-center">
                         <h5 class="mb-0"><i class="bi bi-card-list me-2"></i>任务总览</h5>
                         <div>
-                            <button class="btn btn-sm btn-outline-warning me-1" onclick="event.stopPropagation(); reportTaskStatus('${main.orderId || main.order_id || ''}', '${main.modelProcessCode || main.model_process_code || ''}', '${main.deviceCode || main.device_code || ''}', '${main.deviceNum || main.device_num || ''}', '${main.shelfNum || main.shelf_num || ''}')" title="手动上报任务状态(status=8)到模板配置的上报地址">
-                                <i class="bi bi-send"></i> 上报状态
-                            </button>
+                            ${(() => {
+                                const mainStatus = main.taskStatus ?? main.status ?? main.task_status;
+                                const allDone = mainStatus == 8 && subTasks.every(t => (t.taskStatus ?? t.status ?? t.task_status) == 8);
+                                if (allDone) {
+                                    return `<button class="btn btn-sm btn-outline-success me-1" onclick="event.stopPropagation(); reportTaskStatus('${main.orderId || main.order_id || ''}', '${main.modelProcessCode || main.model_process_code || ''}', '${main.deviceCode || main.device_code || ''}', '${main.deviceNum || main.device_num || ''}', '${main.shelfNum || main.shelf_num || ''}')" title="任务已完成但下游系统可能未收到状态通知，手动上报异常恢复(status=8)">
+                                        <i class="bi bi-arrow-repeat"></i> 上报异常恢复
+                                    </button>`;
+                                }
+                                return '';
+                            })()}
                             <button class="btn btn-sm btn-outline-secondary me-1" onclick="event.stopPropagation(); showJsonForCard('总览', window._lastMainTask)" title="查看原始 JSON">
                                 <i class="bi bi-info-circle"></i>
                             </button>
