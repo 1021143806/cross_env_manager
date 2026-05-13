@@ -339,17 +339,6 @@ def api_device_tasks():
         
         for task in sub_tasks_sorted:
             task_query_extended.enrich_task_dict(task)
-            # 从远端 task_group 获取真实的开始/结束时间（覆盖 fy_cross_task_detail 的时间）
-            svc_url = task.get('serviceUrl', task.get('service_url', ''))
-            dc = task.get('deviceCode', task.get('device_code', ''))
-            dn = task.get('deviceNum', task.get('device_num', ''))
-            if svc_url and (dc or dn):
-                remote_times = task_query_extended.fetch_remote_task_group_times(svc_url, dc, dn)
-                if remote_times:
-                    if remote_times.get('start_time') and not task.get('startTime') and not task.get('start_time'):
-                        task['startTime'] = remote_times['start_time']
-                    if remote_times.get('end_time') and not task.get('endTime') and not task.get('end_time'):
-                        task['endTime'] = remote_times['end_time']
         
         device_statuses = []
         seen_servers = set()
@@ -511,3 +500,108 @@ def force_complete_task():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@task_bp.route('/api/task/report_status', methods=['POST'])
+@login_required
+def report_task_status():
+    """
+    手动异常任务状态上报
+    从 fy_cross_model_process.request_url 获取上报地址（逗号分隔多个），
+    逐个 POST 上报报文：{orderId, status: 8, deviceCode, deviceNum, shelfNumber}
+    """
+    import urllib.request as _urllib
+    import json as _json
+    import time as _time
+    
+    try:
+        data = request.get_json()
+        order_id = data.get('orderId', '')
+        model_process_code = data.get('modelProcessCode', '')
+        device_code = data.get('deviceCode', '')
+        device_num = data.get('deviceNum', '')
+        shelf_number = data.get('shelfNumber', '')
+        
+        if not order_id:
+            return jsonify({'success': False, 'error': '缺少 orderId'}), 400
+        
+        # 从数据库查询 request_url
+        request_urls = []
+        if model_process_code:
+            try:
+                import pymysql
+                from pymysql.cursors import DictCursor
+                conn = pymysql.connect(
+                    host='10.68.2.32', port=3306, user='wms', password='CCshenda889',
+                    database='wms', charset='utf8mb4', cursorclass=DictCursor,
+                    connect_timeout=5
+                )
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT request_url FROM fy_cross_model_process WHERE model_process_code = %s LIMIT 1",
+                        (model_process_code,)
+                    )
+                    row = cursor.fetchone()
+                    if row and row.get('request_url'):
+                        raw = row['request_url'].strip()
+                        # 逗号分隔多个 URL
+                        request_urls = [u.strip() for u in raw.split(',') if u.strip()]
+                conn.close()
+            except Exception as e:
+                return jsonify({'success': False, 'error': f'查询 request_url 失败: {str(e)}'}), 500
+        
+        if not request_urls:
+            return jsonify({'success': False, 'error': f'模板 {model_process_code} 未配置 request_url'}), 400
+        
+        # 构建上报报文
+        report_body = {
+            "orderId": order_id,
+            "status": 8
+        }
+        if device_code:
+            report_body["deviceCode"] = device_code
+        if device_num:
+            report_body["deviceNum"] = device_num
+        if shelf_number:
+            report_body["shelfNumber"] = shelf_number
+        
+        # 逐个发送
+        results = []
+        for url in request_urls:
+            t0 = _time.time()
+            try:
+                req = _urllib.Request(url,
+                    data=_json.dumps(report_body).encode('utf-8'),
+                    headers={'Content-Type': 'application/json'})
+                resp = _urllib.urlopen(req, timeout=10)
+                elapsed_ms = round((_time.time() - t0) * 1000, 1)
+                raw_resp = resp.read().decode('utf-8')
+                try:
+                    resp_data = _json.loads(raw_resp)
+                except:
+                    resp_data = raw_resp
+                results.append({
+                    "url": url,
+                    "http_status": resp.getcode(),
+                    "elapsed_ms": elapsed_ms,
+                    "response": resp_data,
+                    "success": True
+                })
+            except Exception as e:
+                elapsed_ms = round((_time.time() - t0) * 1000, 1)
+                results.append({
+                    "url": url,
+                    "http_status": None,
+                    "elapsed_ms": elapsed_ms,
+                    "error": str(e),
+                    "success": False
+                })
+        
+        all_success = all(r['success'] for r in results)
+        return jsonify({
+            'success': all_success,
+            'report_body': report_body,
+            'results': results,
+            'message': f'上报完成: {sum(1 for r in results if r["success"])}/{len(results)} 成功'
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500

@@ -1804,6 +1804,9 @@
                     <div class="query-card-header bg-primary bg-opacity-10 d-flex justify-content-between align-items-center">
                         <h5 class="mb-0"><i class="bi bi-card-list me-2"></i>任务总览</h5>
                         <div>
+                            <button class="btn btn-sm btn-outline-warning me-1" onclick="event.stopPropagation(); reportTaskStatus('${main.orderId || main.order_id || ''}', '${main.modelProcessCode || main.model_process_code || ''}', '${main.deviceCode || main.device_code || ''}', '${main.deviceNum || main.device_num || ''}', '${main.shelfNum || main.shelf_num || ''}')" title="手动上报任务状态(status=8)到模板配置的上报地址">
+                                <i class="bi bi-send"></i> 上报状态
+                            </button>
                             <button class="btn btn-sm btn-outline-secondary me-1" onclick="event.stopPropagation(); showJsonForCard('总览', window._lastMainTask)" title="查看原始 JSON">
                                 <i class="bi bi-info-circle"></i>
                             </button>
@@ -2112,8 +2115,6 @@
                                     <tr><th>结束时间</th><td>${formattedEnd}</td></tr>
                                     <tr><th>任务状态值</th><td>${status}</td></tr>
                                     <tr><th>任务状态</th><td>${taskStatusName}</td></tr>
-                                    <tr><th>order_id</th><td>${orderId}</td></tr>
-                                    <tr><th>out_order_id</th><td>${outOrderId}</td></tr>
                                     <tr><th>tg_id</th><td>${tgId}</td></tr>
                                 </table>
                             </div>
@@ -2309,6 +2310,71 @@
                 } else {
                     alert('❌ 操作失败: ' + (data.message || '未知错误'));
                 }
+            } catch (e) {
+                alert('❌ 请求失败: ' + e.message);
+            }
+        };
+
+        // 手动上报任务状态（status=8）
+        window.reportTaskStatus = async function(orderId, modelProcessCode, deviceCode, deviceNum, shelfNumber) {
+            if (!orderId) {
+                alert('❌ 缺少 orderId');
+                return;
+            }
+            if (!modelProcessCode) {
+                alert('❌ 缺少模板代码 (modelProcessCode)，无法查询上报地址');
+                return;
+            }
+            
+            const confirmMsg = `确定要手动上报任务状态吗？\n\n` +
+                `任务单号: ${orderId}\n` +
+                `模板代码: ${modelProcessCode}\n` +
+                `上报状态: 8（任务完成）\n` +
+                `设备序列号: ${deviceCode || '-'}\n` +
+                `设备编号: ${deviceNum || '-'}\n` +
+                `货架编号: ${shelfNumber || '-'}\n\n` +
+                `将向模板配置的所有上报地址发送 POST 请求。`;
+            
+            if (!confirm(confirmMsg)) return;
+            
+            try {
+                const res = await fetch('/api/task/report_status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        orderId: orderId,
+                        modelProcessCode: modelProcessCode,
+                        deviceCode: deviceCode,
+                        deviceNum: deviceNum,
+                        shelfNumber: shelfNumber
+                    })
+                });
+                const data = await res.json();
+                
+                // 构建完整提示信息
+                let msg = (data.success ? '✅ ' : '❌ ') + (data.message || (data.error || '未知结果')) + '\n\n';
+                
+                // 请求报文
+                if (data.report_body) {
+                    msg += '━━━ 请求报文 ━━━\n';
+                    msg += JSON.stringify(data.report_body, null, 2) + '\n\n';
+                }
+                
+                // 每个地址的结果
+                if (data.results) {
+                    data.results.forEach((r, i) => {
+                        msg += `━━━ [${i + 1}] ${r.url} ━━━\n`;
+                        if (r.success) {
+                            msg += `HTTP ${r.http_status} (${r.elapsed_ms}ms)\n`;
+                            msg += '响应报文:\n';
+                            msg += (typeof r.response === 'string' ? r.response : JSON.stringify(r.response, null, 2)) + '\n';
+                        } else {
+                            msg += `❌ 错误: ${r.error}\n`;
+                        }
+                        msg += '\n';
+                    });
+                }
+                alert(msg);
             } catch (e) {
                 alert('❌ 请求失败: ' + e.message);
             }
