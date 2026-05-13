@@ -277,11 +277,10 @@ def get_cross_task_info(order_id, server_ip=None):
     
     try:
         with conn.cursor() as cursor:
-            # 查询跨环境任务详情（LIKE 模糊匹配，支持主订单号匹配带后缀的子任务）
-            # 注意：MySQL LIKE 中 _ 是单字符通配符，需转义 order_id 中的下划线
-            escaped_order_id = order_id.replace('_', '\\_')
-            sql = "SELECT * FROM fy_cross_task_detail WHERE order_id LIKE CONCAT(%s, '_%%')"
-            cursor.execute(sql, (escaped_order_id,))
+            # 查询跨环境任务详情（用 order_id 精确匹配，所有子任务共享同一个主 order_id）
+            # 按 task_seq 排序确保第一个子任务（_1）排在前面
+            sql = "SELECT * FROM fy_cross_task_detail WHERE order_id = %s ORDER BY task_seq ASC"
+            cursor.execute(sql, (order_id,))
             cross_task_details = cursor.fetchall()
             
             # 查询跨环境任务模板信息

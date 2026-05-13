@@ -1688,13 +1688,23 @@ function cancelEmptyTasks(regionKey) {
                 let html = '<div class="mb-2"><strong>' + data.message + '</strong></div>';
                 if (data.details && data.details.length > 0) {
                     html += '<div style="max-height:300px;overflow-y:auto;font-size:0.8rem;">';
-                    html += '<table class="table table-sm table-borderless mb-0"><thead><tr><th>#</th><th>模板</th><th>订单号</th><th>结果</th></tr></thead><tbody>';
+                    html += '<table class="table table-sm table-borderless mb-0"><thead><tr><th>#</th><th>模板</th><th>订单号</th><th>结果</th><th></th></tr></thead><tbody>';
+                    // 将 request_info 存到全局数组，避免在 onclick 中嵌入 JSON（特殊字符会破坏 HTML 属性）
+                    window._cancelDetailData = [];
                     data.details.forEach((d, i) => {
                         const icon = d.success ? '✅' : '❌';
                         const color = d.success ? 'text-success' : 'text-danger';
                         html += '<tr><td>' + (i + 1) + '</td><td><code>' + escapeHtml(d.template) + '</code></td>';
-                        html += '<td><small><code>' + escapeHtml((d.order_id || '').slice(0, 30)) + '</code></small></td>';
-                        html += '<td class="' + color + '">' + icon + ' ' + escapeHtml(d.message) + '</td></tr>';
+                        html += '<td><small><code>' + escapeHtml(d.order_id || '') + '</code></small></td>';
+                        html += '<td class="' + color + '">' + icon + ' ' + escapeHtml(d.message) + '</td>';
+                        if (d.request_info) {
+                            window._cancelDetailData.push(d.request_info);
+                            const idx = window._cancelDetailData.length - 1;
+                            html += '<td><button class="btn btn-sm btn-outline-secondary cancel-detail-btn" data-ri-idx="' + idx + '" title="查看请求/响应详情"><i class="bi bi-info-circle"></i></button></td>';
+                        } else {
+                            html += '<td></td>';
+                        }
+                        html += '</tr>';
                     });
                     html += '</tbody></table></div>';
                 }
@@ -1708,6 +1718,40 @@ function cancelEmptyTasks(regionKey) {
         })
         .catch(err => showToast('请求失败: ' + err.message, 'danger'));
 }
+
+function showCancelDetail(idx) {
+    const ri = (window._cancelDetailData && window._cancelDetailData[idx]) || {};
+    // 暗黑模式适配：使用 Bootstrap 的 bg-body-tertiary / dark 变量
+    const preStyle = 'max-height:150px;overflow-y:auto;padding:8px;border-radius:4px;'
+        + 'background:var(--bs-tertiary-bg, #f8f9fa);color:var(--bs-body-color, #212529);';
+    let html = '<div style="font-size:0.8rem;">';
+    html += '<div class="mb-2"><strong>请求 URL:</strong><br><code>' + escapeHtml(ri.url || '-') + '</code></div>';
+    html += '<div class="mb-2"><strong>请求报文:</strong><br><pre style="' + preStyle + '">' + escapeHtml(JSON.stringify(ri.request_body, null, 2)) + '</pre></div>';
+    if (ri.http_status) {
+        html += '<div class="mb-2"><strong>HTTP 状态:</strong> ' + ri.http_status + ' (' + (ri.elapsed_ms || '?') + 'ms)</div>';
+    }
+    if (ri.response_body) {
+        html += '<div class="mb-2"><strong>响应报文:</strong><br><pre style="max-height:200px;overflow-y:auto;padding:8px;border-radius:4px;'
+            + 'background:var(--bs-tertiary-bg, #f8f9fa);color:var(--bs-body-color, #212529);">'
+            + escapeHtml(typeof ri.response_body === 'string' ? ri.response_body : JSON.stringify(ri.response_body, null, 2)) + '</pre></div>';
+    }
+    if (ri.error) {
+        html += '<div class="text-danger"><strong>错误:</strong> ' + escapeHtml(ri.error) + '</div>';
+    }
+    html += '</div>';
+    document.getElementById('dmTitle').textContent = '取消请求详情';
+    document.getElementById('dmBody').innerHTML = html;
+    new bootstrap.Modal(document.getElementById('deviceModal')).show();
+}
+
+// 事件委托：取消详情按钮点击
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.cancel-detail-btn');
+    if (btn) {
+        const idx = parseInt(btn.getAttribute('data-ri-idx'));
+        if (!isNaN(idx)) showCancelDetail(idx);
+    }
+});
 
 function getDeviceClass(taskType) {
     // 根据 task_type 返回对应的 CSS class
