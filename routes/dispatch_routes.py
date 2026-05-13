@@ -2203,17 +2203,34 @@ def api_clean_simulated(region_key):
 # ========== 取消空车任务 ==========
 
 def _cancel_empty_task(order_id, server_ip):
-    """调用 ICS 取消任务接口"""
+    """调用 ICS 取消任务接口，返回 (result, error, request_info)"""
     import urllib.request as _urllib
+    import time as _time
+    url = f"http://{server_ip}:7000/ics/out/task/cancelTask"
+    body = [{"orderId": order_id, "destPosition": ""}]
+    body_str = json.dumps(body)
+    request_info = {"url": url, "request_body": body}
+    t0 = _time.time()
     try:
-        url = f"http://{server_ip}:7000/ics/out/task/cancelTask"
-        body = json.dumps([{"orderId": order_id, "destPosition": ""}]).encode()
-        req = _urllib.Request(url, data=body, method='POST')
+        req = _urllib.Request(url, data=body_str.encode(), method='POST')
         req.add_header('Content-Type', 'application/json')
         with _urllib.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode()), None
+            elapsed_ms = round((_time.time() - t0) * 1000, 1)
+            raw = resp.read().decode()
+            try:
+                resp_data = json.loads(raw)
+            except:
+                resp_data = raw
+            request_info["http_status"] = resp.getcode()
+            request_info["elapsed_ms"] = elapsed_ms
+            request_info["response_body"] = resp_data
+            return resp_data, None, request_info
     except Exception as e:
-        return None, str(e)
+        elapsed_ms = round((_time.time() - t0) * 1000, 1)
+        request_info["http_status"] = None
+        request_info["elapsed_ms"] = elapsed_ms
+        request_info["error"] = str(e)
+        return None, str(e), request_info
 
 
 def _get_task_server_info(order_id):
@@ -2223,7 +2240,7 @@ def _get_task_server_info(order_id):
     1. 用主订单号查跨环境任务（LIKE 模糊匹配子任务）
     2. 找到 _1 子任务（第一个子任务）
     3. 检查 task_status：执行中(status=6)则不允许取消
-    4. 返回子任务 order_id 和服务器 IP
+    4. 从 fy_cross_model_process_detail.task_servicec 获取服务器地址
     """
     try:
         from modules.query.task_query_extended import get_cross_task_info
@@ -2240,13 +2257,35 @@ def _get_task_server_info(order_id):
         # 检查子任务状态：执行中(status=6)不允许取消
         if task_status == 6:
             return None, f'子任务 {sub_order_id} 正在执行中(status=6)，无法取消'
-        # 从 related_tasks 获取服务器地址
-        related = result.get('related_tasks', [])
+        
+        # 从 fy_cross_model_process_detail.task_servicec 获取服务器地址
         server_ip = ''
-        for rt in related:
-            if rt.get('orderId') == order_id:
-                server_ip = rt.get('service_url', '').replace('http://', '').split(':')[0]
-                break
+        model_process_code = result.get('model_process_code', '')
+        if model_process_code:
+            try:
+                import pymysql
+                from pymysql.cursors import DictCursor
+                conn = pymysql.connect(
+                    host='10.68.2.32', port=3306, user='wms', password='CCshenda889',
+                    database='wms', charset='utf8mb4', cursorclass=DictCursor,
+                    connect_timeout=5
+                )
+                with conn.cursor() as cursor:
+                    # 通过 template_code 查 task_servicec
+                    cursor.execute(
+                        "SELECT task_servicec FROM fy_cross_model_process_detail WHERE template_code = %s AND task_servicec IS NOT NULL AND task_servicec != '' LIMIT 1",
+                        (model_process_code,)
+                    )
+                    row = cursor.fetchone()
+                    if row and row.get('task_servicec'):
+                        raw_url = row['task_servicec'].strip()
+                        from urllib.parse import urlparse
+                        parsed = urlparse(raw_url)
+                        server_ip = parsed.hostname or ''
+                conn.close()
+            except Exception:
+                pass
+        
         if not server_ip:
             server_ip = '10.68.2.32'  # 默认
         return {'sub_order_id': sub_order_id, 'server_ip': server_ip}, None
@@ -2300,7 +2339,8 @@ def api_cancel_empty_tasks(region_key):
                     detail['sub_order_id'] = sub_order_id
                     detail['server_ip'] = server_ip
                     
-                    result, cancel_err = _cancel_empty_task(sub_order_id, server_ip)
+                    result, cancel_err, req_info = _cancel_empty_task(sub_order_id, server_ip)
+                    detail['request_info'] = req_info
                     if cancel_err:
                         detail['message'] = f'ICS取消失败: {cancel_err}'
                         errors.append(f'{template_code} {sub_order_id}: {cancel_err}')

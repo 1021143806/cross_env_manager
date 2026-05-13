@@ -1688,13 +1688,21 @@ function cancelEmptyTasks(regionKey) {
                 let html = '<div class="mb-2"><strong>' + data.message + '</strong></div>';
                 if (data.details && data.details.length > 0) {
                     html += '<div style="max-height:300px;overflow-y:auto;font-size:0.8rem;">';
-                    html += '<table class="table table-sm table-borderless mb-0"><thead><tr><th>#</th><th>模板</th><th>订单号</th><th>结果</th></tr></thead><tbody>';
+                    html += '<table class="table table-sm table-borderless mb-0"><thead><tr><th>#</th><th>模板</th><th>订单号</th><th>结果</th><th></th></tr></thead><tbody>';
                     data.details.forEach((d, i) => {
                         const icon = d.success ? '✅' : '❌';
                         const color = d.success ? 'text-success' : 'text-danger';
                         html += '<tr><td>' + (i + 1) + '</td><td><code>' + escapeHtml(d.template) + '</code></td>';
                         html += '<td><small><code>' + escapeHtml(d.order_id || '') + '</code></small></td>';
-                        html += '<td class="' + color + '">' + icon + ' ' + escapeHtml(d.message) + '</td></tr>';
+                        html += '<td class="' + color + '">' + icon + ' ' + escapeHtml(d.message) + '</td>';
+                        if (d.request_info) {
+                            const ri = d.request_info;
+                            const riJson = JSON.stringify(ri, null, 2).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                            html += '<td><button class="btn btn-sm btn-outline-secondary" onclick="showCancelDetail(\'' + riJson + '\')" title="查看请求/响应详情"><i class="bi bi-info-circle"></i></button></td>';
+                        } else {
+                            html += '<td></td>';
+                        }
+                        html += '</tr>';
                     });
                     html += '</tbody></table></div>';
                 }
@@ -1707,6 +1715,26 @@ function cancelEmptyTasks(regionKey) {
             }
         })
         .catch(err => showToast('请求失败: ' + err.message, 'danger'));
+}
+
+function showCancelDetail(riJson) {
+    const ri = JSON.parse(riJson.replace(/&quot;/g, '"').replace(/&#39;/g, "'"));
+    let html = '<div style="font-size:0.8rem;">';
+    html += '<div class="mb-2"><strong>请求 URL:</strong><br><code>' + escapeHtml(ri.url || '-') + '</code></div>';
+    html += '<div class="mb-2"><strong>请求报文:</strong><br><pre style="max-height:150px;overflow-y:auto;background:var(--bs-light);padding:8px;border-radius:4px;">' + escapeHtml(JSON.stringify(ri.request_body, null, 2)) + '</pre></div>';
+    if (ri.http_status) {
+        html += '<div class="mb-2"><strong>HTTP 状态:</strong> ' + ri.http_status + ' (' + (ri.elapsed_ms || '?') + 'ms)</div>';
+    }
+    if (ri.response_body) {
+        html += '<div class="mb-2"><strong>响应报文:</strong><br><pre style="max-height:200px;overflow-y:auto;background:var(--bs-light);padding:8px;border-radius:4px;">' + escapeHtml(typeof ri.response_body === 'string' ? ri.response_body : JSON.stringify(ri.response_body, null, 2)) + '</pre></div>';
+    }
+    if (ri.error) {
+        html += '<div class="text-danger"><strong>错误:</strong> ' + escapeHtml(ri.error) + '</div>';
+    }
+    html += '</div>';
+    document.getElementById('dmTitle').textContent = '取消请求详情';
+    document.getElementById('dmBody').innerHTML = html;
+    new bootstrap.Modal(document.getElementById('deviceModal')).show();
 }
 
 function getDeviceClass(taskType) {
