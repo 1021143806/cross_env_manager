@@ -332,7 +332,7 @@ data/dispatch/
 | `orderId` | `order_id` | 任务单号，用于去重判断 |
 | `deviceCode` | `deviceCode` | 设备序列号（唯一标识） |
 | `deviceNum` | `deviceNum` | 设备编号（显示用） |
-| `status` | `status` | 任务状态：`6`=开始，`8`=完成 |
+| `status` | `status` | 任务状态：`6`/`9`=已下发，`10`=执行中，`8`=完成 |
 | `subTaskStatus` | — | 子任务状态字符串（`"3"`=执行中，`"8"`=完成），辅助判断 |
 | — | `region_key` | 区域标识，为空时通过 `modelProcessCode` 自动匹配 |
 
@@ -347,8 +347,11 @@ data/dispatch/
 
 | status | 含义 | 处理逻辑 |
 |--------|------|----------|
-| `6` | 任务开始（运行中） | 写入模板 JSON；已有同设备记录则覆盖更新 |
+| `6` | 任务已下发 | 写入模板 JSON；已有同设备记录则覆盖更新 |
+| `9` | 任务已下发 | 与 status=6 同等对待（写入/更新模板 JSON） |
+| `10` | 任务执行中（跨环境） | 覆盖更新模板 JSON 中的 status 字段 |
 | `8` | 任务完成 | 从模板 JSON 删除；来方向 → `currentCount.json` +1；离方向 → `currentCount.json` -1 |
+| `7` | 下发失败 | 只清理模板 JSON，不操作 currentCount（车未移动） |
 | 其他 | 取消/失败等 | 同 status=8 处理（清理逻辑） |
 
 #### 调用示例
@@ -540,7 +543,7 @@ flowchart TD
 ### 清理条件
 
 **设备清理**：
-- 设备 Offline/Downlined 时检查是否有执行中任务（`status in (6, 10)`）
+- 设备 Offline/Downlined 时检查是否有执行中任务（`status in (6, 9, 10)`）
 - 有执行中任务且未超过 1 小时 → 保留
 - 有执行中任务但超过 1 小时 → 清理
 - 无执行中任务 → 清理
@@ -554,7 +557,7 @@ flowchart TD
 - `Offline` — 离线
 - `Downlined` — 下线
 
-**清理前检查**：设备离线/下线时，先检查该设备在区域模板中是否有执行中任务（`status in (6, 10)`）：
+**清理前检查**：设备离线/下线时，先检查该设备在区域模板中是否有执行中任务（`status in (6, 9, 10)`）：
 - 有执行中任务且未超过 1 小时 → 保留（可能在连廊跨环境中）
 - 有执行中任务但超过 1 小时 → 清理
 - 无执行中任务 → 清理
@@ -581,7 +584,7 @@ flowchart TD
 | `reset_all` | 清空数据 | 清空区域所有数据 |
 | `clean_simulated` | 清理模拟 | 清理模拟数据 |
 | `self_heal` | 自恢复 | 自恢复清理异常任务 |
-| `self_heal_detail` | 自恢复详情 | `_should_clean_device` 决策日志（含 status in (6,10) 检查结果） |
+| `self_heal_detail` | 自恢复详情 | `_should_clean_device` 决策日志（含 status in (6,9,10) 检查结果） |
 | `device_leave` | 设备离开网格 | 设备从 currentCount 中删除 |
 | `device_history` | 设备历史 | 手动全量获取/清理设备历史 |
 | `time_slot_change` | 分时段切换 | 分时段切换时全量检查 |

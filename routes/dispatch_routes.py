@@ -514,9 +514,9 @@ def calculate_area_balance(region_key, region_config):
         fpath = _get_template_file_path(region_key, t)
         tasks = _load_json(fpath)
         # 普通任务（不含 _low_battery）
-        normal_tasks = [task for task in tasks if task.get('status') == 6 and not task.get('_low_battery')]
+        normal_tasks = [task for task in tasks if task.get('status') in (6, 9) and not task.get('_low_battery')]
         # 低电量任务
-        low_battery_tasks = [task for task in tasks if task.get('status') == 6 and task.get('_low_battery')]
+        low_battery_tasks = [task for task in tasks if task.get('status') in (6, 9) and task.get('_low_battery')]
         count = len(normal_tasks)
         low_battery_count = len(low_battery_tasks)
         task_type = _normalize_task_type(t)
@@ -532,7 +532,7 @@ def calculate_area_balance(region_key, region_config):
         else:
             outgoing_templates.append(item)
         
-        # 收集执行中设备（status=6 且有 deviceCode，不含低电量任务）
+        # 收集执行中设备（status in (6,9) 且有 deviceCode，不含低电量任务）
         for task in normal_tasks:
             if task.get('deviceCode'):
                 pending_devices.append({
@@ -590,7 +590,7 @@ def calculate_area_balance(region_key, region_config):
                 continue
             fpath = _get_template_file_path(region_key, t)
             tasks = _load_json(fpath)
-            pending = [task for task in tasks if task.get('status') == 6 and not task.get('_low_battery')]
+            pending = [task for task in tasks if task.get('status') in (6, 9) and not task.get('_low_battery')]
             if pending:
                 # 如果要下发去空车(in)，但存在未完成的回空车(out)任务
                 # 如果要下发回空车(out)，但存在未完成的去空车(in)任务
@@ -706,8 +706,8 @@ def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
             tasks = _load_json(fpath)
             old_count = len(tasks)
             # 按 order_id 匹配删除，同时记录被删任务的信息
-            removed_tasks = [task for task in tasks if task.get('order_id') == order_id and task.get('status') in (6, 10)]
-            new_tasks = [task for task in tasks if not (task.get('order_id') == order_id and task.get('status') in (6, 10))]
+            removed_tasks = [task for task in tasks if task.get('order_id') == order_id and task.get('status') in (6, 9, 10)]
+            new_tasks = [task for task in tasks if not (task.get('order_id') == order_id and task.get('status') in (6, 9, 10))]
             if len(new_tasks) < old_count:
                 _save_json(fpath, new_tasks)
                 removed = old_count - len(new_tasks)
@@ -747,7 +747,7 @@ def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
             tasks = new_tasks
             # 也按 deviceCode 匹配删除
             if device_code:
-                new_tasks2 = [task for task in tasks if not (task.get('deviceCode') == device_code and task.get('status') in (6, 10))]
+                new_tasks2 = [task for task in tasks if not (task.get('deviceCode') == device_code and task.get('status') in (6, 9, 10))]
                 if len(new_tasks2) < len(tasks):
                     _save_json(fpath, new_tasks2)
                     removed2 = len(tasks) - len(new_tasks2)
@@ -769,7 +769,7 @@ def _update_by_order_id_across_all_regions(order_id, device_code, device_num):
             tasks = _load_json(fpath)
             found = False
             for task in tasks:
-                if task.get('order_id') == order_id and task.get('status') in (6, 10):
+                if task.get('order_id') == order_id and task.get('status') in (6, 9, 10):
                     task['deviceCode'] = device_code
                     task['deviceNum'] = device_num
                     task['update_time'] = datetime.now().isoformat()
@@ -861,8 +861,8 @@ def handle_status_report(data):
     if not region_key or not template_name:
         # 无法匹配区域/模板，静默接受上报（不返回错误，避免 ICS 重试）
         if order_id:
-            if status == 6:
-                # status=6：按 order_id 跨区域更新设备信息
+            if status in (6, 9):
+                # status=6/9：按 order_id 跨区域更新设备信息
                 updated = _update_by_order_id_across_all_regions(order_id, device_code, device_num)
                 if updated:
                     return True, f"无法匹配模板但按order_id更新了{updated}条 (region_key={region_key}, template={template_name})", True
@@ -905,7 +905,7 @@ def handle_status_report(data):
     if not template_config:
         # 模板不存在于该区域，静默接受上报
         if order_id:
-            if status == 6:
+            if status in (6, 9):
                 updated = _update_by_order_id_across_all_regions(order_id, device_code, device_num)
                 if updated:
                     return True, f"模板不在区域但按order_id更新了{updated}条 (region_key={region_key}, template={template_name})", True
@@ -933,15 +933,15 @@ def handle_status_report(data):
         tasks = _load_json(template_file)
         old_count = len(tasks)
         if order_id:
-            tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') == 6)]
+            tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') in (6, 9))]
         if device_code:
-            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') == 6)]
+            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') in (6, 9))]
         template_removed = old_count - len(tasks)
         if template_removed > 0:
             _save_json(template_file, tasks)
         return True, f'模板-{template_name} -{template_removed} (status=7下发失败，车未移动)', True
     
-    if status in (6, 10):
+    if status in (6, 9, 10):
         # 任务开始（运行中）：记录到模板 JSON
         # 匹配策略（两级）：
         #   1. 先按 deviceCode 匹配（负载任务）
@@ -950,14 +950,14 @@ def handle_status_report(data):
         existing = None
         match_level = ''
         for t in tasks:
-            if t.get('deviceCode') == device_code and t.get('status') == 6:
+            if t.get('deviceCode') == device_code and t.get('status') in (6, 9):
                 existing = t
                 match_level = 'deviceCode'
                 break
         # 第2级：按 order_id 匹配（空车任务，下发时可能已指定设备也可能未指定）
         if not existing and order_id:
             for t in tasks:
-                if t.get('order_id') == order_id and t.get('status') == 6:
+                if t.get('order_id') == order_id and t.get('status') in (6, 9):
                     existing = t
                     match_level = 'order_id'
                     break
@@ -967,7 +967,7 @@ def handle_status_report(data):
             old_dc = existing.get('deviceCode', '')[-8:] if existing.get('deviceCode') else '?'
             existing['deviceNum'] = device_num
             existing['deviceCode'] = device_code
-            existing['status'] = status  # status=10 时更新状态
+            existing['status'] = status  # status=9/10 时更新状态
             existing['order_id'] = order_id
             existing['shelfNumber'] = data.get('shelfNumber', '')
             existing['shelfCurrPosition'] = data.get('shelfCurrPosition', '')
@@ -979,7 +979,7 @@ def handle_status_report(data):
             tasks.append({
                 "deviceCode": device_code,
                 "deviceNum": device_num,
-                "status": 6,
+                "status": status,
                 "order_id": order_id,
                 "shelfNumber": data.get('shelfNumber', ''),
                 "shelfCurrPosition": data.get('shelfCurrPosition', ''),
@@ -991,7 +991,7 @@ def handle_status_report(data):
         _save_json(template_file, tasks)
         
     else:
-        # 非 6 的状态（包括 8=完成 及其他状态）：执行清理逻辑
+        # 非 6/9/10 的状态（包括 8=完成 及其他状态）：执行清理逻辑
         # 从模板 JSON 中删除该设备记录
         # 匹配策略（三级，按优先级）：
         #   1. deviceCode + order_id 精确匹配（负载任务，同一设备可能有多个子任务）
@@ -1003,24 +1003,24 @@ def handle_status_report(data):
         # 在清理前先保存匹配到的任务信息（用于后续 currentCount 更新）
         _matched_task = None
         # 第1级：deviceCode + order_id 精确匹配
-        matched = [t for t in tasks if t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') == 6]
+        matched = [t for t in tasks if t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') in (6, 9)]
         if matched:
             _matched_task = matched[0]
-            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') == 6)]
+            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') in (6, 9))]
         elif order_id:
             # 第2级：order_id 匹配
             for t in tasks:
-                if t.get('order_id') == order_id and t.get('status') == 6:
+                if t.get('order_id') == order_id and t.get('status') in (6, 9):
                     _matched_task = t
                     break
-            tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') == 6)]
+            tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') in (6, 9))]
         else:
             # 第3级：deviceCode 匹配（兜底）
             for t in tasks:
-                if t.get('deviceCode') == device_code and t.get('status') == 6:
+                if t.get('deviceCode') == device_code and t.get('status') in (6, 9):
                     _matched_task = t
                     break
-            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') == 6)]
+            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') in (6, 9))]
         _save_json(template_file, tasks)
         template_removed = old_count - len(tasks)
         
@@ -1175,7 +1175,7 @@ def api_device_info():
             fpath = _get_template_file_path(rk, t)
             tasks = _load_json(fpath)
             for task in tasks:
-                if task.get('deviceNum') == device_num and task.get('status') == 6:
+                if task.get('deviceNum') == device_num and task.get('status') in (6, 9):
                     task_type = _normalize_task_type(t)
                     template_code = t.get('code') or t.get('name', '')
                     device_info = {
@@ -1254,8 +1254,8 @@ def api_device_trace():
                 update_time = task.get('update_time', '')
                 
                 # 状态标签
-                status_label = {6: '已下发', 7: '下发失败', 8: '已完成', 10: '执行中'}.get(ts, f'status={ts}')
-                status_icon = {6: '📤', 7: '❌', 8: '✅', 10: '🔵'}.get(ts, '📌')
+                status_label = {6: '已下发', 7: '下发失败', 8: '已完成', 9: '已下发', 10: '执行中'}.get(ts, f'status={ts}')
+                status_icon = {6: '📤', 7: '❌', 8: '✅', 9: '📤', 10: '🔵'}.get(ts, '📌')
                 
                 traces.append({
                     'time': update_time or create_time,
@@ -1425,7 +1425,7 @@ def api_template_detail():
     display_name = template_config.get('display_name') or template_config.get('name', '')
     
     # 当前执行中任务
-    running_tasks = [task for task in tasks if task.get('status') == 6]
+    running_tasks = [task for task in tasks if task.get('status') in (6, 9)]
     
     # 最近日志（从全局日志筛选该模板相关）
     logs = _load_json(GLOBAL_LOG_PATH)
@@ -2324,7 +2324,7 @@ def api_cancel_empty_tasks(region_key):
             
             # 清理本地模板 JSON
             if cancelled > 0:
-                tasks = [t for t in tasks if t.get('status') != 6]
+                tasks = [t for t in tasks if t.get('status') not in (6, 9)]
                 _save_json(fpath, tasks)
         
         return jsonify({
@@ -2433,7 +2433,7 @@ def _should_clean_device(device_info, region_key='', region=None, device_code=''
                 tdc = task.get('deviceCode', '')
                 ts = task.get('status', '')
                 all_task_info.append(f'{tcode}:{tdc if tdc else "?"}={ts}')
-                if tdc == device_code and ts in (6, 10):
+                if tdc == device_code and ts in (6, 9, 10):
                     has_active_task = True
                     task_start_time = task.get('create_time', '')
                     matched_template = tcode
@@ -2931,7 +2931,7 @@ def _check_low_battery_return(region_key, region, sh):
         tasks = _load_json(fpath)
         for task in tasks:
             dc = task.get('deviceCode', '')
-            if task.get('status') == 6 and dc:
+            if task.get('status') in (6, 9) and dc:
                 # 共享模板：只关注当前区域设备的 pending 状态
                 if t.get('shared') and dc not in now_device_codes:
                     continue
@@ -2991,7 +2991,7 @@ def _select_device_for_empty_return(region_key, region):
         tasks = _load_json(fpath)
         for task in tasks:
             dc = task.get('deviceCode', '')
-            if task.get('status') == 6 and dc:
+            if task.get('status') in (6, 9) and dc:
                 # 共享模板：只关注当前区域设备的 pending 状态
                 if t.get('shared') and dc not in now_device_codes:
                     continue
@@ -3244,7 +3244,7 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
             new_tasks = []
             task_cleaned = 0
             for task in tasks:
-                if task.get('status') == 6 and not task.get('_simulated') and task.get('create_time', '') < task_timeout_threshold:
+                if task.get('status') in (6, 9) and not task.get('_simulated') and task.get('create_time', '') < task_timeout_threshold:
                     # 超时任务：清理
                     task_cleaned += 1
                     dc = task.get('deviceCode', '')
@@ -3301,14 +3301,14 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
         tasks = _load_json(fpath)
         
         if force:
-            # 强制模式：检查所有 status=6 的非模拟任务
+            # 强制模式：检查所有 status in (6,9) 的非模拟任务
             check_tasks = [task for task in tasks
-                          if task.get('status') == 6
+                          if task.get('status') in (6, 9)
                           and not task.get('_simulated')]
         else:
             # 正常模式：只检查超时任务
             check_tasks = [task for task in tasks
-                          if task.get('status') == 6
+                          if task.get('status') in (6, 9)
                           and not task.get('_simulated')
                           and task.get('create_time', '') < threshold]
         
