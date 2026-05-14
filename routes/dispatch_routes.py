@@ -325,7 +325,7 @@ _dispatch_sample_counter = [0]
 
 def _update_daily_stats(region_key, field, current_count=None):
     """更新每20分钟统计
-    field: 'empty_in' | 'empty_out' | 'load_in' | 'load_out' | 'dispatch_in' | 'dispatch_out' | 'current_count'
+    field: 'empty_in' | 'empty_out' | 'load_in' | 'load_out' | 'dispatch_in' | 'dispatch_out' | 'cancel_empty' | 'current_count'
     current_count: 可选，当前设备数量（用于 current_count 字段）
     """
     now = datetime.now()
@@ -340,7 +340,7 @@ def _update_daily_stats(region_key, field, current_count=None):
     if region_key not in stats[slot_key]:
         stats[slot_key][region_key] = {
             'empty_in': 0, 'empty_out': 0, 'load_in': 0, 'load_out': 0,
-            'dispatch_in': 0, 'dispatch_out': 0, 'current_count': 0
+            'dispatch_in': 0, 'dispatch_out': 0, 'cancel_empty': 0, 'current_count': 0
         }
     if field == 'current_count':
         stats[slot_key][region_key]['current_count'] = current_count if current_count is not None else 0
@@ -647,6 +647,7 @@ def calculate_area_balance(region_key, region_config):
                                 if not cancel_err and resp_code == 1000:
                                     # ICS 返回成功才计数和清理
                                     deadlock_cancelled += 1
+                                    _update_daily_stats(region_key, 'cancel_empty')
                                     write_global_log('execute_mutex', region_key,
                                         f'解死锁取消空车任务: {template_code} order={oid} sub={info["sub_order_id"]} server={info["server_ip"]}',
                                         raw_data={'request': req_info.get('request_body'), 'response': req_info.get('response_body'),
@@ -2427,6 +2428,7 @@ def api_cancel_empty_tasks(region_key):
                     detail['success'] = True
                     detail['message'] = f'已取消 (server={server_ip})'
                     details.append(detail)
+                    _update_daily_stats(region_key, 'cancel_empty')
                     write_global_log('cancel_empty', region_key,
                         f'取消空车任务: {template_code} order={order_id} sub={sub_order_id} server={server_ip}')
                 else:

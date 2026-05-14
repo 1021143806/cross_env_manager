@@ -1954,7 +1954,7 @@ function getDailyStatsText(area) {
     // 汇总当天所有小时数据
     const today = new Date().toISOString().slice(0, 10);
     const history = area.daily_stats_history || {};
-    let ei = 0, eo = 0, li = 0, lo = 0, di = 0, dout = 0;
+    let ei = 0, eo = 0, li = 0, lo = 0, di = 0, dout = 0, cancel = 0;
     Object.keys(history).forEach(k => {
         if (k.startsWith(today)) {
             const r = history[k][area.region_key];
@@ -1965,11 +1965,14 @@ function getDailyStatsText(area) {
                 lo += r.load_out || 0;
                 di += r.dispatch_in || 0;
                 dout += r.dispatch_out || 0;
+                cancel += r.cancel_empty || 0;
             }
         }
     });
-    if (!ei && !eo && !li && !lo && !di && !dout) return '<span class="text-muted">📊 今日暂无统计</span>';
-    return `📊 今日: <span style="color:#6ea8fe;">🚛来${ei}</span> <span style="color:#feb272;">回${eo}</span> <span style="color:#0d6efd;">📦来${li}</span> <span style="color:#fd7e14;">回${lo}</span> | 下发 <span style="color:#6ea8fe;">来${di}</span> <span style="color:#feb272;">回${dout}</span>`;
+    if (!ei && !eo && !li && !lo && !di && !dout && !cancel) return '<span class="text-muted">📊 今日暂无统计</span>';
+    let text = `📊 今日: <span style="color:#6ea8fe;">🚛来${ei}</span> <span style="color:#feb272;">回${eo}</span> <span style="color:#0d6efd;">📦来${li}</span> <span style="color:#fd7e14;">回${lo}</span> | 下发 <span style="color:#6ea8fe;">来${di}</span> <span style="color:#feb272;">回${dout}</span>`;
+    if (cancel) text += ` | <span style="color:#dc3545;">取消${cancel}</span>`;
+    return text;
 }
 
 function renderSparkline(area) {
