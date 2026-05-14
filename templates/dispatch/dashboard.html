@@ -1535,7 +1535,9 @@ function updateAreasData(areas) {
                 } else {
                     // 还在，检查状态是否变化
                     const newData = newDataMap[dn];
-                    const wasPending = icon.classList.contains('idle') ? false : true;
+                    // 判断旧图标是否为 pending 状态（有任务类型 class：load-in/load-out/empty-in/empty-out）
+                    const wasPending = icon.classList.contains('load-in') || icon.classList.contains('load-out')
+                        || icon.classList.contains('empty-in') || icon.classList.contains('empty-out');
                     if (newData && newData.isPending !== wasPending) {
                         // 状态变了，更新图标
                         const html = renderDeviceIcon(newData, newData.isPending);
