@@ -2326,9 +2326,9 @@ def _get_task_server_info(order_id):
         details = result.get('cross_task_details', [])
         if not details:
             return None, '未找到任务详情'
-        # 找到 _1 子任务（第一个子任务）
+        # 找到 _1 子任务（第一个子任务），取 sub_order_id（子任务ID，非主 order_id）
         detail = details[0]
-        sub_order_id = detail.get('order_id', '')
+        sub_order_id = detail.get('sub_order_id', '')
         task_status = detail.get('task_status')
         # 检查子任务状态：执行中(status=6)不允许取消
         if task_status == 6:
