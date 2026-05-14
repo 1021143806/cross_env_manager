@@ -1021,14 +1021,14 @@ def handle_status_report(data):
         existing = None
         match_level = ''
         for t in tasks:
-            if t.get('deviceCode') == device_code and t.get('status') in (6, 9):
+            if t.get('deviceCode') == device_code and t.get('status') in (6, 9, 10):
                 existing = t
                 match_level = 'deviceCode'
                 break
         # 第2级：按 order_id 匹配（空车任务，下发时可能已指定设备也可能未指定）
         if not existing and order_id:
             for t in tasks:
-                if t.get('order_id') == order_id and t.get('status') in (6, 9):
+                if t.get('order_id') == order_id and t.get('status') in (6, 9, 10):
                     existing = t
                     match_level = 'order_id'
                     break
@@ -1074,24 +1074,24 @@ def handle_status_report(data):
         # 在清理前先保存匹配到的任务信息（用于后续 currentCount 更新）
         _matched_task = None
         # 第1级：deviceCode + order_id 精确匹配
-        matched = [t for t in tasks if t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') in (6, 9)]
+        matched = [t for t in tasks if t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') in (6, 9, 10)]
         if matched:
             _matched_task = matched[0]
-            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') in (6, 9))]
+            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') in (6, 9, 10))]
         elif order_id:
             # 第2级：order_id 匹配
             for t in tasks:
-                if t.get('order_id') == order_id and t.get('status') in (6, 9):
+                if t.get('order_id') == order_id and t.get('status') in (6, 9, 10):
                     _matched_task = t
                     break
-            tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') in (6, 9))]
+            tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') in (6, 9, 10))]
         else:
             # 第3级：deviceCode 匹配（兜底）
             for t in tasks:
-                if t.get('deviceCode') == device_code and t.get('status') in (6, 9):
+                if t.get('deviceCode') == device_code and t.get('status') in (6, 9, 10):
                     _matched_task = t
                     break
-            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') in (6, 9))]
+            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') in (6, 9, 10))]
         _save_json(template_file, tasks)
         template_removed = old_count - len(tasks)
         
