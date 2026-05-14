@@ -532,10 +532,10 @@ def calculate_area_balance(region_key, region_config):
     for t in region_config.get('templates', []):
         fpath = _get_template_file_path(region_key, t)
         tasks = _load_json(fpath)
-        # 普通任务（不含 _low_battery）
-        normal_tasks = [task for task in tasks if task.get('status') in (6, 9) and not task.get('_low_battery')]
+        # 普通任务（不含 _low_battery），status=6/9/10 均为执行中
+        normal_tasks = [task for task in tasks if task.get('status') in (6, 9, 10) and not task.get('_low_battery')]
         # 低电量任务
-        low_battery_tasks = [task for task in tasks if task.get('status') in (6, 9) and task.get('_low_battery')]
+        low_battery_tasks = [task for task in tasks if task.get('status') in (6, 9, 10) and task.get('_low_battery')]
         count = len(normal_tasks)
         low_battery_count = len(low_battery_tasks)
         task_type = _normalize_task_type(t)
@@ -551,7 +551,7 @@ def calculate_area_balance(region_key, region_config):
         else:
             outgoing_templates.append(item)
         
-        # 收集执行中设备（status in (6,9) 且有 deviceCode，不含低电量任务）
+        # 收集执行中设备（status in (6,9,10) 且有 deviceCode，不含低电量任务）
         for task in normal_tasks:
             if task.get('deviceCode'):
                 pending_devices.append({
