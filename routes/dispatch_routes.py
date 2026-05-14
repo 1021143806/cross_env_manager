@@ -643,16 +643,23 @@ def calculate_area_balance(region_key, region_config):
                             info, err = _get_task_server_info(oid)
                             if not err:
                                 result, cancel_err, req_info = _cancel_empty_task(info['sub_order_id'], info['server_ip'])
-                                deadlock_cancelled += 1
-                                write_global_log('execute_mutex', region_key,
-                                    f'解死锁取消空车任务: {template_code} order={oid} sub={info["sub_order_id"]} server={info["server_ip"]}',
-                                    raw_data={'request': req_info.get('request_body'), 'response': req_info.get('response_body'),
-                                              'http_status': req_info.get('http_status'), 'elapsed_ms': req_info.get('elapsed_ms'),
-                                              'error': req_info.get('error')})
+                                resp_code = req_info.get('response_body', {}).get('code') if isinstance(req_info.get('response_body'), dict) else None
+                                if not cancel_err and resp_code == 1000:
+                                    # ICS 返回成功才计数和清理
+                                    deadlock_cancelled += 1
+                                    write_global_log('execute_mutex', region_key,
+                                        f'解死锁取消空车任务: {template_code} order={oid} sub={info["sub_order_id"]} server={info["server_ip"]}',
+                                        raw_data={'request': req_info.get('request_body'), 'response': req_info.get('response_body'),
+                                                  'http_status': req_info.get('http_status'), 'elapsed_ms': req_info.get('elapsed_ms')})
+                                else:
+                                    write_global_log('execute_mutex', region_key,
+                                        f'解死锁取消失败: {template_code} order={oid} sub={info["sub_order_id"]}',
+                                        raw_data={'request': req_info.get('request_body'), 'response': req_info.get('response_body'),
+                                                  'http_status': req_info.get('http_status'), 'error': cancel_err or f'code={resp_code}'})
                         except Exception as e:
                             write_global_log('execute_mutex', region_key,
                                 f'解死锁取消失败: {template_code} order={oid} error={str(e)}')
-                    # 取消后清理本地 JSON
+                    # 取消成功后清理本地 JSON
                     if deadlock_cancelled > 0:
                         tasks = [t for t in tasks if t.get('status') not in (6, 9)]
                         _save_json(fpath, tasks)
