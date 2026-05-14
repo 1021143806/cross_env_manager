@@ -5,7 +5,7 @@
 """
 
 # 调车模块版本号（修改本文件时递增末尾数字）
-DISPATCH_VERSION = '2.1.9'
+DISPATCH_VERSION = '2.1.10'
 
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response
 from functools import wraps
@@ -64,6 +64,25 @@ _write_lock = threading.Lock()
 # 自动调度防抖：记录每个区域上次自动调度时间
 _auto_dispatch_last = {}
 _AUTO_DISPATCH_DEBOUNCE = 5  # 同一区域5秒内最多自动调度一次
+
+# 全局空车任务数量上限（默认 4，区域可覆盖）
+GLOBAL_EMPTY_TASK_LIMIT = 4
+
+
+def _get_empty_task_limit(region_config):
+    """获取区域空车任务数量上限
+    - 区域配置 -1 → 使用全局配置 global_empty_task_limit
+    - 区域配置 0 → 不限制（返回 None）
+    - 区域配置 >0 → 使用区域自定义值
+    """
+    region_limit = region_config.get('empty_task_limit', -1)
+    if region_limit == -1:
+        index = _load_cache_index()
+        return index.get('global_empty_task_limit', GLOBAL_EMPTY_TASK_LIMIT)
+    elif region_limit == 0:
+        return None  # 不限制
+    else:
+        return region_limit
 
 
 # ========== task_type 兼容 ==========
@@ -577,6 +596,23 @@ def calculate_area_balance(region_key, region_config):
     
     # 容量管控：限制每次下发数量
     dispatch_count = min(abs(need), max_once) if need != 0 else 0
+    
+    # 空车任务数量限制：检查当前方向空车模板 JSON 中已有的 status=6 任务数
+    empty_limit = _get_empty_task_limit(region_config)
+    if empty_limit is not None and dispatch_count > 0:
+        current_empty_count = 0
+        for t in region_config.get('templates', []):
+            task_type = _normalize_task_type(t)
+            if not _is_empty_task(task_type):
+                continue
+            t_direction = 'in' if _is_in_direction(task_type) else 'out'
+            if t_direction == direction:
+                fpath = _get_template_file_path(region_key, t)
+                tasks = _load_json(fpath)
+                current_empty_count += sum(1 for task in tasks if task.get('status') in (6, 9))
+        available = max(0, empty_limit - current_empty_count)
+        if available < dispatch_count:
+            dispatch_count = available
     
     # 互斥检查：只检查空车模板（empty_in/empty_out）之间的互斥
     # 负载模板不影响空车下发
@@ -1911,6 +1947,12 @@ def _execute_dispatch(region_key, region, balance):
         reason = 'time_slot'
     else:
         reason = 'manual'
+    
+    # 空车任务数量限制：dispatch_count 可能被限制为 0
+    if dispatch_count <= 0:
+        write_global_log('execute_skip', region_key,
+            f'空车任务数量已达上限，跳过下发 (direction={direction})')
+        return
     
     # 逐台下发：每台独立生成 order_id，独立请求 RCS，独立写入模板 JSON
     template_file = _get_template_file_path(region_key, target_template)
