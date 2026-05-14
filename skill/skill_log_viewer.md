@@ -53,10 +53,17 @@ curl -s -b /tmp/cookies.txt \
   'http://10.68.2.40:5000/api/dispatch/device_info?deviceNum=C185' | python3 -m json.tool
 ```
 
-### 查询全局日志
+### 查询全局日志（含版本号）
 ```bash
 curl -s -b /tmp/cookies.txt \
   'http://10.68.2.40:5000/api/dispatch/global_log' | python3 -m json.tool
+```
+响应中包含 `version` 字段（如 `"2.1.10"`），可确认生产环境部署的调车模块版本。
+
+### 仅查看版本号
+```bash
+curl -s -b /tmp/cookies.txt \
+  'http://10.68.2.40:5000/api/dispatch/global_log' | python3 -c "import sys,json; print(json.load(sys.stdin).get('version','未知'))"
 ```
 
 ### 查看 supervisor 控制台日志（print 输出）
