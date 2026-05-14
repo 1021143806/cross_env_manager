@@ -609,7 +609,7 @@ def calculate_area_balance(region_key, region_config):
             if t_direction == direction:
                 fpath = _get_template_file_path(region_key, t)
                 tasks = _load_json(fpath)
-                current_empty_count += sum(1 for task in tasks if task.get('status') in (6, 9))
+                current_empty_count += sum(1 for task in tasks if task.get('status') in (6, 9, 10))
         available = max(0, empty_limit - current_empty_count)
         if available < dispatch_count:
             dispatch_count = available
@@ -627,7 +627,7 @@ def calculate_area_balance(region_key, region_config):
                 continue
             fpath = _get_template_file_path(region_key, t)
             tasks = _load_json(fpath)
-            pending = [task for task in tasks if task.get('status') in (6, 9) and not task.get('_low_battery')]
+            pending = [task for task in tasks if task.get('status') in (6, 9, 10) and not task.get('_low_battery')]
             if pending:
                 # 如果要下发去空车(in)，但存在未完成的回空车(out)任务
                 # 如果要下发回空车(out)，但存在未完成的去空车(in)任务
@@ -662,10 +662,10 @@ def calculate_area_balance(region_key, region_config):
                                 f'解死锁取消失败: {template_code} order={oid} error={str(e)}')
                     # 取消成功后清理本地 JSON
                     if deadlock_cancelled > 0:
-                        tasks = [t for t in tasks if t.get('status') not in (6, 9)]
+                        tasks = [t for t in tasks if t.get('status') not in (6, 9, 10)]
                         _save_json(fpath, tasks)
                         # 重新检查是否还有阻塞
-                        pending_after = [t for t in tasks if t.get('status') in (6, 9) and not t.get('_low_battery')]
+                        pending_after = [t for t in tasks if t.get('status') in (6, 9, 10) and not t.get('_low_battery')]
                         if not pending_after:
                             continue  # 阻塞已解除，继续检查下一个模板
                     can_dispatch = False
@@ -932,8 +932,8 @@ def handle_status_report(data):
     if not region_key or not template_name:
         # 无法匹配区域/模板，静默接受上报（不返回错误，避免 ICS 重试）
         if order_id:
-            if status in (6, 9):
-                # status=6/9：按 order_id 跨区域更新设备信息
+            if status in (6, 9, 10):
+                # status=6/9/10：按 order_id 跨区域更新设备信息
                 updated = _update_by_order_id_across_all_regions(order_id, device_code, device_num)
                 if updated:
                     return True, f"无法匹配模板但按order_id更新了{updated}条 (region_key={region_key}, template={template_name})", True
@@ -976,7 +976,7 @@ def handle_status_report(data):
     if not template_config:
         # 模板不存在于该区域，静默接受上报
         if order_id:
-            if status in (6, 9):
+            if status in (6, 9, 10):
                 updated = _update_by_order_id_across_all_regions(order_id, device_code, device_num)
                 if updated:
                     return True, f"模板不在区域但按order_id更新了{updated}条 (region_key={region_key}, template={template_name})", True
@@ -1246,7 +1246,7 @@ def api_device_info():
             fpath = _get_template_file_path(rk, t)
             tasks = _load_json(fpath)
             for task in tasks:
-                if task.get('deviceNum') == device_num and task.get('status') in (6, 9):
+                if task.get('deviceNum') == device_num and task.get('status') in (6, 9, 10):
                     task_type = _normalize_task_type(t)
                     template_code = t.get('code') or t.get('name', '')
                     device_info = {
@@ -1496,7 +1496,7 @@ def api_template_detail():
     display_name = template_config.get('display_name') or template_config.get('name', '')
     
     # 当前执行中任务
-    running_tasks = [task for task in tasks if task.get('status') in (6, 9)]
+    running_tasks = [task for task in tasks if task.get('status') in (6, 9, 10)]
     
     # 最近日志（从全局日志筛选该模板相关）
     logs = _load_json(GLOBAL_LOG_PATH)
@@ -2442,7 +2442,7 @@ def api_cancel_empty_tasks(region_key):
             
             # 清理本地模板 JSON
             if cancelled > 0:
-                tasks = [t for t in tasks if t.get('status') not in (6, 9)]
+                tasks = [t for t in tasks if t.get('status') not in (6, 9, 10)]
                 _save_json(fpath, tasks)
         
         return jsonify({
@@ -3049,7 +3049,7 @@ def _check_low_battery_return(region_key, region, sh):
         tasks = _load_json(fpath)
         for task in tasks:
             dc = task.get('deviceCode', '')
-            if task.get('status') in (6, 9) and dc:
+            if task.get('status') in (6, 9, 10) and dc:
                 # 共享模板：只关注当前区域设备的 pending 状态
                 if t.get('shared') and dc not in now_device_codes:
                     continue
@@ -3109,7 +3109,7 @@ def _select_device_for_empty_return(region_key, region):
         tasks = _load_json(fpath)
         for task in tasks:
             dc = task.get('deviceCode', '')
-            if task.get('status') in (6, 9) and dc:
+            if task.get('status') in (6, 9, 10) and dc:
                 # 共享模板：只关注当前区域设备的 pending 状态
                 if t.get('shared') and dc not in now_device_codes:
                     continue
@@ -3362,7 +3362,7 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
             new_tasks = []
             task_cleaned = 0
             for task in tasks:
-                if task.get('status') in (6, 9) and not task.get('_simulated') and task.get('create_time', '') < task_timeout_threshold:
+                if task.get('status') in (6, 9, 10) and not task.get('_simulated') and task.get('create_time', '') < task_timeout_threshold:
                     # 超时任务：清理
                     task_cleaned += 1
                     dc = task.get('deviceCode', '')
@@ -3421,12 +3421,12 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
         if force:
             # 强制模式：检查所有 status in (6,9) 的非模拟任务
             check_tasks = [task for task in tasks
-                          if task.get('status') in (6, 9)
+                          if task.get('status') in (6, 9, 10)
                           and not task.get('_simulated')]
         else:
             # 正常模式：只检查超时任务
             check_tasks = [task for task in tasks
-                          if task.get('status') in (6, 9)
+                          if task.get('status') in (6, 9, 10)
                           and not task.get('_simulated')
                           and task.get('create_time', '') < threshold]
         
