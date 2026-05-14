@@ -832,6 +832,7 @@ def _update_by_order_id_across_all_regions(order_id, device_code, device_num):
     """当 status=6 无法匹配模板时，遍历所有区域按 order_id 更新设备信息"""
     index = _load_cache_index()
     updated = 0
+    debug_info = []  # 收集调试信息
     for rk, region in index.items():
         if not isinstance(region, dict) or 'templates' not in region:
             continue
@@ -850,8 +851,15 @@ def _update_by_order_id_across_all_regions(order_id, device_code, device_num):
             if found:
                 _save_json(fpath, tasks)
                 print(f"[Dispatch] _update_by_order_id: 更新 {rk}/{t.get('code', t.get('name', ''))} device={device_num}")
+            else:
+                # 收集未匹配的模板信息用于调试
+                matching_orders = [task.get('order_id', '') for task in tasks if task.get('status') in (6, 9, 10)]
+                if matching_orders:
+                    debug_info.append(f'{rk}/{t.get("code", t.get("name", ""))} orders={matching_orders[:3]}')
     if updated == 0:
         print(f"[Dispatch] _update_by_order_id: 未找到匹配 order_id={order_id}, device={device_num}({device_code})")
+        if debug_info:
+            print(f"[Dispatch] _update_by_order_id: 已检查模板: {'; '.join(debug_info[:10])}")
     return updated
 
 
