@@ -765,9 +765,12 @@ def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
     同时根据匹配到的模板类型操作 currentCount：
     - 来方向（empty_in/load_in）：写入 currentCount
     - 回方向（empty_out/load_out）：从 currentCount 删除
+    
+    Returns: (cleaned_count, task_types) — task_types 是被清理任务的类型列表，用于统计
     """
     index = _load_cache_index()
     cleaned = 0
+    cleaned_task_types = []  # 收集被清理任务的 task_type
     print(f"[Dispatch] _clean_by_order_id_across_all_regions: order_id={order_id}, device_code={device_code}")
     for rk, region in index.items():
         if not isinstance(region, dict) or 'templates' not in region:
@@ -783,10 +786,11 @@ def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
                 _save_json(fpath, new_tasks)
                 removed = old_count - len(new_tasks)
                 cleaned += removed
+                task_type = _normalize_task_type(t)
+                cleaned_task_types.append(task_type)
                 print(f"[Dispatch] _clean_by_order_id: 按order_id清理 {rk}/{t.get('code', t.get('name', ''))} 删除了{removed}条")
                 
                 # 根据模板类型操作 currentCount
-                task_type = _normalize_task_type(t)
                 _dc = device_code
                 _dn = device_num
                 # 从被删任务中获取设备信息
@@ -825,7 +829,7 @@ def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
                     cleaned += removed2
                     print(f"[Dispatch] _clean_by_order_id: 按deviceCode清理 {rk}/{t.get('code', t.get('name', ''))} 删除了{removed2}条")
     print(f"[Dispatch] _clean_by_order_id_across_all_regions: 共清理{cleaned}条")
-    return cleaned
+    return cleaned, cleaned_task_types
 
 
 def _update_by_order_id_across_all_regions(order_id, device_code, device_num):
@@ -947,8 +951,11 @@ def handle_status_report(data):
                     return True, f"无法匹配模板但按order_id更新了{updated}条 (region_key={region_key}, template={template_name})", True
             else:
                 # status=8 等完成状态：遍历所有区域按 order_id 清理
-                cleaned = _clean_by_order_id_across_all_regions(order_id, device_code, device_num)
+                cleaned, cleaned_task_types = _clean_by_order_id_across_all_regions(order_id, device_code, device_num)
                 if cleaned:
+                    # 统计完成数（按 order_id 匹配成功也应计入 daily_stats）
+                    for tt in cleaned_task_types:
+                        _update_daily_stats(region_key or 'auto', tt)
                     return True, f"无法匹配模板但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
         # 记录未匹配上报到操作日志（方便排查）
         try:
@@ -989,8 +996,10 @@ def handle_status_report(data):
                 if updated:
                     return True, f"模板不在区域但按order_id更新了{updated}条 (region_key={region_key}, template={template_name})", True
             else:
-                cleaned = _clean_by_order_id_across_all_regions(order_id, device_code, device_num)
+                cleaned, cleaned_task_types = _clean_by_order_id_across_all_regions(order_id, device_code, device_num)
                 if cleaned:
+                    for tt in cleaned_task_types:
+                        _update_daily_stats(region_key, tt)
                     return True, f"模板不在区域但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
         # 记录未匹配上报到操作日志
         try:
