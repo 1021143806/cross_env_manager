@@ -365,7 +365,7 @@ def api_global_log():
         logs = [log for log in logs if log.get('time', '') > since]
     
     logs.sort(key=lambda x: x.get('time', ''), reverse=True)
-    return jsonify({'logs': logs})
+    return jsonify({'logs': logs, 'version': DISPATCH_VERSION})
 
 
 @dispatch_bp.route('/api/dispatch/global_log/export')
