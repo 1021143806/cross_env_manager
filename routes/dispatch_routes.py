@@ -642,10 +642,13 @@ def calculate_area_balance(region_key, region_config):
                         try:
                             info, err = _get_task_server_info(oid)
                             if not err:
-                                _cancel_empty_task(info['sub_order_id'], info['server_ip'])
+                                result, cancel_err, req_info = _cancel_empty_task(info['sub_order_id'], info['server_ip'])
                                 deadlock_cancelled += 1
                                 write_global_log('execute_mutex', region_key,
-                                    f'解死锁取消空车任务: {template_code} order={oid} sub={info["sub_order_id"]} server={info["server_ip"]}')
+                                    f'解死锁取消空车任务: {template_code} order={oid} sub={info["sub_order_id"]} server={info["server_ip"]}',
+                                    raw_data={'request': req_info.get('request_body'), 'response': req_info.get('response_body'),
+                                              'http_status': req_info.get('http_status'), 'elapsed_ms': req_info.get('elapsed_ms'),
+                                              'error': req_info.get('error')})
                         except Exception as e:
                             write_global_log('execute_mutex', region_key,
                                 f'解死锁取消失败: {template_code} order={oid} error={str(e)}')
