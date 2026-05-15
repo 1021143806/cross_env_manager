@@ -634,8 +634,15 @@ def calculate_area_balance(region_key, region_config):
                 t_direction = 'in' if _is_in_direction(task_type) else 'out'
                 if t_direction != direction:
                     template_code = t.get('code') or t.get('name', '')
-                    # 解死锁：自动取消阻塞的反方向空车任务
-                    for pt in pending:
+                    # 解死锁：只取消未分配设备（deviceCode为空）的空车任务
+                    # 已分配到设备的任务正在执行中，不应取消
+                    deadlock_tasks = [pt for pt in pending if not pt.get('deviceCode')]
+                    if not deadlock_tasks:
+                        # 所有 pending 任务都已分配设备，无法解死锁
+                        can_dispatch = False
+                        mutex_reason = f"pending {template_code} task, mutex"
+                        break
+                    for pt in deadlock_tasks:
                         oid = pt.get('order_id', '')
                         if not oid:
                             continue
