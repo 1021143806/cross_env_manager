@@ -2512,11 +2512,16 @@ def _query_device_status(server, api_path, area_id, device_code):
             headers={'Content-Type': 'application/json'})
         resp = _urllib.urlopen(req, timeout=30)  # 全量查询可能较慢，超时30秒
         data = json.loads(resp.read().decode('utf-8'))
-        if data.get('code') == 1000 and data.get('data'):
-            # device_code 为空时返回全量列表，非空时返回单条
-            if device_code:
-                return data['data'][0] if data['data'] else None
-            return data['data']
+        if data.get('code') == 1000:
+            resp_data = data.get('data')
+            if resp_data is not None:
+                # device_code 为空时返回全量列表，非空时返回单条
+                if device_code:
+                    if resp_data:
+                        return resp_data[0]
+                    # 空列表：设备不在该 areaId 下，返回特殊标记
+                    return {'state': '_not_found'}
+                return resp_data
         print(f"[Dispatch] _query_device_status 响应异常: url={url}, code={data.get('code')}, device={device_code}")
         return None
     except Exception as e:
@@ -2537,6 +2542,7 @@ def _should_clean_device(device_info, region_key='', region=None, device_code=''
     """判断设备是否应该被清理
     
     - 查询失败 → 保留
+    - 设备不在该 areaId（_not_found）→ 清理
     - 在线 → 保留
     - Offline/Downlined → 检查是否有执行中任务：
       - 无执行中任务 → 清理
@@ -2546,6 +2552,8 @@ def _should_clean_device(device_info, region_key='', region=None, device_code=''
     if not device_info:
         return False  # 查询失败（车可能还没到），保留不清理
     state = device_info.get('state', '')
+    if state == '_not_found':
+        return True  # 设备不在该 areaId 下，清理
     if state not in ('Offline', 'Downlined'):
         return False  # 在线 → 保留
     
@@ -3338,8 +3346,8 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
             battery = device_info.get('battery', '') if device_info else ''
             # 更新 currentCount.json 中的 battery 和 state
             # 映射 API state 到前端状态：Idle→idle, InTask→busy, Charging→charging, 其他→pending
-            state_map = {'Idle': 'idle', 'InTask': 'busy', 'Charging': 'charging'}
-            d['state'] = state_map.get(state, 'pending') if state not in ('查询失败', 'Offline', 'Downlined') else state
+            state_map = {'Idle': 'idle', 'InTask': 'busy', 'Charging': 'charging', '_not_found': '查询失败'}
+            d['state'] = state_map.get(state, 'pending') if state not in ('查询失败', 'Offline', 'Downlined', '_not_found') else state
             d['battery'] = battery
             if _should_clean_device(device_info, region_key, region, device_code):
                 now_devices = [nd for nd in now_devices if nd.get('deviceCode') != device_code]
