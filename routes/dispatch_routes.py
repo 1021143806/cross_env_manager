@@ -3159,46 +3159,37 @@ def _select_device_for_empty_return(region_key, region):
                 if dc not in last_dispatch_time or ct > last_dispatch_time[dc]:
                     last_dispatch_time[dc] = ct
     
-    # 筛选可用设备：有 deviceCode、不在 pending 中、且 ICS 实时状态为 Idle
-    sh = region.get('self_heal', {})
-    api_path = sh.get('device_query_api', SELF_HEAL_DEFAULTS['device_query_api'])
-    area_id = region.get('areaId', '0')
+    # 筛选可用设备：有 deviceCode、不在 pending 中
     available = []
     for d in now_devices:
         dc = d.get('deviceCode', '')
         if not dc or dc in pending_codes:
             continue
-        # 实时查询 ICS 设备状态，只选 Idle 的设备
-        real_state = 'unknown'
-        if api_path and 'XX' not in api_path:
-            device_info = _query_device_status('', api_path, area_id, dc)
-            if device_info:
-                real_state = device_info.get('state', 'unknown')
-        if real_state != 'Idle':
-            continue  # 非空闲设备跳过
         battery_str = d.get('battery', '')
         try:
             battery = int(battery_str)
         except (ValueError, TypeError):
             battery = 999  # 无电量信息排最后
+        state = d.get('state', 'pending')
         # 最近下发时间（越早越好，没被下发过的最优先）
         last_dt = last_dispatch_time.get(dc, '')
         available.append({
             'deviceCode': dc,
             'deviceNum': d.get('deviceNum', ''),
             'battery': battery,
-            'state': real_state,
+            'state': state,
             'last_dispatch': last_dt
         })
     
     if not available:
         return None
     
-    # 排序：最近未被下发过的优先 → 电量低优先
+    # 排序：最近未被下发过的优先 → 电量低优先 → state=idle 优先
     def _sort_key(item):
         recently_dispatched = 1 if item['last_dispatch'] else 0
         battery_score = item['battery']
-        return (recently_dispatched, battery_score)
+        state_score = 0 if item['state'] == 'idle' else 1
+        return (recently_dispatched, battery_score, state_score)
     
     available.sort(key=_sort_key)
     return available[0]
