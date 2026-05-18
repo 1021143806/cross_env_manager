@@ -1956,21 +1956,6 @@ def _execute_dispatch(region_key, region, balance):
     selected_device = None
     if direction == 'out' and not is_manual:
         selected_device = _select_device_for_empty_return(region_key, region)
-        # 下发前检查设备状态：非空闲则跳过，避免 RCS 返回 status=7
-        if selected_device:
-            sh = region.get('self_heal', {})
-            api_path = sh.get('device_query_api', SELF_HEAL_DEFAULTS['device_query_api'])
-            area_id = region.get('areaId', '0')
-            if api_path and 'XX' not in api_path:
-                device_info = _query_device_status('', api_path, area_id, selected_device['deviceCode'])
-                if device_info:
-                    dev_state = device_info.get('state', '')
-                    if dev_state != 'Idle':
-                        print(f"[Dispatch] 设备非空闲跳过下发: {selected_device['deviceNum']}({selected_device['deviceCode'][-8:]}), state={dev_state}")
-                        write_global_log('execute_skip', region_key,
-                            f'设备非空闲跳过下发: {selected_device["deviceNum"]}({selected_device["deviceCode"][-8:]}), state={dev_state}',
-                            raw_data={'deviceCode': selected_device['deviceCode'], 'deviceNum': selected_device['deviceNum'], 'state': dev_state})
-                        selected_device = None  # 跳过，回退到不指定设备
     
     # 判断 reason
     if not region.get('enabled', False):
@@ -3192,6 +3177,18 @@ def _select_device_for_empty_return(region_key, region):
         return (recently_dispatched, battery_score, state_score)
     
     available.sort(key=_sort_key)
+    
+    # 按排序顺序逐个实时查询 ICS，返回第一个 Idle 的设备
+    sh = region.get('self_heal', {})
+    api_path = sh.get('device_query_api', SELF_HEAL_DEFAULTS['device_query_api'])
+    area_id = region.get('areaId', '0')
+    if api_path and 'XX' not in api_path:
+        for item in available:
+            device_info = _query_device_status('', api_path, area_id, item['deviceCode'])
+            if device_info and device_info.get('state') == 'Idle':
+                return item
+        return None  # 所有设备都非 Idle，不指定设备
+    
     return available[0]
 
 
