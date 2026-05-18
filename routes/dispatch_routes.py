@@ -3179,27 +3179,15 @@ def _select_device_for_empty_return(region_key, region):
     available.sort(key=_sort_key)
     
     # 按排序顺序逐个实时查询 ICS，返回第一个 Idle 的设备
-    # 查询到非 Idle 时同步更新 currentCount.json 中的 state，避免下次重复查询同一台
     sh = region.get('self_heal', {})
     api_path = sh.get('device_query_api', SELF_HEAL_DEFAULTS['device_query_api'])
     area_id = region.get('areaId', '0')
-    state_map = {'Idle': 'idle', 'InTask': 'busy', 'Charging': 'charging'}
     if api_path and 'XX' not in api_path:
         for item in available:
             device_info = _query_device_status('', api_path, area_id, item['deviceCode'])
-            if device_info:
-                real_state = device_info.get('state', '')
-                if real_state == 'Idle':
-                    return item
-                # 非 Idle：更新 currentCount.json 中的 state，避免下次重复查询
-                mapped_state = state_map.get(real_state, 'pending')
-                for d in now_devices:
-                    if d.get('deviceCode') == item['deviceCode']:
-                        d['state'] = mapped_state
-                        d['battery'] = device_info.get('battery', d.get('battery', ''))
-                        break
-        # 保存更新后的 currentCount.json
-        _save_json(now_file, now_devices)
+            if device_info and device_info.get('state') == 'Idle':
+                return item
+            # 非 Idle：跳过，继续查下一台
         return None  # 所有设备都非 Idle，不指定设备
     
     return available[0]
