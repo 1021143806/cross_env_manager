@@ -45,12 +45,23 @@ _compile_python() {
     echo "   源码编译 Python 3.9 (约 5-15 分钟)..."
     echo "   检查编译依赖..."
 
+    # 尝试从 centos7_rpms 安装缺失的 devel 包
+    for rpm_pkg in openssl-devel bzip2-devel libffi-devel; do
+        if ! rpm -qa | grep -q "^${rpm_pkg}-"; then
+            local rpm_file=$(ls "$SRC_DIR/${rpm_pkg}"*.rpm 2>/dev/null | head -1)
+            if [ -f "$rpm_file" ]; then
+                echo "   安装 $rpm_pkg..."
+                rpm -ivh "$rpm_file" --nodeps 2>/dev/null || true
+            fi
+        fi
+    done
+
     local MISSING=""
     command -v gcc &>/dev/null || MISSING="$MISSING gcc"
     command -v make &>/dev/null || MISSING="$MISSING make"
     if [ -n "$MISSING" ]; then
         echo "   ❌ 缺少编译依赖:$MISSING"
-        echo "   请先安装: yum install -y gcc make openssl-devel bzip2-devel libffi-devel"
+        echo "   CentOS 7 通常已预装 gcc/make，请检查"
         exit 1
     fi
 
