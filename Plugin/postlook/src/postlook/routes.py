@@ -156,3 +156,76 @@ async def list_files():
         })
 
     return {"directories": dirs_info}
+
+
+@router.get("/api/help")
+async def api_help():
+    """返回模块接口文档和使用说明"""
+    return {
+        "name": "postlook",
+        "version": "0.1.0",
+        "description": "轻量、安全的日志 HTTP 查询服务",
+        "base_url": f"http://localhost:{app_config.SERVER_PORT}",
+        "endpoints": [
+            {
+                "method": "POST",
+                "path": "/api/logs",
+                "description": "查询日志内容",
+                "parameters": {
+                    "folder": "string (必填) - 日志目录或文件路径，相对于白名单根目录或绝对路径",
+                    "pattern": "string (默认 *.log) - 文件名通配符，目录模式下生效",
+                    "keyword": "string (可选) - 搜索关键字，不区分大小写",
+                    "line_start": "int (默认 1) - 起始行号",
+                    "line_end": "int (默认 100) - 结束行号（含）",
+                    "tail": "bool (默认 true) - 无关键字时从尾部读取",
+                    "recent_files": "int (默认 10, 最大 50) - 扫描最近修改的 N 个文件"
+                },
+                "example": 'curl -X POST http://localhost:5011/api/logs -H "Content-Type: application/json" -d \'{"folder": "/var/log", "pattern": "*.log", "line_start": 1, "line_end": 20}\''
+            },
+            {
+                "method": "GET",
+                "path": "/api/config",
+                "description": "获取当前 TOML 配置"
+            },
+            {
+                "method": "POST",
+                "path": "/api/config",
+                "description": "保存 TOML 配置（热更新，无需重启）",
+                "parameters": {
+                    "content": "string (必填) - TOML 格式配置内容"
+                }
+            },
+            {
+                "method": "GET",
+                "path": "/api/files",
+                "description": "列出白名单目录下的所有文件"
+            },
+            {
+                "method": "GET",
+                "path": "/api/health",
+                "description": "健康检查"
+            },
+            {
+                "method": "GET",
+                "path": "/api/help",
+                "description": "接口文档和使用说明（本接口）"
+            },
+            {
+                "method": "GET",
+                "path": "/docs",
+                "description": "Swagger UI 交互式 API 文档"
+            }
+        ],
+        "usage": {
+            "web_ui": f"浏览器访问 http://localhost:{app_config.SERVER_PORT}",
+            "quick_query": 'curl -X POST http://localhost:5011/api/logs -H "Content-Type: application/json" -d \'{"folder": "/var/log", "line_start": 1, "line_end": 50}\'',
+            "keyword_search": 'curl -X POST http://localhost:5011/api/logs -H "Content-Type: application/json" -d \'{"folder": "/var/log", "keyword": "error", "line_start": 1, "line_end": 500}\'',
+            "view_config": "curl http://localhost:5011/api/config",
+            "list_files": "curl http://localhost:5011/api/files"
+        },
+        "config": {
+            "root_dirs": app_config.ROOT_DIRS,
+            "max_lines": app_config.MAX_LINES,
+            "default_lines": app_config.DEFAULT_LINES,
+        }
+    }
