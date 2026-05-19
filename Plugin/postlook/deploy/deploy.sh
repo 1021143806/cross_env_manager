@@ -31,6 +31,52 @@ echo "用户: $(whoami)"
 echo "时间: $(date)"
 echo "========================================"
 
+# ---- 内部函数：源码编译 Python 3.9 ----
+_compile_python() {
+    local SRC_DIR="$DEPLOY_DIR/centos7_rpms"
+    local SRC_TAR="$SRC_DIR/Python-3.9.20.tar.xz"
+    local PREFIX="/usr/local/python3"
+
+    if [ ! -f "$SRC_TAR" ]; then
+        echo "   ❌ 未找到 Python 源码包: $SRC_TAR"
+        exit 1
+    fi
+
+    echo "   源码编译 Python 3.9 (约 5-15 分钟)..."
+    echo "   检查编译依赖..."
+
+    local MISSING=""
+    command -v gcc &>/dev/null || MISSING="$MISSING gcc"
+    command -v make &>/dev/null || MISSING="$MISSING make"
+    if [ -n "$MISSING" ]; then
+        echo "   ❌ 缺少编译依赖:$MISSING"
+        echo "   请先安装: yum install -y gcc make openssl-devel bzip2-devel libffi-devel"
+        exit 1
+    fi
+
+    echo "   解压源码..."
+    tar -xf "$SRC_TAR" -C /tmp/
+
+    cd /tmp/Python-3.9.20
+    echo "   配置..."
+    ./configure --prefix="$PREFIX" --enable-optimizations --with-ensurepip=install 2>&1 | tail -1
+    echo "   编译中..."
+    make -j$(nproc) 2>&1 | tail -1
+    echo "   安装..."
+    make install 2>&1 | tail -1
+
+    cd "$PROJECT_DIR"
+    rm -rf /tmp/Python-3.9.20
+
+    if [ -x "$PREFIX/bin/python3" ]; then
+        PYTHON3="$PREFIX/bin/python3"
+        echo "   ✅ Python 3.9 编译安装成功: $PYTHON3"
+    else
+        echo "   ❌ 编译安装失败"
+        exit 1
+    fi
+}
+
 # ---- 1. 检查环境 ----
 echo ""
 echo "1. 检查环境..."
@@ -55,19 +101,25 @@ else
     if [ -f "$PYTHON_TGZ" ]; then
         echo "   检测到预编译 Python 3.9 包，解压安装..."
         tar -xzf "$PYTHON_TGZ" -C /usr/local/
-        # tar 包内目录名可能是 python39_build，重命名为 python3
         if [ -d /usr/local/python39_build ] && [ ! -d "$PYTHON_PREFIX" ]; then
             mv /usr/local/python39_build "$PYTHON_PREFIX"
         fi
         if [ -x "$PYTHON_PREFIX/bin/python3" ]; then
-            PYTHON3="$PYTHON_PREFIX/bin/python3"
-            echo "   ✅ Python 3.9 安装成功: $PYTHON3"
+            # 验证 glibc 兼容性
+            if $PYTHON_PREFIX/bin/python3 --version &>/dev/null; then
+                PYTHON3="$PYTHON_PREFIX/bin/python3"
+                echo "   ✅ Python 3.9 安装成功: $PYTHON3"
+            else
+                echo "   ⚠️  预编译包 glibc 不兼容，尝试源码编译..."
+                rm -rf "$PYTHON_PREFIX" /usr/local/python39_build 2>/dev/null
+                _compile_python
+            fi
         else
             echo "   ❌ 解压后未找到 python3"
-            echo "   请检查 /usr/local/ 下解压的目录结构"
-            ls -la /usr/local/python3*/bin/python3 2>/dev/null || ls -la /usr/local/python39*/bin/python3 2>/dev/null || true
             exit 1
         fi
+    elif [ -f "$SCL_RPM_DIR/Python-3.9.20.tar.xz" ]; then
+        _compile_python
     else
         echo "   请安装 Python 3.9+:"
         echo "   在线安装: yum install -y centos-release-scl-rh && yum install -y rh-python39"
