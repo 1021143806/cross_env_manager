@@ -151,8 +151,8 @@ if [ ! -f "src/postlook/app.py" ]; then
 fi
 echo "   ✅ 项目文件检查通过"
 
-# 初始化配置文件（如果不存在则从模板复制）
-if [ ! -f "config/env.toml" ]; then
+# 初始化配置文件（不存在或为空时从模板复制）
+if [ ! -f "config/env.toml" ] || [ ! -s "config/env.toml" ]; then
     if [ -f "config/template/env.toml" ]; then
         cp config/template/env.toml config/env.toml
         echo "   ✅ 配置文件已从模板初始化: config/env.toml"

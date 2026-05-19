@@ -78,11 +78,33 @@ def reload_config():
 
 
 def get_config_toml() -> str:
-    """读取原始 TOML 配置文件内容"""
+    """读取原始 TOML 配置文件内容，不存在时返回模板"""
     if CONFIG_PATH.exists():
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            content = f.read()
+        if content.strip():
+            return content
+
+    # 回退到模板
+    template_path = PROJECT_ROOT / "config" / "template" / "env.toml"
+    if template_path.exists():
+        with open(template_path, "r", encoding="utf-8") as f:
             return f.read()
-    return ""
+
+    # 硬编码默认配置
+    return """[server]
+host = "0.0.0.0"
+port = 5011
+
+[logs]
+root_dirs = ["/var/log"]
+max_lines = 100
+default_lines = 50
+default_recent_files = 10
+
+[ui]
+theme = "dark"
+"""
 
 
 def save_config_toml(content: str):
