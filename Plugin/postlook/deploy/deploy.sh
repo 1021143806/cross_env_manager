@@ -174,7 +174,7 @@ WHL_COUNT=$(find "$VENDOR_PATH" -name "*.whl" | wc -l)
 echo "   离线包数量: $WHL_COUNT"
 
 # 检查关键包
-KEY_PACKAGES=("fastapi" "uvicorn" "pydantic" "starlette" "anyio")
+KEY_PACKAGES=("fastapi" "uvicorn" "pydantic" "starlette" "anyio" "tomli")
 for pkg in "${KEY_PACKAGES[@]}"; do
     file=$(find "$VENDOR_PATH" -type f -iname "*${pkg}*.whl" | head -1)
     if [ -f "$file" ]; then
@@ -207,7 +207,7 @@ echo ""
 echo "5. 安装离线依赖包..."
 echo "   安装策略: 从本地 vendor_packages 离线安装"
 
-if pip install --no-index --find-links="$VENDOR_PATH" fastapi uvicorn pydantic starlette anyio 2>/dev/null; then
+if pip install --no-index --find-links="$VENDOR_PATH" fastapi uvicorn pydantic starlette anyio tomli 2>/dev/null; then
     echo "   ✅ 批量依赖安装成功"
 else
     echo "   ⚠️  批量安装失败，尝试逐个安装..."
