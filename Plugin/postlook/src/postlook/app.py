@@ -9,10 +9,13 @@ from fastapi.staticfiles import StaticFiles
 
 from .routes import router
 
+# 版本号（唯一来源）
+__version__ = "0.1.0"
+
 app = FastAPI(
     title="postlook",
     description="轻量、安全的日志 HTTP 查询服务",
-    version="0.1.0"
+    version=__version__
 )
 
 # API 路由需在静态文件挂载之前定义
@@ -22,7 +25,7 @@ app.include_router(router)
 @app.get("/api/health")
 async def health():
     """健康检查端点"""
-    return {"status": "ok", "version": "0.1.0"}
+    return {"status": "ok", "version": __version__}
 
 
 # 挂载静态文件（必须在所有 API 路由之后）

@@ -27,6 +27,7 @@
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/api/logs` | 查询日志内容 |
+| GET | `/api/logs/self` | 查看 postlook 自身日志 |
 | GET | `/api/config` | 获取当前 TOML 配置 |
 | POST | `/api/config` | 保存配置（热更新） |
 | GET | `/api/files` | 列出白名单目录文件树 |

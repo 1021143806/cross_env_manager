@@ -158,12 +158,46 @@ async def list_files():
     return {"directories": dirs_info}
 
 
+@router.get("/api/logs/self")
+async def self_logs(lines: int = 100, keyword: str = None):
+    """查看 postlook 自身日志"""
+    import os
+    log_path = os.environ.get("POSTLOOK_SELF_LOG", "/main/log/app/postlook.log")
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+    except FileNotFoundError:
+        return {"total_lines": 0, "results": [], "error": f"日志文件不存在: {log_path}"}
+
+    total = len(all_lines)
+    start = max(0, total - lines)
+    selected = all_lines[start:]
+
+    results = []
+    kw_lower = keyword.lower() if keyword else None
+    for i, line in enumerate(selected):
+        if kw_lower and kw_lower not in line.lower():
+            continue
+        results.append({
+            "line": start + i + 1,
+            "content": line.rstrip("\n\r")
+        })
+
+    return {
+        "total_lines": len(results),
+        "results": results,
+        "log_file": log_path,
+        "log_total_lines": total,
+    }
+
+
 @router.get("/api/help")
 async def api_help():
     """返回模块接口文档和使用说明"""
+    from .app import __version__
     return {
         "name": "postlook",
-        "version": "0.1.0",
+        "version": __version__,
         "description": "轻量、安全的日志 HTTP 查询服务",
         "base_url": f"http://localhost:{app_config.SERVER_PORT}",
         "endpoints": [
@@ -202,6 +236,16 @@ async def api_help():
             },
             {
                 "method": "GET",
+                "path": "/api/logs/self",
+                "description": "查看 postlook 自身日志",
+                "parameters": {
+                    "lines": "int (默认 100) - 返回最近 N 行",
+                    "keyword": "string (可选) - 过滤关键字"
+                },
+                "example": "curl http://localhost:5011/api/logs/self?lines=50"
+            },
+            {
+                "method": "GET",
                 "path": "/api/health",
                 "description": "健康检查"
             },
@@ -221,7 +265,8 @@ async def api_help():
             "quick_query": 'curl -X POST http://localhost:5011/api/logs -H "Content-Type: application/json" -d \'{"folder": "/var/log", "line_start": 1, "line_end": 50}\'',
             "keyword_search": 'curl -X POST http://localhost:5011/api/logs -H "Content-Type: application/json" -d \'{"folder": "/var/log", "keyword": "error", "line_start": 1, "line_end": 500}\'',
             "view_config": "curl http://localhost:5011/api/config",
-            "list_files": "curl http://localhost:5011/api/files"
+            "list_files": "curl http://localhost:5011/api/files",
+            "self_logs": "curl http://localhost:5011/api/logs/self?lines=50"
         },
         "config": {
             "root_dirs": app_config.ROOT_DIRS,
