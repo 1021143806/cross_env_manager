@@ -120,16 +120,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         var html = '<div class="results-summary"><span>共找到 <strong>' + data.total_lines + '</strong> 条匹配行</span>' + truncatedBadge + '</div>';
 
-        // 结果卡片列表
+        // 紧凑表格样式
+        html += '<div class="log-table">';
         data.results.forEach(function(item) {
             var content = escapeHtml(item.content);
             var highlightedContent = data.keyword ? highlightKeyword(content, data.keyword) : content;
 
-            html += '<div class="result-card">' +
-                '<span class="line-number">#' + item.line + '</span>' +
-                '<div><div class="file-name">' + escapeHtml(item.file) + '</div>' +
-                '<div class="log-content">' + highlightedContent + '</div></div></div>';
+            html += '<div class="log-row">' +
+                '<span class="log-row-line">' + item.line + '</span>' +
+                '<span class="log-row-file">' + escapeHtml(item.file) + '</span>' +
+                '<span class="log-row-content">' + highlightedContent + '</span>' +
+                '</div>';
         });
+        html += '</div>';
 
         logResults.innerHTML = html;
     }
@@ -240,17 +243,67 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (healthData.version) {
                     html += '<div class="status-item"><span class="status-label">版本</span><span class="status-value">' + escapeHtml(String(healthData.version)) + '</span></div>';
                 }
-                if (healthData.uptime !== undefined) {
-                    html += '<div class="status-item"><span class="status-label">运行时间</span><span class="status-value">' + formatUptime(healthData.uptime) + '</span></div>';
-                }
-                if (healthData.root_dirs) {
-                    var dirs = Array.isArray(healthData.root_dirs) ? healthData.root_dirs : [healthData.root_dirs];
-                    html += '<div class="status-item" style="grid-column: 1 / -1;"><span class="status-label">监控目录</span><span class="status-value" style="font-family: monospace; font-size: 0.85rem;">' + escapeHtml(dirs.join(', ')) + '</span></div>';
-                }
             }
 
             html += '</div>';
+
+            // 加载文件列表
+            try {
+                var filesRes = await fetch('/api/files');
+                var filesData = await filesRes.json();
+                if (filesData.directories && filesData.directories.length > 0) {
+                    html += '<h3 style="margin-top: 24px; margin-bottom: 12px; font-size: 1rem; color: var(--text-secondary);">可查看的日志目录</h3>';
+                    html += '<div class="file-browser">';
+
+                    filesData.directories.forEach(function(dir) {
+                        var dirClass = dir.exists ? '' : ' dir-missing';
+                        html += '<div class="file-dir-card glass-card' + dirClass + '">';
+                        html += '<div class="file-dir-header">';
+                        html += '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+                        html += '<span class="dir-path">' + escapeHtml(dir.path) + '</span>';
+                        html += '<span class="dir-count">' + (dir.file_count || 0) + ' 个文件</span>';
+                        html += '</div>';
+
+                        if (dir.exists && dir.files && dir.files.length > 0) {
+                            html += '<div class="file-list">';
+                            dir.files.forEach(function(file) {
+                                var sizeStr = file.size > 1048576 ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size > 1024 ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B');
+                                html += '<div class="file-item" data-path="' + escapeHtml(file.path) + '" title="点击复制路径到日志查询">';
+                                html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+                                html += '<span class="file-name">' + escapeHtml(file.name) + '</span>';
+                                html += '<span class="file-size">' + sizeStr + '</span>';
+                                html += '</div>';
+                            });
+                            html += '</div>';
+                        } else if (!dir.exists) {
+                            html += '<div class="file-list"><p class="dir-empty">目录不存在</p></div>';
+                        } else {
+                            html += '<div class="file-list"><p class="dir-empty">目录为空</p></div>';
+                        }
+                        html += '</div>';
+                    });
+
+                    html += '</div>';
+                }
+            } catch (e) {
+                // 文件列表加载失败不影响状态显示
+            }
+
             statusInfo.innerHTML = html;
+
+            // 点击文件项复制路径
+            setTimeout(function() {
+                document.querySelectorAll('.file-item').forEach(function(item) {
+                    item.addEventListener('click', function() {
+                        var path = this.getAttribute('data-path');
+                        // 切换到日志查询面板并填入路径
+                        document.querySelector('.sidebar nav a[data-panel="logs"]').click();
+                        setTimeout(function() {
+                            document.getElementById('folder').value = path;
+                        }, 100);
+                    });
+                });
+            }, 100);
 
         } catch (err) {
             statusInfo.innerHTML = '<div class="status-grid">' +

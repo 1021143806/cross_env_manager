@@ -115,3 +115,44 @@ async def save_config(req: ConfigUpdateRequest):
         raise HTTPException(status_code=403, detail=f"无法写入配置文件: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/files")
+async def list_files():
+    """列出白名单目录下的文件树"""
+    import os
+    from pathlib import Path
+
+    dirs_info = []
+    for root_dir in app_config.ROOT_DIRS:
+        root_path = Path(root_dir)
+        if not root_path.exists():
+            dirs_info.append({
+                "path": root_dir,
+                "exists": False,
+                "files": []
+            })
+            continue
+
+        files = []
+        try:
+            for entry in sorted(root_path.rglob("*")):
+                if entry.is_file() and not entry.is_symlink():
+                    stat = entry.stat()
+                    files.append({
+                        "name": entry.name,
+                        "path": str(entry),
+                        "size": stat.st_size,
+                        "mtime": stat.st_mtime,
+                    })
+        except PermissionError:
+            pass
+
+        dirs_info.append({
+            "path": root_dir,
+            "exists": True,
+            "files": files,
+            "file_count": len(files),
+        })
+
+    return {"directories": dirs_info}
