@@ -55,11 +55,17 @@ else
     if [ -f "$PYTHON_TGZ" ]; then
         echo "   检测到预编译 Python 3.9 包，解压安装..."
         tar -xzf "$PYTHON_TGZ" -C /usr/local/
+        # tar 包内目录名可能是 python39_build，重命名为 python3
+        if [ -d /usr/local/python39_build ] && [ ! -d "$PYTHON_PREFIX" ]; then
+            mv /usr/local/python39_build "$PYTHON_PREFIX"
+        fi
         if [ -x "$PYTHON_PREFIX/bin/python3" ]; then
             PYTHON3="$PYTHON_PREFIX/bin/python3"
             echo "   ✅ Python 3.9 安装成功: $PYTHON3"
         else
             echo "   ❌ 解压后未找到 python3"
+            echo "   请检查 /usr/local/ 下解压的目录结构"
+            ls -la /usr/local/python3*/bin/python3 2>/dev/null || ls -la /usr/local/python39*/bin/python3 2>/dev/null || true
             exit 1
         fi
     else
