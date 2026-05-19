@@ -143,16 +143,18 @@ def scan_logs(
     root_dirs: List[str],
     pattern: str = "*.log",
     keyword: Optional[str] = None,
-    lines: int = 50,
     tail: bool = True,
     recent_files: int = 10,
-    line_start: Optional[int] = None,
-    line_end: Optional[int] = None,
+    line_start: int = 1,
+    line_end: int = 100,
 ) -> Dict:
     """
     主扫描函数，返回符合 API 规范的 JSON 结构。
+    - 有关键字时：在行号范围内搜索所有匹配行（上限500行）
+    - 无关键字时：返回行号范围内的内容
     """
-    max_lines = min(lines, 100)
+    # 关键字搜索上限
+    MAX_KEYWORD_RESULTS = 500
 
     # 解析目录
     try:
@@ -165,8 +167,26 @@ def scan_logs(
             "error": str(e)
         }
 
-    # 查找文件
-    files = find_files(folder_path, pattern, recent_files)
+    # 如果 folder 直接指向一个文件，直接读取该文件
+    if folder_path.is_file():
+        files = [folder_path]
+    elif not folder_path.exists():
+        return {
+            "total_lines": 0,
+            "truncated": False,
+            "results": [],
+            "error": f"路径不存在: '{folder}'"
+        }
+    elif not folder_path.is_dir():
+        return {
+            "total_lines": 0,
+            "truncated": False,
+            "results": [],
+            "error": f"路径不是目录也不是文件: '{folder}'"
+        }
+    else:
+        files = find_files(folder_path, pattern, recent_files)
+
     if not files:
         return {
             "total_lines": 0,
@@ -177,24 +197,25 @@ def scan_logs(
 
     # 搜索内容
     all_results = []
-    remaining = max_lines
+    limit = MAX_KEYWORD_RESULTS if keyword else None
 
     for file_path in files:
-        if remaining <= 0:
+        if limit and len(all_results) >= limit:
             break
+        remaining = (limit - len(all_results)) if limit else None
         file_results = search_lines(
             file_path,
             keyword=keyword,
-            max_lines=remaining,
+            max_lines=remaining if remaining else (line_end - line_start + 1),
             tail=tail,
             line_start=line_start,
             line_end=line_end,
         )
         all_results.extend(file_results)
-        remaining = max_lines - len(all_results)
 
-    truncated = len(all_results) >= max_lines
-    all_results = all_results[:max_lines]
+    truncated = bool(keyword and len(all_results) >= MAX_KEYWORD_RESULTS)
+    if truncated:
+        all_results = all_results[:MAX_KEYWORD_RESULTS]
 
     return {
         "total_lines": len(all_results),

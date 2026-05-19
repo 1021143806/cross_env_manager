@@ -65,20 +65,11 @@ document.addEventListener('DOMContentLoaded', () => {
             folder: formData.get('folder') || '',
             pattern: formData.get('pattern') || '*.log',
             keyword: formData.get('keyword') || null,
-            lines: parseInt(formData.get('lines'), 10) || 50,
+            line_start: parseInt(formData.get('line_start'), 10) || 1,
+            line_end: parseInt(formData.get('line_end'), 10) || 100,
             tail: formData.get('tail') === 'true',
             recent_files: parseInt(formData.get('recent_files'), 10) || 10
         };
-
-        // 行号范围（可选）
-        var lineStart = formData.get('line_start');
-        var lineEnd = formData.get('line_end');
-        if (lineStart) {
-            payload.line_start = parseInt(lineStart, 10);
-        }
-        if (lineEnd) {
-            payload.line_end = parseInt(lineEnd, 10);
-        }
 
         // 移除空 keyword
         if (!payload.keyword) {
