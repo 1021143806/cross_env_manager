@@ -11,6 +11,7 @@ description: cross_env_manager 调车模块远程部署环境日志查看指导
 - **用户名**: admin
 - **密码**: DHRTA@2018
 - **管理员账号**: admin / admin123456
+当用户说查询日志或排查问题时，查询最新的生产环境的对应日志，如果日志内容不完整或缺失，排查缺失原因，修正日志打印错误，补充日志内容。
   
 ## 本地测试环境（后门账号）
 - **地址**: http://172.21.128.46:5000
@@ -52,10 +53,17 @@ curl -s -b /tmp/cookies.txt \
   'http://10.68.2.40:5000/api/dispatch/device_info?deviceNum=C185' | python3 -m json.tool
 ```
 
-### 查询全局日志
+### 查询全局日志（含版本号）
 ```bash
 curl -s -b /tmp/cookies.txt \
   'http://10.68.2.40:5000/api/dispatch/global_log' | python3 -m json.tool
+```
+响应中包含 `version` 字段（如 `"2.1.10"`），可确认生产环境部署的调车模块版本。
+
+### 仅查看版本号
+```bash
+curl -s -b /tmp/cookies.txt \
+  'http://10.68.2.40:5000/api/dispatch/global_log' | python3 -c "import sys,json; print(json.load(sys.stdin).get('version','未知'))"
 ```
 
 ### 查看 supervisor 控制台日志（print 输出）

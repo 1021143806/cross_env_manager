@@ -1,0 +1,30 @@
+# postlook .gitignore
+
+# 配置文件（含敏感信息）
+config/env.toml
+
+# 日志
+logs/
+
+# 备份
+backup/
+
+# 调试脚本
+dev/
+
+# 计划文档
+plans/
+
+# 离线依赖包（体积大，不提交）
+deploy/vendor_packages/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
