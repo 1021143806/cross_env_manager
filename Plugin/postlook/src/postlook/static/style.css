@@ -723,10 +723,20 @@ body {
     font-size: 0.8rem;
 }
 
+.file-item .file-time {
+    color: var(--text-tertiary);
+    font-size: 0.7rem;
+    white-space: nowrap;
+    min-width: 130px;
+    text-align: right;
+}
+
 .file-item .file-size {
     color: var(--text-tertiary);
     font-size: 0.72rem;
     white-space: nowrap;
+    min-width: 70px;
+    text-align: right;
 }
 
 .dir-empty {

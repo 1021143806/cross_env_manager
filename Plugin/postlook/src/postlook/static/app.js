@@ -268,9 +268,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             html += '<div class="file-list">';
                             dir.files.forEach(function(file) {
                                 var sizeStr = file.size > 1048576 ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size > 1024 ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B');
+                                var timeStr = file.mtime_str || '';
                                 html += '<div class="file-item" data-path="' + escapeHtml(file.path) + '" title="点击复制路径到日志查询">';
                                 html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
                                 html += '<span class="file-name">' + escapeHtml(file.name) + '</span>';
+                                html += '<span class="file-time">' + timeStr + '</span>';
                                 html += '<span class="file-size">' + sizeStr + '</span>';
                                 html += '</div>';
                             });

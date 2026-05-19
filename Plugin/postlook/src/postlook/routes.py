@@ -119,8 +119,9 @@ async def save_config(req: ConfigUpdateRequest):
 
 @router.get("/api/files")
 async def list_files():
-    """列出白名单目录下的文件树"""
+    """列出白名单目录下的文件树（按修改时间降序）"""
     import os
+    from datetime import datetime
     from pathlib import Path
 
     dirs_info = []
@@ -136,7 +137,7 @@ async def list_files():
 
         files = []
         try:
-            for entry in sorted(root_path.rglob("*")):
+            for entry in root_path.rglob("*"):
                 if entry.is_file() and not entry.is_symlink():
                     stat = entry.stat()
                     files.append({
@@ -144,9 +145,13 @@ async def list_files():
                         "path": str(entry),
                         "size": stat.st_size,
                         "mtime": stat.st_mtime,
+                        "mtime_str": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
                     })
         except PermissionError:
             pass
+
+        # 按修改时间降序排列
+        files.sort(key=lambda f: f["mtime"], reverse=True)
 
         dirs_info.append({
             "path": root_dir,
