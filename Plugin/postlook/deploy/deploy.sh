@@ -34,7 +34,25 @@ echo "========================================"
 # ---- 1. 检查环境 ----
 echo ""
 echo "1. 检查环境..."
-echo "   Python版本: $(python3 --version 2>&1)"
+
+# 自动检测 python3 路径
+if [ -n "$PYTHON3_PATH" ] && [ -x "$PYTHON3_PATH" ]; then
+    PYTHON3="$PYTHON3_PATH"
+elif command -v python3 &>/dev/null; then
+    PYTHON3="python3"
+elif [ -x "/opt/rh/rh-python39/root/bin/python3" ]; then
+    PYTHON3="/opt/rh/rh-python39/root/bin/python3"
+elif [ -x "/usr/local/bin/python3" ]; then
+    PYTHON3="/usr/local/bin/python3"
+else
+    echo "   ❌ 未找到 python3，请安装 Python 3.9+"
+    echo "   CentOS 7: yum install -y centos-release-scl-rh && yum install -y rh-python39"
+    echo "   或设置 PYTHON3_PATH 环境变量指向 python3 路径"
+    exit 1
+fi
+
+echo "   Python: $($PYTHON3 --version 2>&1)"
+echo "   Python路径: $PYTHON3"
 echo "   项目目录: $PROJECT_DIR"
 echo "   部署目录: $DEPLOY_DIR"
 
@@ -74,7 +92,7 @@ done
 echo ""
 echo "3. 清理并创建虚拟环境..."
 rm -rf "$VENV_DIR" 2>/dev/null || true
-python3 -m venv "$VENV_DIR"
+$PYTHON3 -m venv "$VENV_DIR"
 
 if [ ! -f "$VENV_DIR/bin/python" ]; then
     echo "   ❌ 虚拟环境创建失败"
@@ -135,8 +153,8 @@ mkdir -p "$LOG_PATH" 2>/dev/null || true
 # 确保日志目录属于 supervisor 运行用户
 chown "$SUPERVISOR_USER:$SUPERVISOR_USER" "$LOG_PATH" 2>/dev/null || true
 
-# 构建 uvicorn 启动命令（使用 python3 -m uvicorn 方式，兼容性更好）
-UVICORN_CMD="$PROJECT_DIR/$VENV_DIR/bin/python3 -m uvicorn $APP_MODULE --host $SERVER_HOST --port $APP_PORT"
+# 构建 uvicorn 启动命令（使用 venv 的 python，兼容 CentOS 7 SCL）
+UVICORN_CMD="$PROJECT_DIR/$VENV_DIR/bin/python -m uvicorn $APP_MODULE --host $SERVER_HOST --port $APP_PORT"
 if [ "$RELOAD_MODE" = "true" ]; then
     UVICORN_CMD="$UVICORN_CMD --reload"
 fi
