@@ -549,6 +549,110 @@ body {
     color: var(--info);
 }
 
+/* ---- 日志目录扫描 ---- */
+.scan-section {
+    margin-bottom: 16px;
+    padding: 14px;
+    background: var(--bg-primary);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--card-radius-sm);
+}
+
+.scan-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 0.85rem;
+    font-weight: 550;
+    color: var(--text-secondary);
+}
+
+.scan-header svg {
+    color: var(--accent);
+}
+
+.scan-input-row {
+    display: flex;
+    gap: 8px;
+}
+
+.scan-input-row input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--card-radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-family: "SF Mono", "Fira Code", monospace;
+    outline: none;
+}
+
+.scan-input-row input:focus {
+    border-color: var(--glass-border-focus);
+}
+
+.scan-results {
+    margin-top: 10px;
+}
+
+.scan-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    color: var(--text-tertiary);
+    font-size: 0.82rem;
+}
+
+.scan-empty {
+    padding: 10px;
+    color: var(--text-tertiary);
+    font-size: 0.82rem;
+    font-style: italic;
+}
+
+.scan-dir-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.scan-dir-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background var(--transition);
+    font-size: 0.8rem;
+}
+
+.scan-dir-item:hover {
+    background: var(--accent-light);
+}
+
+.scan-dir-item input[type="checkbox"] {
+    flex-shrink: 0;
+}
+
+.scan-dir-path {
+    font-family: "SF Mono", "Fira Code", monospace;
+    color: var(--text-primary);
+    flex: 1;
+    word-break: break-all;
+}
+
+.scan-dir-info {
+    color: var(--text-tertiary);
+    font-size: 0.72rem;
+    white-space: nowrap;
+}
+
 /* ---- 服务状态 ---- */
 .status-loading {
     display: flex;

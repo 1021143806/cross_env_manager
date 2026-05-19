@@ -163,6 +163,48 @@ async def list_files():
     return {"directories": dirs_info}
 
 
+@router.get("/api/scan-dirs")
+async def scan_dirs(base: str = "/main/app"):
+    """递归扫描指定路径下名为 log/logs 的目录"""
+    from pathlib import Path
+
+    base_path = Path(base)
+    if not base_path.exists():
+        return {"base": base, "exists": False, "dirs": []}
+
+    found = []
+    target_names = {"log", "logs"}
+
+    try:
+        for entry in base_path.rglob("*"):
+            if entry.is_dir() and not entry.is_symlink() and entry.name.lower() in target_names:
+                # 统计目录内文件数
+                file_count = 0
+                latest_mtime = 0
+                try:
+                    for f in entry.rglob("*"):
+                        if f.is_file():
+                            file_count += 1
+                            mtime = f.stat().st_mtime
+                            if mtime > latest_mtime:
+                                latest_mtime = mtime
+                except PermissionError:
+                    pass
+
+                found.append({
+                    "path": str(entry),
+                    "file_count": file_count,
+                    "latest_mtime": latest_mtime,
+                })
+    except PermissionError:
+        pass
+
+    # 按最新修改时间降序
+    found.sort(key=lambda d: d["latest_mtime"], reverse=True)
+
+    return {"base": base, "exists": True, "dirs": found}
+
+
 @router.get("/api/logs/self")
 async def self_logs(lines: int = 100, keyword: str = None):
     """查看 postlook 自身日志"""
@@ -233,6 +275,15 @@ async def api_help():
                 "parameters": {
                     "content": "string (必填) - TOML 格式配置内容"
                 }
+            },
+            {
+                "method": "GET",
+                "path": "/api/scan-dirs",
+                "description": "扫描指定路径下名为 log/logs 的目录",
+                "parameters": {
+                    "base": "string (默认 /main/app) - 扫描的基础路径"
+                },
+                "example": "curl http://localhost:5011/api/scan-dirs?base=/main/app/"
             },
             {
                 "method": "GET",

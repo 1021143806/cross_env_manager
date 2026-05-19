@@ -81,10 +81,10 @@ def search_lines(
 ) -> List[Dict]:
     """
     从文件中搜索匹配行。
-    - keyword: 不区分大小写搜索
+    - keyword: 不区分大小写搜索（先 grep 全文件，再按行号范围截取）
     - max_lines: 最大返回行数
     - tail: 无关键字时从尾部读取
-    - line_start/line_end: 指定行号范围
+    - line_start/line_end: 无关键字时指定行号范围；有关键字时作为结果索引范围
     """
     results = []
 
@@ -96,31 +96,40 @@ def search_lines(
 
     total = len(lines)
 
-    # 行号范围过滤
-    if line_start is not None or line_end is not None:
-        start = (line_start or 1) - 1  # 转为 0-based
-        end = line_end if line_end else total
-        start = max(0, start)
-        end = min(total, end)
-        lines = lines[start:end]
-        line_offset = start  # 原始行号偏移
-    else:
-        line_offset = 0
-
     if keyword:
-        # 关键字搜索（不区分大小写）
+        # 关键字搜索：先 grep 全文件，保留原始行号
         kw_lower = keyword.lower()
+        all_matches = []
         for i, line in enumerate(lines):
             if kw_lower in line.lower():
-                results.append({
+                all_matches.append({
                     "file": file_path.name,
-                    "line": line_offset + i + 1,
+                    "line": i + 1,  # 原始行号
                     "content": line.rstrip("\n\r")
                 })
-                if len(results) >= max_lines:
-                    break
+
+        # line_start/line_end 作为匹配结果的索引范围（1-based）
+        start_idx = (line_start or 1) - 1
+        end_idx = line_end if line_end else len(all_matches)
+        start_idx = max(0, start_idx)
+        end_idx = min(len(all_matches), end_idx)
+
+        results = all_matches[start_idx:end_idx]
+        # 限制最大返回数
+        if len(results) > max_lines:
+            results = results[:max_lines]
     else:
-        # 无关键字：tail 或 head
+        # 无关键字：行号范围过滤
+        if line_start is not None or line_end is not None:
+            start = (line_start or 1) - 1
+            end = line_end if line_end else total
+            start = max(0, start)
+            end = min(total, end)
+            lines = lines[start:end]
+            line_offset = start
+        else:
+            line_offset = 0
+
         if tail:
             selected = lines[-max_lines:]
             start_idx = max(0, len(lines) - max_lines)
