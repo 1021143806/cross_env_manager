@@ -45,10 +45,30 @@ elif [ -x "/opt/rh/rh-python39/root/bin/python3" ]; then
 elif [ -x "/usr/local/bin/python3" ]; then
     PYTHON3="/usr/local/bin/python3"
 else
-    echo "   ❌ 未找到 python3，请安装 Python 3.9+"
-    echo "   CentOS 7: yum install -y centos-release-scl-rh && yum install -y rh-python39"
-    echo "   或设置 PYTHON3_PATH 环境变量指向 python3 路径"
-    exit 1
+    echo "   ❌ 未找到 python3"
+
+    # 尝试从预编译包解压 Python 3.9
+    SCL_RPM_DIR="$DEPLOY_DIR/centos7_rpms"
+    PYTHON_TGZ="$SCL_RPM_DIR/python39_build.tar.gz"
+    PYTHON_PREFIX="/usr/local/python3"
+
+    if [ -f "$PYTHON_TGZ" ]; then
+        echo "   检测到预编译 Python 3.9 包，解压安装..."
+        tar -xzf "$PYTHON_TGZ" -C /usr/local/
+        if [ -x "$PYTHON_PREFIX/bin/python3" ]; then
+            PYTHON3="$PYTHON_PREFIX/bin/python3"
+            echo "   ✅ Python 3.9 安装成功: $PYTHON3"
+        else
+            echo "   ❌ 解压后未找到 python3"
+            exit 1
+        fi
+    else
+        echo "   请安装 Python 3.9+:"
+        echo "   在线安装: yum install -y centos-release-scl-rh && yum install -y rh-python39"
+        echo "   离线安装: 将 python39_build.tar.gz 放入 $SCL_RPM_DIR/ 目录"
+        echo "   或设置 PYTHON3_PATH 指向 python3 路径"
+        exit 1
+    fi
 fi
 
 echo "   Python: $($PYTHON3 --version 2>&1)"
