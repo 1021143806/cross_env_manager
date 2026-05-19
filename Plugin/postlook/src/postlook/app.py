@@ -7,6 +7,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from .routes import router
+
 app = FastAPI(
     title="postlook",
     description="轻量、安全的日志 HTTP 查询服务",
@@ -14,7 +16,7 @@ app = FastAPI(
 )
 
 # API 路由需在静态文件挂载之前定义
-# TODO: 后续添加 POST /api/logs、GET /api/config 等路由
+app.include_router(router)
 
 
 @app.get("/api/health")

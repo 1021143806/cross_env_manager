@@ -132,12 +132,13 @@ SUPERVISOR_CONF="$SUPERVISOR_CONF_DIR/${PROJECT_NAME}.conf"
 LOG_PATH="$LOG_DIR"
 
 mkdir -p "$LOG_PATH" 2>/dev/null || true
+# 确保日志目录属于 supervisor 运行用户
+chown "$SUPERVISOR_USER:$SUPERVISOR_USER" "$LOG_PATH" 2>/dev/null || true
 
-# 构建 uvicorn 启动命令
+# 构建 uvicorn 启动命令（使用 python3 -m uvicorn 方式，兼容性更好）
+UVICORN_CMD="$PROJECT_DIR/$VENV_DIR/bin/python3 -m uvicorn $APP_MODULE --host $SERVER_HOST --port $APP_PORT"
 if [ "$RELOAD_MODE" = "true" ]; then
-    UVICORN_CMD="$PROJECT_DIR/$VENV_DIR/bin/uvicorn $APP_MODULE --host $SERVER_HOST --port $APP_PORT --reload"
-else
-    UVICORN_CMD="$PROJECT_DIR/$VENV_DIR/bin/uvicorn $APP_MODULE --host $SERVER_HOST --port $APP_PORT"
+    UVICORN_CMD="$UVICORN_CMD --reload"
 fi
 
 if [ -f "$SUPERVISOR_CONF" ]; then

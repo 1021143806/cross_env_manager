@@ -90,6 +90,16 @@
                             <span class="form-hint">1-100，默认 50</span>
                         </div>
                         <div class="form-group">
+                            <label for="line_start">起始行号</label>
+                            <input type="number" id="line_start" name="line_start" placeholder="可选" min="1">
+                            <span class="form-hint">指定从第几行开始读取</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="line_end">结束行号</label>
+                            <input type="number" id="line_end" name="line_end" placeholder="可选" min="1">
+                            <span class="form-hint">指定到第几行结束（含）</span>
+                        </div>
+                        <div class="form-group">
                             <label for="tail">读取方向</label>
                             <select id="tail" name="tail">
                                 <option value="true" selected>文件尾部 (tail)</option>
