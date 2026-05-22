@@ -12,7 +12,7 @@ custom_table_bp = Blueprint(
     'custom_table',
     __name__,
     url_prefix='/custom_table',
-    template_folder='../templates/custom_table'
+    template_folder='../templates'
 )
 
 CUSTOM_TABLE_VERSION = '1.0.0'
