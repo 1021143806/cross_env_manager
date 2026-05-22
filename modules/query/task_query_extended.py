@@ -465,6 +465,7 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
     跨环境任务重发逻辑（统一逻辑1+逻辑2+逻辑3）
     
     流程：
+    0. 调用远端服务器取消任务接口
     1. 前置任务检查（task_seq-1 是否还在执行中）
     2. 检查大模板状态
     3. 检查子模板状态
@@ -473,16 +474,78 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
     
     返回: dict { success, message, newSubOrderId?, code?, precedingTaskId?, serverUrl? }
     """
+    import urllib.request as _urllib
+    import json as _json
+    import time as _time
+    
     conn = connect_to_production_db(server_ip)
     
     try:
         with conn.cursor() as cursor:
+            # ========== 步骤0: 调用远端服务器取消任务接口 ==========
+            # 先查询子任务的 service_url 获取服务器地址
+            sql = """
+                SELECT sub_order_id, service_url, status
+                FROM fy_cross_task_detail
+                WHERE order_id = %s AND task_seq = %s
+            """
+            cursor.execute(sql, (order_id, task_seq))
+            sub_task_info = cursor.fetchone()
+            
+            if not sub_task_info:
+                return {
+                    "success": False,
+                    "code": "SUBTASK_NOT_FOUND",
+                    "message": f"未找到子任务: order_id={order_id}, task_seq={task_seq}"
+                }
+            
+            service_url = sub_task_info.get('service_url', '')
+            if service_url:
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(service_url)
+                    cancel_server_ip = parsed.hostname
+                    if cancel_server_ip:
+                        cancel_url = f"http://{cancel_server_ip}:7000/ics/out/task/cancelTask"
+                        cancel_body = [{"orderId": sub_order_id, "destPosition": ""}]
+                        cancel_body_str = _json.dumps(cancel_body)
+                        t0 = _time.time()
+                        try:
+                            req = _urllib.Request(cancel_url, data=cancel_body_str.encode('utf-8'),
+                                headers={'Content-Type': 'application/json'}, method='POST')
+                            resp = _urllib.urlopen(req, timeout=10)
+                            elapsed_ms = round((_time.time() - t0) * 1000, 1)
+                            raw = resp.read().decode('utf-8')
+                            try:
+                                cancel_resp = _json.loads(raw)
+                            except:
+                                cancel_resp = raw
+                            # 检查取消结果：code=1000 表示成功
+                            if isinstance(cancel_resp, dict) and cancel_resp.get('code') != 1000:
+                                return {
+                                    "success": False,
+                                    "code": "CANCEL_FAILED",
+                                    "message": f"远端取消任务失败: {cancel_resp.get('message', cancel_resp)}",
+                                    "cancel_response": cancel_resp
+                                }
+                        except Exception as e:
+                            elapsed_ms = round((_time.time() - t0) * 1000, 1)
+                            return {
+                                "success": False,
+                                "code": "CANCEL_ERROR",
+                                "message": f"调用远端取消接口失败: {str(e)}",
+                                "cancel_url": cancel_url
+                            }
+                except Exception as e:
+                    # 解析 service_url 失败不阻塞，继续重发流程
+                    pass
+            
             # ========== 步骤1: 前置任务检查（放到最前面） ==========
             if task_seq > 1:
                 preceding_seq = task_seq - 1
                 sql = """
-                    SELECT sub_order_id, service_url, status 
-                    FROM fy_cross_task_detail 
+                    SELECT sub_order_id, service_url, status
+                    FROM fy_cross_task_detail
                     WHERE order_id = %s AND task_seq = %s
                 """
                 cursor.execute(sql, (order_id, preceding_seq))
@@ -516,8 +579,8 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
             
             main_status = main_task['task_status']
             
-            # 允许重发的大模板状态: 3(已取消), 5(重发中), 7(失败), 6(已下发-逻辑3), 9(已下发-逻辑3)
-            if main_status not in (3, 5, 6, 7, 9):
+            # 允许重发的大模板状态: 排除 6(执行中) 和 8(已完成)
+            if main_status in (6, 8):
                 return {
                     "success": False,
                     "code": "INVALID_STATUS",
@@ -526,7 +589,7 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
             
             # ========== 步骤3: 检查子模板状态 ==========
             sql = """
-                SELECT * FROM fy_cross_task_detail 
+                SELECT * FROM fy_cross_task_detail
                 WHERE order_id = %s AND task_seq = %s
             """
             cursor.execute(sql, (order_id, task_seq))
@@ -542,18 +605,18 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
             sub_status = sub_task['status']
             current_sub_order_id = sub_task['sub_order_id']
             
-            # 允许重发的子模板状态: 3(已取消), 7(失败), 4,6,9(逻辑3)
-            if sub_status not in (3, 4, 6, 7, 9):
+            # 允许重发的子模板状态: 排除 6(执行中) 和 8(已完成)
+            if sub_status in (6, 8):
                 return {
                     "success": False,
                     "code": "INVALID_STATUS",
                     "message": f"子任务状态不允许重发（当前状态: {sub_status}）"
                 }
             
-            # 逻辑3特殊处理: 检查是否有多个执行中的子任务
-            if sub_status in (4, 6, 9):
+            # 逻辑3特殊处理: 检查是否有多个执行中的子任务（仅对状态4,6,9检查）
+            if sub_status in (4, 9):
                 sql = """
-                    SELECT COUNT(*) as cnt FROM fy_cross_task_detail 
+                    SELECT COUNT(*) as cnt FROM fy_cross_task_detail
                     WHERE order_id = %s AND status IN (4, 6, 9)
                 """
                 cursor.execute(sql, (order_id,))
@@ -563,7 +626,7 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
                     # 多个执行中任务，异常情况
                     sql = """
                         SELECT sub_order_id, task_seq, status, service_url, error_desc
-                        FROM fy_cross_task_detail 
+                        FROM fy_cross_task_detail
                         WHERE order_id = %s AND status IN (4, 6, 9)
                     """
                     cursor.execute(sql, (order_id,))
@@ -592,14 +655,14 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
             # ========== 步骤5: 执行重发（修改数据库） ==========
             
             # 5.1 判断是否需要修改大模板状态
-            # 大模板状态为 3,6,9 时需要改为5；已经是5,7时不需要改
-            if main_status in (3, 6, 9):
+            # 大模板状态不是5,7时需要改为5
+            if main_status not in (5, 7):
                 sql = "UPDATE fy_cross_task SET task_status = 5 WHERE orderId = %s"
                 cursor.execute(sql, (order_id,))
             
             # 5.2 更新子模板
             sql = """
-                UPDATE fy_cross_task_detail 
+                UPDATE fy_cross_task_detail
                 SET sub_order_id = %s, status = 5, error_desc = '重发中'
                 WHERE order_id = %s AND task_seq = %s
             """
