@@ -994,6 +994,10 @@
                         return;
                     }
                     addToHistory(`${deviceNum} (设备)`);
+                    // 存储最近任务列表供切换使用
+                    window._recentTasks = data.recent_tasks || [];
+                    window._currentDeviceNum = deviceNum;
+                    window._currentServerIp = serverIp;
                     // 后端已返回完整数据，直接构造 result 对象
                     const deepResult = {
                         orderId: data.order_id,
@@ -1008,9 +1012,55 @@
                     if (!deepResult.mainTask) {
                         throw new Error('未找到该设备对应的主任务（远程API查询失败）');
                     }
+                    // 先渲染最近任务标签栏（如果有多个任务）
+                    if (window._recentTasks.length > 1) {
+                        resultContainer.innerHTML = renderRecentTaskTabs(window._recentTasks, data.order_id);
+                    }
+                    renderResult(deepResult);
+                    loadTaskStatusChart();
+                } else if (isTaskQuery) {
+                    // 任务单号查询：调用后端 API（含设备状态）
+                    const serverIp = getFinalIp();
+                    const res = await fetch('/api/query/order_tasks', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ order_id: orderId, server_ip: serverIp })
+                    });
+                    const data = await res.json();
+                    if (data.query_debug) {
+                        window._queryDebug = data.query_debug;
+                    }
+                    if (!res.ok || data.error) {
+                        let errHtml = `<div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i> ${data.error || '查询失败'}
+                        </div>`;
+                        if (data.query_debug) {
+                            errHtml += `<div class="query-card mb-3"><div class="query-card-header bg-warning bg-opacity-10">
+                                <i class="bi bi-bug me-2"></i>查询调试信息
+                                <button class="btn btn-sm btn-outline-warning ms-2" onclick="renderQueryDebugPanel()">展开</button>
+                            </div><div id="queryDebugPanel" class="card-body" style="display:block;"></div></div>`;
+                            setTimeout(() => { if (window._queryDebug) renderQueryDebugPanel(); }, 100);
+                        }
+                        resultContainer.innerHTML = errHtml;
+                        return;
+                    }
+                    addToHistory(orderId);
+                    const deepResult = {
+                        orderId: data.order_id,
+                        baseUrl: data.baseUrl || '',
+                        mainTask: data.mainTask,
+                        subTasks: data.subTasks || [],
+                        deviceStatuses: data.device_statuses || [],
+                        device_code: data.device_code,
+                        query_debug: data.query_debug || {}
+                    };
+                    if (!deepResult.mainTask) {
+                        throw new Error('未找到该任务单号对应的主任务');
+                    }
                     renderResult(deepResult);
                     loadTaskStatusChart();
                 } else {
+                    // 货架查询：先找 orderId 再走任务单号查询
                     if (!isTaskQuery) {
                         orderId = await findOrderIdByShelf(shelf);
                         if (!orderId) {
@@ -1019,7 +1069,7 @@
                         orderIdInput.value = orderId;
                     }
 
-                    addToHistory(isTaskQuery ? orderId : `${shelf} (货架)`);
+                    addToHistory(`${shelf} (货架)`);
                     const result = await performDeepQuery(orderId);
                     renderResult(result);
                     loadTaskStatusChart();
@@ -1720,6 +1770,93 @@
             modal.show();
         }
 
+        // ---------- 最近任务标签栏（需求1：设备号查询列出最近几条任务） ----------
+        function renderRecentTaskTabs(recentTasks, currentOrderId) {
+            if (!recentTasks || recentTasks.length <= 1) return '';
+            let html = `<div class="query-card mb-3 animate__animated animate__fadeIn">
+                <div class="query-card-header bg-info bg-opacity-10">
+                    <i class="bi bi-list-ul me-2"></i>最近任务 (${recentTasks.length}条)
+                    <small class="text-muted ms-2">点击切换查看</small>
+                </div>
+                <div class="card-body py-2">
+                    <div class="d-flex flex-wrap gap-2">`;
+            for (const t of recentTasks) {
+                const isActive = t.orderId === currentOrderId;
+                const statusBadge = getStatusBadge(t.taskStatus);
+                const timeStr = t.createTime ? formatTime(t.createTime) : '-';
+                const nameStr = (t.modelProcessName || '-').substring(0, 15);
+                html += `
+                <button class="btn btn-sm ${isActive ? 'btn-info active' : 'btn-outline-info'} recent-task-tab"
+                    onclick="switchDeviceTask('${t.orderId}')"
+                    title="状态:${t.taskStatusName || t.taskStatus} 时间:${timeStr} 模板:${t.modelProcessName || '-'}">
+                    ${statusBadge}
+                    <small class="d-block text-muted" style="font-size:0.65rem;">${timeStr}</small>
+                    <small class="d-block" style="font-size:0.7rem;">${escapeHtml(nameStr)}</small>
+                </button>`;
+            }
+            html += `</div></div></div>`;
+            return html;
+        }
+        
+        async function switchDeviceTask(orderId) {
+            // 切换设备任务：调用后端 API 获取深度查询结果
+            const deviceNum = window._currentDeviceNum || '';
+            const serverIp = window._currentServerIp || '';
+            const deviceCode = window._recentTasks?.find(t => t.orderId === orderId)?.deviceCode || '';
+            
+            // 高亮当前选中的标签
+            document.querySelectorAll('.recent-task-tab').forEach(btn => {
+                btn.classList.remove('btn-info', 'active');
+                btn.classList.add('btn-outline-info');
+            });
+            const activeBtn = document.querySelector(`.recent-task-tab[onclick*="${orderId}"]`);
+            if (activeBtn) {
+                activeBtn.classList.remove('btn-outline-info');
+                activeBtn.classList.add('btn-info', 'active');
+            }
+            
+            // 显示加载状态
+            const subtaskContainer = document.querySelector('[id$="_subtasks_container"]');
+            const overviewCard = document.querySelector('[id$="_overview"]');
+            if (subtaskContainer) subtaskContainer.innerHTML = '<div class="text-center py-4"><div class="spinner-border spinner-border-sm text-info"></div> 加载中...</div>';
+            if (overviewCard) overviewCard.innerHTML = '<div class="text-center py-4"><div class="spinner-border spinner-border-sm text-info"></div> 加载中...</div>';
+            
+            try {
+                const res = await fetch('/api/query/device_task_detail', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order_id: orderId, server_ip: serverIp, device_code: deviceCode })
+                });
+                const data = await res.json();
+                if (data.query_debug) {
+                    window._queryDebug = data.query_debug;
+                }
+                if (!res.ok || data.error) {
+                    alert('切换失败: ' + (data.error || '未知错误'));
+                    return;
+                }
+                const deepResult = {
+                    orderId: data.order_id,
+                    baseUrl: data.baseUrl || '',
+                    mainTask: data.mainTask,
+                    subTasks: data.subTasks || [],
+                    deviceStatuses: data.device_statuses || [],
+                    device_code: data.device_code,
+                    device_num: deviceNum,
+                    query_debug: data.query_debug || {}
+                };
+                // 重新渲染结果（保留最近任务标签栏）
+                if (window._recentTasks && window._recentTasks.length > 1) {
+                    resultContainer.innerHTML = renderRecentTaskTabs(window._recentTasks, orderId);
+                }
+                renderResult(deepResult);
+                loadTaskStatusChart();
+            } catch (error) {
+                console.error('切换任务失败:', error);
+                alert('切换失败: ' + error.message);
+            }
+        }
+
         // ---------- 渲染结果（每个子任务卡片化，默认展开详细信息） ----------
         function renderMainTaskLocalDbTab(localTask, cardIdPrefix) {
             if (!localTask) return '';
@@ -2133,23 +2270,12 @@
                                 `<button class="btn btn-sm btn-outline-warning" onclick="adjustPriority('${subOrderId}', '${serviceUrl}')">
                                     <i class="bi bi-arrow-up"></i> 优先执行
                                 </button>` : ''}
-                            ${status == 3 ? 
-                                `<button class="btn btn-sm btn-outline-warning" onclick="resendTask('${subOrderId}', '${orderId}', ${taskSeq})" title="已取消任务重发">
+                            ${status != 8 && status != 6 ? 
+                                `<button class="btn btn-sm btn-outline-warning" onclick="resendTask('${subOrderId}', '${orderId}', ${taskSeq})" title="重发任务（先调用远端取消接口，再修改数据库状态）">
                                     <i class="bi bi-arrow-repeat"></i> 重发
-                                </button>` : ''}
-                            ${status == 7 ? 
-                                `<button class="btn btn-sm btn-outline-danger" onclick="resendTask('${subOrderId}', '${orderId}', ${taskSeq})" title="失败任务重发">
-                                    <i class="bi bi-arrow-repeat"></i> 重发
-                                </button>` : ''}
-                            ${(status == 4 || status == 6 || status == 9) ? 
-                                `<button class="btn btn-sm btn-outline-danger" onclick="resendTask('${subOrderId}', '${orderId}', ${taskSeq})" title="强制重发（修改大模板和子模板状态为5，sub_order_id+1）">
-                                    <i class="bi bi-arrow-repeat"></i> 强制重发
                                 </button>` : ''}
                             ${status == 5 ? 
-                                `<button class="btn btn-sm btn-outline-secondary" disabled title="正在重发中">
-                                    <i class="bi bi-hourglass-split"></i> 重发中...
-                                </button>
-                                <button class="btn btn-sm btn-outline-danger" onclick="forceCompleteTask('${subOrderId}', '${orderId}', ${taskSeq})" title="异常完成（仅将子任务状态置为3）">
+                                `<button class="btn btn-sm btn-outline-danger" onclick="forceCompleteTask('${subOrderId}', '${orderId}', ${taskSeq})" title="异常完成（仅将子任务状态置为3）">
                                     <i class="bi bi-check-circle"></i> 异常完成
                                 </button>` : ''}
                         </div>
