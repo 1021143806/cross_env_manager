@@ -1,0 +1,557 @@
+{% extends "base.html" %}
+
+{% block title %}{{ server.name }} · {{ table_config.display_name }} - 定制表编辑{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-edit.png?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    {# 顶部导航 #}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <a href="/custom_table" class="btn btn-outline-secondary btn-sm me-2">
+                <i class="bi bi-arrow-left me-1"></i>返回
+            </a>
+            <span class="fs-5 fw-semibold">
+                {{ server.name }} · {{ table_config.display_name }}
+            </span>
+            <small class="text-muted ms-2">{{ server.host }} / {{ server.database }} / {{ table_name }}</small>
+        </div>
+        <div>
+            <button class="btn btn-outline-success btn-sm me-1" onclick="exportCSV()">
+                <i class="bi bi-download me-1"></i>导出CSV
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" onclick="loadData()">
+                <i class="bi bi-arrow-clockwise me-1"></i>刷新
+            </button>
+        </div>
+    </div>
+
+    {# 工具栏 #}
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-center">
+                <div class="col-auto">
+                    <select class="form-select form-select-sm" id="filterGroup" onchange="onFilterChange()" style="width:180px;">
+                        <option value="">全部 target_shop</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <input type="text" class="form-control form-control-sm" id="searchInput"
+                           placeholder="搜索 qr_code / target_shop..." style="width:220px;"
+                           onkeydown="if(event.key==='Enter')loadData()">
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-primary btn-sm" onclick="loadData()">
+                        <i class="bi bi-search me-1"></i>搜索
+                    </button>
+                </div>
+                <div class="col-auto ms-auto">
+                    <button class="btn btn-success btn-sm me-1" onclick="showAddModal()">
+                        <i class="bi bi-plus-lg me-1"></i>新增行
+                    </button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteSelected()" id="btnDeleteSelected" disabled>
+                        <i class="bi bi-trash me-1"></i>删除选中
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# 数据表格 #}
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="dataTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:40px;">
+                                <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)">
+                            </th>
+                            {% for col in table_config.columns %}
+                            {% if not col.get('hidden', False) %}
+                            <th style="width:{{ col.get('width', 'auto') }}">{{ col.label }}</th>
+                            {% endif %}
+                            {% endfor %}
+                            <th style="width:80px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr>
+                            <td colspan="100" class="text-center py-4 text-muted">
+                                <div class="spinner-border spinner-border-sm me-2"></div>加载中...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {# 分页 #}
+        <div class="card-footer d-flex justify-content-between align-items-center py-2">
+            <small class="text-muted" id="pageInfo">共 0 条</small>
+            <nav>
+                <ul class="pagination pagination-sm mb-0" id="pagination"></ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+{# 新增/编辑模态框 #}
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editModalTitle">新增行</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editForm">
+                    {% for col in table_config.columns %}
+                    {% if not col.get('readonly', False) %}
+                    <div class="mb-3 {% if col.get('hidden', False) %}d-none{% endif %}">
+                        <label class="form-label">
+                            {{ col.label }}
+                            {% if col.get('required', False) %}<span class="text-danger">*</span>{% endif %}
+                        </label>
+                        <input type="{{ 'number' if col.type == 'number' else 'text' }}"
+                               class="form-control"
+                               name="{{ col.field }}"
+                               {% if col.get('required', False) %}required{% endif %}
+                               placeholder="请输入{{ col.label }}">
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveRow()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# 批量编辑模态框 #}
+<div class="modal fade" id="batchModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">批量修改 <span id="batchGroupName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info small">
+                    <i class="bi bi-info-circle me-1"></i>
+                    将修改该分组下所有行的以下字段
+                </div>
+                <form id="batchForm">
+                    {% for col in table_config.columns %}
+                    {% if not col.get('readonly', False) and col.field != table_config.group_by %}
+                    <div class="mb-3 {% if col.get('hidden', False) %}d-none{% endif %}">
+                        <label class="form-label">{{ col.label }}</label>
+                        <input type="{{ 'number' if col.type == 'number' else 'text' }}"
+                               class="form-control"
+                               name="{{ col.field }}"
+                               placeholder="留空则不修改">
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-warning" onclick="batchUpdate()">批量更新</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ============================================================
+// 全局状态
+// ============================================================
+const SERVER_KEY = '{{ server_key }}';
+const TABLE_NAME = '{{ table_name }}';
+const GROUP_BY = '{{ table_config.group_by }}';
+const COLUMNS = {{ table_config.columns | tojson }};
+const VISIBLE_COLS = COLUMNS.filter(c => !c.hidden);
+const EDITABLE_FIELDS = COLUMNS.filter(c => !c.readonly).map(c => c.field);
+
+let currentPage = 1;
+let currentSearch = '';
+let currentFilterGroup = '';
+let editModal = null;
+let batchModal = null;
+let editingId = null;
+let batchGroupValue = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    editModal = new bootstrap.Modal(document.getElementById('editModal'));
+    batchModal = new bootstrap.Modal(document.getElementById('batchModal'));
+    loadGroups();
+    loadData();
+});
+
+// ============================================================
+// 数据加载
+// ============================================================
+async function loadData(page = 1) {
+    currentPage = page;
+    currentSearch = document.getElementById('searchInput').value.trim();
+    currentFilterGroup = document.getElementById('filterGroup').value;
+
+    const params = new URLSearchParams({
+        page: page,
+        page_size: {{ table_config.page_size or 25 }},
+        group_by: GROUP_BY,
+    });
+    if (currentSearch) params.set('search', currentSearch);
+    if (currentFilterGroup) {
+        params.set('search_field', GROUP_BY);
+        params.set('search', currentFilterGroup);
+    }
+
+    try {
+        const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/rows?${params}`);
+        const json = await res.json();
+        if (!json.success) { alert('查询失败: ' + json.error); return; }
+
+        renderTable(json.data);
+        renderPagination(json.data);
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+}
+
+async function loadGroups() {
+    try {
+        const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/groups?field=${GROUP_BY}`);
+        const json = await res.json();
+        if (!json.success) return;
+
+        const sel = document.getElementById('filterGroup');
+        json.data.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v;
+            opt.textContent = v;
+            sel.appendChild(opt);
+        });
+    } catch (e) { /* ignore */ }
+}
+
+// ============================================================
+// 表格渲染
+// ============================================================
+function renderTable(data) {
+    const tbody = document.getElementById('tableBody');
+    document.getElementById('pageInfo').textContent = `共 ${data.total} 条`;
+
+    if (!data.rows || data.rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="100" class="text-center py-4 text-muted">暂无数据</td></tr>`;
+        return;
+    }
+
+    // 按 group_by 分组
+    const groups = {};
+    data.rows.forEach(row => {
+        const gv = row[GROUP_BY] || '(空)';
+        if (!groups[gv]) groups[gv] = [];
+        groups[gv].push(row);
+    });
+
+    let html = '';
+    for (const [gv, rows] of Object.entries(groups)) {
+        html += `<tr class="table-group-header" data-group="${escapeHtml(gv)}" onclick="toggleGroup(this)" style="cursor:pointer; background: var(--card-bg, #f8f9fa);">
+            <td><i class="bi bi-chevron-down me-1 group-icon"></i></td>
+            <td colspan="${VISIBLE_COLS.length}">
+                <strong>${escapeHtml(gv)}</strong>
+                <span class="badge bg-secondary ms-2">${rows.length}条</span>
+            </td>
+            <td>
+                <button class="btn btn-outline-warning btn-sm py-0" onclick="event.stopPropagation(); showBatchModal('${escapeHtml(gv)}')">
+                    <i class="bi bi-pencil-square"></i> 编辑全部
+                </button>
+            </td>
+        </tr>`;
+
+        rows.forEach(row => {
+            html += `<tr class="group-row" data-group="${escapeHtml(gv)}">`;
+            html += `<td><input type="checkbox" class="row-checkbox" value="${row.id}" onchange="updateDeleteBtn()"></td>`;
+            VISIBLE_COLS.forEach(col => {
+                const val = row[col.field] !== null && row[col.field] !== undefined ? row[col.field] : '';
+                html += `<td class="editable-cell" data-field="${col.field}" data-id="${row.id}"
+                            ondblclick="startEdit(this)" title="双击编辑">${escapeHtml(String(val))}</td>`;
+            });
+            html += `<td>
+                <button class="btn btn-outline-danger btn-sm py-0" onclick="deleteRow(${row.id})" title="删除">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>`;
+            html += '</tr>';
+        });
+    }
+
+    tbody.innerHTML = html;
+}
+
+function toggleGroup(header) {
+    const gv = header.dataset.group;
+    const icon = header.querySelector('.group-icon');
+    const rows = document.querySelectorAll(`.group-row[data-group="${CSS.escape(gv)}"]`);
+    const collapsed = icon.classList.contains('bi-chevron-right');
+
+    rows.forEach(r => r.style.display = collapsed ? '' : 'none');
+    icon.className = collapsed ? 'bi bi-chevron-down me-1 group-icon' : 'bi bi-chevron-right me-1 group-icon';
+}
+
+function renderPagination(data) {
+    const pag = document.getElementById('pagination');
+    let html = '';
+
+    html += `<li class="page-item ${data.page <= 1 ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="loadData(${data.page - 1}); return false;">«</a></li>`;
+
+    const start = Math.max(1, data.page - 2);
+    const end = Math.min(data.total_pages, data.page + 2);
+
+    for (let i = start; i <= end; i++) {
+        html += `<li class="page-item ${i === data.page ? 'active' : ''}">
+            <a class="page-link" href="#" onclick="loadData(${i}); return false;">${i}</a></li>`;
+    }
+
+    html += `<li class="page-item ${data.page >= data.total_pages ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="loadData(${data.page + 1}); return false;">»</a></li>`;
+
+    pag.innerHTML = html;
+}
+
+// ============================================================
+// 内联编辑
+// ============================================================
+function startEdit(td) {
+    if (td.querySelector('input')) return;
+
+    const field = td.dataset.field;
+    const id = td.dataset.id;
+    const original = td.textContent;
+    const col = COLUMNS.find(c => c.field === field);
+    if (!col || col.readonly) return;
+
+    const input = document.createElement('input');
+    input.type = col.type === 'number' ? 'number' : 'text';
+    input.value = original;
+    input.className = 'form-control form-control-sm';
+    input.style.width = '100%';
+
+    td.textContent = '';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+
+    const save = async () => {
+        const newVal = input.value;
+        td.textContent = newVal;
+        try {
+            const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ [field]: newVal }),
+            });
+            const json = await res.json();
+            if (!json.success) {
+                td.textContent = original;
+                alert('保存失败: ' + json.error);
+            }
+        } catch (e) {
+            td.textContent = original;
+            alert('请求失败: ' + e.message);
+        }
+    };
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { input.blur(); }
+        if (e.key === 'Escape') { td.textContent = original; }
+    });
+}
+
+// ============================================================
+// 新增行
+// ============================================================
+function showAddModal() {
+    editingId = null;
+    document.getElementById('editModalTitle').textContent = '新增行';
+    document.getElementById('editForm').reset();
+    editModal.show();
+}
+
+async function saveRow() {
+    const form = document.getElementById('editForm');
+    const data = {};
+    EDITABLE_FIELDS.forEach(f => {
+        const input = form.querySelector(`[name="${f}"]`);
+        if (input) data[f] = input.value;
+    });
+
+    const url = editingId
+        ? `/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${editingId}`
+        : `/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row`;
+    const method = editingId ? 'PUT' : 'POST';
+
+    try {
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        const json = await res.json();
+        if (json.success) {
+            editModal.hide();
+            loadData(currentPage);
+        } else {
+            alert('保存失败: ' + json.error);
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+}
+
+// ============================================================
+// 删除
+// ============================================================
+async function deleteRow(id) {
+    if (!confirm('确定删除 ID=' + id + ' 的记录吗？此操作不可撤销。')) return;
+
+    try {
+        const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${id}`, { method: 'DELETE' });
+        const json = await res.json();
+        if (json.success) {
+            loadData(currentPage);
+        } else {
+            alert('删除失败: ' + json.error);
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+}
+
+function toggleSelectAll(cb) {
+    document.querySelectorAll('.row-checkbox').forEach(c => c.checked = cb.checked);
+    updateDeleteBtn();
+}
+
+function updateDeleteBtn() {
+    const checked = document.querySelectorAll('.row-checkbox:checked').length;
+    document.getElementById('btnDeleteSelected').disabled = checked === 0;
+}
+
+async function deleteSelected() {
+    const checked = document.querySelectorAll('.row-checkbox:checked');
+    if (checked.length === 0) return;
+    if (!confirm(`确定删除选中的 ${checked.length} 条记录吗？此操作不可撤销。`)) return;
+
+    let success = 0, fail = 0;
+    for (const cb of checked) {
+        try {
+            const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${cb.value}`, { method: 'DELETE' });
+            const json = await res.json();
+            json.success ? success++ : fail++;
+        } catch (e) { fail++; }
+    }
+    alert(`删除完成: 成功 ${success} 条, 失败 ${fail} 条`);
+    loadData(currentPage);
+}
+
+// ============================================================
+// 批量编辑
+// ============================================================
+function showBatchModal(groupValue) {
+    batchGroupValue = groupValue;
+    document.getElementById('batchGroupName').textContent = groupValue;
+    document.getElementById('batchForm').reset();
+    batchModal.show();
+}
+
+async function batchUpdate() {
+    const form = document.getElementById('batchForm');
+    const data = { _group_field: GROUP_BY, _group_value: batchGroupValue };
+
+    EDITABLE_FIELDS.forEach(f => {
+        if (f === GROUP_BY) return;
+        const input = form.querySelector(`[name="${f}"]`);
+        if (input && input.value.trim() !== '') {
+            data[f] = input.value;
+        }
+    });
+
+    if (Object.keys(data).length <= 2) {
+        alert('请至少填写一个要修改的字段');
+        return;
+    }
+
+    try {
+        const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/batch_update`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        const json = await res.json();
+        if (json.success) {
+            batchModal.hide();
+            alert(json.message);
+            loadData(currentPage);
+        } else {
+            alert('批量更新失败: ' + json.error);
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+}
+
+// ============================================================
+// 导出
+// ============================================================
+function exportCSV() {
+    const params = new URLSearchParams();
+    if (currentSearch) params.set('search', currentSearch);
+    if (currentFilterGroup) {
+        params.set('search_field', GROUP_BY);
+        params.set('search', currentFilterGroup);
+    }
+    window.open(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/export?${params}`, '_blank');
+}
+
+// ============================================================
+// 工具函数
+// ============================================================
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function onFilterChange() {
+    loadData(1);
+}
+</script>
+
+<style>
+.editable-cell {
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.editable-cell:hover {
+    background: rgba(var(--bs-primary-rgb, 13, 110, 253), 0.05);
+}
+.table-group-header:hover {
+    background: rgba(var(--bs-primary-rgb, 13, 110, 253), 0.08) !important;
+}
+.group-icon {
+    transition: transform 0.2s;
+}
+</style>
+{% endblock %}
