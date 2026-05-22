@@ -18,6 +18,7 @@ def register_blueprints(app):
     from routes.join_qr_routes import join_qr_bp
     from routes.dispatch_routes import dispatch_bp
     from routes.monitor_routes import monitor_bp
+    from routes.custom_table_routes import custom_table_bp
     
     app.register_blueprint(template_bp)
     app.register_blueprint(task_bp)
@@ -29,5 +30,6 @@ def register_blueprints(app):
     app.register_blueprint(join_qr_bp)
     app.register_blueprint(dispatch_bp)
     app.register_blueprint(monitor_bp)
+    app.register_blueprint(custom_table_bp)
     
     print("[Routes] 所有蓝图已注册")

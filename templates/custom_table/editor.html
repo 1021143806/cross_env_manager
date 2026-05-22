@@ -1,0 +1,823 @@
+{% extends "base.html" %}
+
+{% block title %}{{ server.name }} · {{ table_config.display_name }} - 定制表编辑{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-edit.png?v=1">
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .config-section {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+    }
+    .config-section .section-header {
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex; align-items: center; justify-content: space-between;
+    }
+    .config-section .section-body { padding: 1.25rem; }
+    .record-card {
+        background: var(--detail-card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        margin-bottom: 0.75rem;
+        overflow: hidden;
+        transition: border-color 0.15s;
+    }
+    .record-card:hover { border-color: var(--primary-color, #0d6efd); }
+    .record-card .record-header {
+        padding: 0.5rem 0.75rem;
+        background: var(--card-bg);
+        border-bottom: 1px solid var(--border-color);
+        display: flex; align-items: center; justify-content: space-between;
+        font-size: 0.85rem;
+    }
+    .record-card .record-body {
+        padding: 0.75rem;
+    }
+    .record-card .record-body .row { row-gap: 0.5rem; }
+    .record-card input, .record-card select {
+        background: var(--bg-color);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        border-radius: 6px; padding: 0.35rem 0.5rem; font-size: 0.85rem;
+        width: 100%;
+    }
+    .record-card input:focus { border-color: var(--primary-color, #0d6efd); outline: none; box-shadow: 0 0 0 2px rgba(13,110,253,0.15); }
+    .group-nav-item {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0.6rem 0.75rem; cursor: pointer;
+        border-radius: 8px; margin-bottom: 0.25rem;
+        transition: background 0.15s; font-size: 0.9rem;
+        border: 1px solid transparent;
+    }
+    .group-nav-item:hover { background: var(--detail-card-bg); }
+    .group-nav-item.active {
+        background: rgba(var(--bs-primary-rgb, 13, 110, 253), 0.1);
+        border-color: var(--primary-color, #0d6efd);
+        font-weight: 600;
+    }
+    .group-nav-item .badge { font-size: 0.7rem; }
+    .nav-tabs .nav-link { color: var(--text-color); }
+    .nav-tabs .nav-link.active { background: var(--card-bg); border-color: var(--border-color); color: var(--text-color); }
+    .tab-content { background: var(--card-bg); border: 1px solid var(--border-color); border-top: none; border-radius: 0 0 12px 12px; padding: 1.25rem; }
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 8px; overflow: auto; max-height: 500px; }
+    .editable-cell { cursor: pointer; transition: background 0.15s; }
+    .editable-cell:hover { background: rgba(var(--bs-primary-rgb, 13, 110, 253), 0.05); }
+    .table-group-header:hover { background: rgba(var(--bs-primary-rgb, 13, 110, 253), 0.08) !important; }
+    .group-icon { transition: transform 0.2s; }
+    .toast-container { z-index: 9999; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    {# 顶部导航 #}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <a href="/custom_table" class="btn btn-outline-secondary btn-sm me-2">
+                <i class="bi bi-arrow-left me-1"></i>返回
+            </a>
+            <span class="fs-5 fw-semibold">
+                {{ server.name }} · {{ table_config.display_name }}
+            </span>
+            <small class="text-muted ms-2">{{ server.host }} / {{ server.database }} / {{ table_name }}</small>
+        </div>
+        <div>
+            <button class="btn btn-success btn-sm me-1" onclick="saveAllChanges()">
+                <i class="bi bi-check-lg me-1"></i>保存全部更改
+            </button>
+            <button class="btn btn-outline-success btn-sm me-1" onclick="exportCSV()">
+                <i class="bi bi-download me-1"></i>导出CSV
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">
+                <i class="bi bi-arrow-clockwise me-1"></i>刷新
+            </button>
+        </div>
+    </div>
+
+    {# Tab 切换 #}
+    <ul class="nav nav-tabs" id="editorTabs" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#visualTab">
+                <i class="bi bi-layout-text-sidebar me-1"></i>可视化编辑
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tableTab">
+                <i class="bi bi-table me-1"></i>表格编辑
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#sourceTab">
+                <i class="bi bi-code-slash me-1"></i>源数据
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        {# ========== 可视化编辑 ========== #}
+        <div class="tab-pane fade show active" id="visualTab">
+            <div class="row g-3">
+                {# 左侧：分组导航 #}
+                <div class="col-md-3">
+                    <div class="config-section" style="position: sticky; top: 1rem;">
+                        <div class="section-header">
+                            <span><i class="bi bi-folder me-2"></i><strong>{{ table_config.group_by }}</strong> 分组</span>
+                            <button class="btn btn-sm btn-outline-primary" onclick="showAddModal()">
+                                <i class="bi bi-plus-lg"></i> 新增
+                            </button>
+                        </div>
+                        <div class="section-body p-2" id="groupNav" style="max-height: 70vh; overflow-y: auto;">
+                            <div class="text-center text-muted py-3">
+                                <div class="spinner-border spinner-border-sm me-2"></div>加载中...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {# 右侧：记录编辑区 #}
+                <div class="col-md-9">
+                    <div id="visualEditorArea">
+                        <div class="text-center py-5 text-muted">
+                            <i class="bi bi-arrow-left" style="font-size: 2rem;"></i>
+                            <p class="mt-2">请从左侧选择一个分组</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# ========== 表格编辑 ========== #}
+        <div class="tab-pane fade" id="tableTab">
+            <div class="card mb-3">
+                <div class="card-body py-2">
+                    <div class="row g-2 align-items-center">
+                        <div class="col-auto">
+                            <select class="form-select form-select-sm" id="filterGroup" onchange="onFilterChange()" style="width:180px;">
+                                <option value="">全部 {{ table_config.group_by }}</option>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <input type="text" class="form-control form-control-sm" id="searchInput"
+                                   placeholder="搜索 qr_code / target_shop..." style="width:220px;"
+                                   onkeydown="if(event.key==='Enter')loadTableData()">
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-primary btn-sm" onclick="loadTableData()">
+                                <i class="bi bi-search me-1"></i>搜索
+                            </button>
+                        </div>
+                        <div class="col-auto ms-auto">
+                            <button class="btn btn-success btn-sm me-1" onclick="showAddModal()">
+                                <i class="bi bi-plus-lg me-1"></i>新增行
+                            </button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteSelected()" id="btnDeleteSelected" disabled>
+                                <i class="bi bi-trash me-1"></i>删除选中
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="dataTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:40px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
+                                    {% for col in table_config.columns %}
+                                    {% if not col.get('hidden', False) %}
+                                    <th style="width:{{ col.get('width', 'auto') }}">{{ col.label }}</th>
+                                    {% endif %}
+                                    {% endfor %}
+                                    <th style="width:80px;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody">
+                                <tr><td colspan="100" class="text-center py-4 text-muted">
+                                    <div class="spinner-border spinner-border-sm me-2"></div>加载中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card-footer d-flex justify-content-between align-items-center py-2">
+                    <small class="text-muted" id="pageInfo">共 0 条</small>
+                    <nav><ul class="pagination pagination-sm mb-0" id="pagination"></ul></nav>
+                </div>
+            </div>
+        </div>
+
+        {# ========== 源数据 ========== #}
+        <div class="tab-pane fade" id="sourceTab">
+            <div class="mb-3">
+                <label class="form-label">JSON 数据（当前筛选结果）：</label>
+                <textarea id="sourceEditor" class="form-control" rows="20"
+                          style="font-family: monospace; background: #1e1e1e; color: #d4d4d4; border: 1px solid var(--border-color);"></textarea>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-warning" onclick="applySourceChanges()">
+                    <i class="bi bi-arrow-left-right me-1"></i>应用更改到数据库
+                </button>
+                <button class="btn btn-outline-secondary" onclick="refreshSourceData()">
+                    <i class="bi bi-arrow-clockwise me-1"></i>重新加载
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# 新增/编辑模态框 #}
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editModalTitle">新增行</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editForm">
+                    {% for col in table_config.columns %}
+                    {% if not col.get('readonly', False) %}
+                    <div class="mb-3 {% if col.get('hidden', False) %}d-none{% endif %}">
+                        <label class="form-label">
+                            {{ col.label }}
+                            {% if col.get('required', False) %}<span class="text-danger">*</span>{% endif %}
+                        </label>
+                        <input type="{{ 'number' if col.type == 'number' else 'text' }}"
+                               class="form-control" name="{{ col.field }}"
+                               {% if col.get('required', False) %}required{% endif %}
+                               placeholder="请输入{{ col.label }}">
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveRow()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Toast 容器 #}
+<div id="toastContainer" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ============================================================
+// 全局状态
+// ============================================================
+const SERVER_KEY = '{{ server_key }}';
+const TABLE_NAME = '{{ table_name }}';
+const GROUP_BY = '{{ table_config.group_by }}';
+const COLUMNS = {{ table_config.columns | tojson }};
+const VISIBLE_COLS = COLUMNS.filter(c => !c.hidden);
+const EDITABLE_FIELDS = COLUMNS.filter(c => !c.readonly).map(c => c.field);
+const PK = '{{ table_config.primary_key }}';
+
+let allData = {};           // { groupValue: [rows...] }
+let allRows = [];           // 扁平化所有行
+let dirtyRecords = {};      // { id: {field: newValue} }  待保存的修改
+let currentGroup = null;
+let currentPage = 1;
+let currentSearch = '';
+let currentFilterGroup = '';
+let editModal = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    editModal = new bootstrap.Modal(document.getElementById('editModal'));
+    loadAllData();
+});
+
+// ============================================================
+// Toast 通知
+// ============================================================
+function showToast(msg, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    const id = 'toast_' + Date.now();
+    const bgClass = { success: 'bg-success', danger: 'bg-danger', warning: 'bg-warning', info: 'bg-info' }[type] || 'bg-info';
+    container.innerHTML += `<div id="${id}" class="toast align-items-center text-white ${bgClass} border-0" role="alert">
+        <div class="d-flex"><div class="toast-body">${msg}</div>
+        <button class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`;
+    const el = document.getElementById(id);
+    const toast = new bootstrap.Toast(el, { delay: 3000 });
+    toast.show();
+    el.addEventListener('hidden.bs.toast', () => el.remove());
+}
+
+// ============================================================
+// 数据加载
+// ============================================================
+async function loadAllData() {
+    try {
+        const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/rows?page_size=10000&group_by=${GROUP_BY}`);
+        const json = await res.json();
+        if (!json.success) { showToast('加载失败: ' + json.error, 'danger'); return; }
+
+        allRows = json.data.rows || [];
+        // 按 group_by 分组
+        allData = {};
+        allRows.forEach(row => {
+            const gv = row[GROUP_BY] || '(空)';
+            if (!allData[gv]) allData[gv] = [];
+            allData[gv].push(row);
+        });
+
+        renderGroupNav();
+        renderTableData();
+        refreshSourceData();
+        loadFilterGroups();
+    } catch (e) {
+        showToast('请求失败: ' + e.message, 'danger');
+    }
+}
+
+async function loadFilterGroups() {
+    try {
+        const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/groups?field=${GROUP_BY}`);
+        const json = await res.json();
+        if (!json.success) return;
+        const sel = document.getElementById('filterGroup');
+        json.data.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v; opt.textContent = v;
+            sel.appendChild(opt);
+        });
+    } catch (e) { /* ignore */ }
+}
+
+// ============================================================
+// 可视化编辑 — 分组导航
+// ============================================================
+function renderGroupNav() {
+    const nav = document.getElementById('groupNav');
+    const groups = Object.keys(allData).sort();
+    if (groups.length === 0) {
+        nav.innerHTML = '<div class="text-center text-muted py-3">暂无数据</div>';
+        return;
+    }
+    nav.innerHTML = groups.map(gv => {
+        const count = allData[gv].length;
+        const activeClass = (gv === currentGroup) ? ' active' : '';
+        return `<div class="group-nav-item${activeClass}" onclick="selectGroup('${escapeHtml(gv)}')">
+            <span><i class="bi bi-folder2 me-2"></i>${escapeHtml(gv)}</span>
+            <span class="badge bg-secondary">${count}</span>
+        </div>`;
+    }).join('');
+}
+
+function selectGroup(gv) {
+    currentGroup = gv;
+    renderGroupNav();
+    renderVisualEditor(gv);
+}
+
+// ============================================================
+// 可视化编辑 — 记录卡片
+// ============================================================
+function renderVisualEditor(gv) {
+    const area = document.getElementById('visualEditorArea');
+    const rows = allData[gv] || [];
+
+    if (rows.length === 0) {
+        area.innerHTML = `<div class="text-center py-5 text-muted">
+            <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+            <p class="mt-2">该分组暂无记录</p>
+            <button class="btn btn-outline-primary btn-sm" onclick="showAddModalWithGroup('${escapeHtml(gv)}')">
+                <i class="bi bi-plus-lg me-1"></i>新增记录
+            </button>
+        </div>`;
+        return;
+    }
+
+    let html = `<div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0"><i class="bi bi-folder2-open me-2"></i>${escapeHtml(gv)} <span class="badge bg-secondary ms-2">${rows.length}条</span></h5>
+        <div>
+            <button class="btn btn-outline-primary btn-sm me-1" onclick="showAddModalWithGroup('${escapeHtml(gv)}')">
+                <i class="bi bi-plus-lg me-1"></i>新增
+            </button>
+            <button class="btn btn-outline-danger btn-sm" onclick="deleteGroup('${escapeHtml(gv)}')">
+                <i class="bi bi-trash me-1"></i>删除全部
+            </button>
+        </div>
+    </div>`;
+
+    rows.forEach(row => {
+        const rowId = row[PK];
+        html += `<div class="record-card" id="record-${rowId}">
+            <div class="record-header">
+                <span><strong>#${rowId}</strong> <span class="text-muted ms-2">${escapeHtml(row.qr_code || '')}</span></span>
+                <div>
+                    <span class="badge bg-${getDirtyBadge(rowId)} me-1" id="dirtyBadge-${rowId}" style="display:none;">已修改</span>
+                    <button class="btn btn-sm btn-outline-danger py-0" onclick="deleteRecord(${rowId})" title="删除">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="record-body">
+                <div class="row g-2">`;
+
+        COLUMNS.forEach(col => {
+            if (col.readonly) {
+                html += `<div class="col-md-2"><label class="form-label small text-muted">${col.label}</label>
+                    <div class="form-control-plaintext small">${escapeHtml(String(row[col.field] ?? ''))}</div></div>`;
+            } else if (col.hidden) {
+                // hidden 字段不渲染
+            } else {
+                const val = row[col.field] !== null && row[col.field] !== undefined ? row[col.field] : '';
+                const widthClass = col.field === 'qr_code' ? 'col-md-2' :
+                                   col.field === GROUP_BY ? 'col-md-2' :
+                                   col.field.includes('template') ? 'col-md-4' : 'col-md-3';
+                html += `<div class="${widthClass}">
+                    <label class="form-label small">${col.label}</label>
+                    <input type="${col.type === 'number' ? 'number' : 'text'}"
+                           value="${escapeHtml(String(val))}"
+                           data-id="${rowId}" data-field="${col.field}"
+                           onchange="markDirty(${rowId}, '${col.field}', this.value)"
+                           placeholder="${col.label}">
+                </div>`;
+            }
+        });
+
+        html += `</div></div></div>`;
+    });
+
+    area.innerHTML = html;
+
+    // 恢复已修改记录的视觉状态
+    Object.keys(dirtyRecords).forEach(id => {
+        updateDirtyBadge(parseInt(id));
+    });
+}
+
+function getDirtyBadge(rowId) {
+    return dirtyRecords[rowId] ? '' : 'secondary';
+}
+
+function updateDirtyBadge(rowId) {
+    const badge = document.getElementById('dirtyBadge-' + rowId);
+    if (!badge) return;
+    if (dirtyRecords[rowId] && Object.keys(dirtyRecords[rowId]).length > 0) {
+        badge.style.display = '';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+function markDirty(rowId, field, value) {
+    if (!dirtyRecords[rowId]) dirtyRecords[rowId] = {};
+    dirtyRecords[rowId][field] = value;
+    updateDirtyBadge(rowId);
+}
+
+// ============================================================
+// 可视化编辑 — 操作
+// ============================================================
+function showAddModalWithGroup(gv) {
+    document.getElementById('editModalTitle').textContent = '新增行 — ' + gv;
+    const form = document.getElementById('editForm');
+    form.reset();
+    // 预填 group_by 字段
+    const groupInput = form.querySelector(`[name="${GROUP_BY}"]`);
+    if (groupInput) groupInput.value = gv;
+    editModal.show();
+}
+
+async function deleteRecord(rowId) {
+    if (!confirm(`确定删除记录 #${rowId} 吗？此操作不可撤销。`)) return;
+    try {
+        const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${rowId}`, { method: 'DELETE' });
+        const json = await res.json();
+        if (json.success) {
+            showToast(`已删除 #${rowId}`, 'success');
+            delete dirtyRecords[rowId];
+            loadAllData();
+        } else {
+            showToast('删除失败: ' + json.error, 'danger');
+        }
+    } catch (e) {
+        showToast('请求失败: ' + e.message, 'danger');
+    }
+}
+
+async function deleteGroup(gv) {
+    const rows = allData[gv] || [];
+    if (rows.length === 0) return;
+    if (!confirm(`确定删除 "${gv}" 分组下的全部 ${rows.length} 条记录吗？此操作不可撤销。`)) return;
+
+    let success = 0, fail = 0;
+    for (const row of rows) {
+        try {
+            const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${row[PK]}`, { method: 'DELETE' });
+            const json = await res.json();
+            json.success ? success++ : fail++;
+        } catch (e) { fail++; }
+    }
+    showToast(`删除完成: 成功 ${success} 条, 失败 ${fail} 条`, fail > 0 ? 'warning' : 'success');
+    loadAllData();
+}
+
+// ============================================================
+// 保存全部更改
+// ============================================================
+async function saveAllChanges() {
+    const ids = Object.keys(dirtyRecords).filter(id => Object.keys(dirtyRecords[id]).length > 0);
+    if (ids.length === 0) {
+        showToast('没有需要保存的更改', 'info');
+        return;
+    }
+
+    let success = 0, fail = 0;
+    for (const id of ids) {
+        try {
+            const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dirtyRecords[id]),
+            });
+            const json = await res.json();
+            if (json.success) {
+                success++;
+                delete dirtyRecords[id];
+            } else {
+                fail++;
+                showToast(`保存 #${id} 失败: ${json.error}`, 'danger');
+            }
+        } catch (e) {
+            fail++;
+            showToast(`保存 #${id} 失败: ${e.message}`, 'danger');
+        }
+    }
+
+    showToast(`保存完成: 成功 ${success} 条, 失败 ${fail} 条`, fail > 0 ? 'warning' : 'success');
+    if (success > 0) loadAllData();
+}
+
+// ============================================================
+// 表格编辑
+// ============================================================
+async function loadTableData(page = 1) {
+    currentPage = page;
+    currentSearch = document.getElementById('searchInput').value.trim();
+    currentFilterGroup = document.getElementById('filterGroup').value;
+
+    const params = new URLSearchParams({
+        page: page,
+        page_size: {{ table_config.page_size or 25 }},
+        group_by: GROUP_BY,
+    });
+    if (currentSearch) params.set('search', currentSearch);
+    if (currentFilterGroup) {
+        params.set('search_field', GROUP_BY);
+        params.set('search', currentFilterGroup);
+    }
+
+    try {
+        const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/rows?${params}`);
+        const json = await res.json();
+        if (!json.success) { showToast('查询失败: ' + json.error, 'danger'); return; }
+        renderTableData(json.data);
+        renderPagination(json.data);
+    } catch (e) {
+        showToast('请求失败: ' + e.message, 'danger');
+    }
+}
+
+function renderTableData(data) {
+    const tbody = document.getElementById('tableBody');
+    document.getElementById('pageInfo').textContent = `共 ${data ? data.total : 0} 条`;
+
+    const rows = data ? data.rows : allRows;
+    if (!rows || rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="100" class="text-center py-4 text-muted">暂无数据</td></tr>`;
+        return;
+    }
+
+    const groups = {};
+    rows.forEach(row => {
+        const gv = row[GROUP_BY] || '(空)';
+        if (!groups[gv]) groups[gv] = [];
+        groups[gv].push(row);
+    });
+
+    let html = '';
+    for (const [gv, groupRows] of Object.entries(groups)) {
+        html += `<tr class="table-group-header" data-group="${escapeHtml(gv)}" onclick="toggleGroup(this)" style="cursor:pointer; background: var(--card-bg, #f8f9fa);">
+            <td><i class="bi bi-chevron-down me-1 group-icon"></i></td>
+            <td colspan="${VISIBLE_COLS.length}">
+                <strong>${escapeHtml(gv)}</strong>
+                <span class="badge bg-secondary ms-2">${groupRows.length}条</span>
+            </td>
+            <td></td>
+        </tr>`;
+
+        groupRows.forEach(row => {
+            html += `<tr class="group-row" data-group="${escapeHtml(gv)}">`;
+            html += `<td><input type="checkbox" class="row-checkbox" value="${row[PK]}" onchange="updateDeleteBtn()"></td>`;
+            VISIBLE_COLS.forEach(col => {
+                const val = row[col.field] !== null && row[col.field] !== undefined ? row[col.field] : '';
+                html += `<td class="editable-cell" data-field="${col.field}" data-id="${row[PK]}"
+                            ondblclick="startEdit(this)" title="双击编辑">${escapeHtml(String(val))}</td>`;
+            });
+            html += `<td><button class="btn btn-outline-danger btn-sm py-0" onclick="deleteRecord(${row[PK]})" title="删除">
+                <i class="bi bi-trash"></i></button></td>`;
+            html += '</tr>';
+        });
+    }
+    tbody.innerHTML = html;
+}
+
+function toggleGroup(header) {
+    const gv = header.dataset.group;
+    const icon = header.querySelector('.group-icon');
+    const rows = document.querySelectorAll(`.group-row[data-group="${CSS.escape(gv)}"]`);
+    const collapsed = icon.classList.contains('bi-chevron-right');
+    rows.forEach(r => r.style.display = collapsed ? '' : 'none');
+    icon.className = collapsed ? 'bi bi-chevron-down me-1 group-icon' : 'bi bi-chevron-right me-1 group-icon';
+}
+
+function renderPagination(data) {
+    if (!data) return;
+    const pag = document.getElementById('pagination');
+    let html = '';
+    html += `<li class="page-item ${data.page <= 1 ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="loadTableData(${data.page - 1}); return false;">«</a></li>`;
+    const start = Math.max(1, data.page - 2);
+    const end = Math.min(data.total_pages, data.page + 2);
+    for (let i = start; i <= end; i++) {
+        html += `<li class="page-item ${i === data.page ? 'active' : ''}">
+            <a class="page-link" href="#" onclick="loadTableData(${i}); return false;">${i}</a></li>`;
+    }
+    html += `<li class="page-item ${data.page >= data.total_pages ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="loadTableData(${data.page + 1}); return false;">»</a></li>`;
+    pag.innerHTML = html;
+}
+
+function startEdit(td) {
+    if (td.querySelector('input')) return;
+    const field = td.dataset.field;
+    const id = td.dataset.id;
+    const original = td.textContent;
+    const col = COLUMNS.find(c => c.field === field);
+    if (!col || col.readonly) return;
+
+    const input = document.createElement('input');
+    input.type = col.type === 'number' ? 'number' : 'text';
+    input.value = original;
+    input.className = 'form-control form-control-sm';
+    input.style.width = '100%';
+    td.textContent = '';
+    td.appendChild(input);
+    input.focus(); input.select();
+
+    const save = async () => {
+        const newVal = input.value;
+        td.textContent = newVal;
+        try {
+            const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${id}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ [field]: newVal }),
+            });
+            const json = await res.json();
+            if (!json.success) { td.textContent = original; showToast('保存失败: ' + json.error, 'danger'); }
+        } catch (e) { td.textContent = original; showToast('请求失败: ' + e.message, 'danger'); }
+    };
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') input.blur();
+        if (e.key === 'Escape') td.textContent = original;
+    });
+}
+
+function toggleSelectAll(cb) {
+    document.querySelectorAll('.row-checkbox').forEach(c => c.checked = cb.checked);
+    updateDeleteBtn();
+}
+function updateDeleteBtn() {
+    const checked = document.querySelectorAll('.row-checkbox:checked').length;
+    document.getElementById('btnDeleteSelected').disabled = checked === 0;
+}
+async function deleteSelected() {
+    const checked = document.querySelectorAll('.row-checkbox:checked');
+    if (checked.length === 0) return;
+    if (!confirm(`确定删除选中的 ${checked.length} 条记录吗？`)) return;
+    let success = 0, fail = 0;
+    for (const cb of checked) {
+        try {
+            const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${cb.value}`, { method: 'DELETE' });
+            (await res.json()).success ? success++ : fail++;
+        } catch (e) { fail++; }
+    }
+    showToast(`删除完成: 成功 ${success} 条, 失败 ${fail} 条`, fail > 0 ? 'warning' : 'success');
+    loadTableData(currentPage);
+}
+
+// ============================================================
+// 新增行（共用）
+// ============================================================
+function showAddModal() {
+    document.getElementById('editModalTitle').textContent = '新增行';
+    document.getElementById('editForm').reset();
+    editModal.show();
+}
+async function saveRow() {
+    const form = document.getElementById('editForm');
+    const data = {};
+    EDITABLE_FIELDS.forEach(f => {
+        const input = form.querySelector(`[name="${f}"]`);
+        if (input) data[f] = input.value;
+    });
+    try {
+        const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+        });
+        const json = await res.json();
+        if (json.success) {
+            editModal.hide();
+            showToast('新增成功', 'success');
+            loadAllData();
+        } else {
+            showToast('保存失败: ' + json.error, 'danger');
+        }
+    } catch (e) {
+        showToast('请求失败: ' + e.message, 'danger');
+    }
+}
+
+// ============================================================
+// 源数据
+// ============================================================
+function refreshSourceData() {
+    document.getElementById('sourceEditor').value = JSON.stringify(allRows, null, 2);
+}
+
+async function applySourceChanges() {
+    try {
+        const newData = JSON.parse(document.getElementById('sourceEditor').value);
+        if (!Array.isArray(newData)) {
+            showToast('数据格式错误：应为数组', 'danger');
+            return;
+        }
+        if (!confirm(`将用当前 JSON 数据（${newData.length} 条）覆盖数据库中的记录。\n注意：这会删除不在 JSON 中的记录。\n确定继续？`)) return;
+
+        // 先删除所有，再批量插入
+        let success = 0, fail = 0;
+
+        // 删除所有现有记录
+        for (const row of allRows) {
+            try {
+                await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${row[PK]}`, { method: 'DELETE' });
+            } catch (e) { /* ignore */ }
+        }
+
+        // 插入新数据
+        for (const item of newData) {
+            const data = {};
+            EDITABLE_FIELDS.forEach(f => { if (item[f] !== undefined) data[f] = item[f]; });
+            try {
+                const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+                });
+                (await res.json()).success ? success++ : fail++;
+            } catch (e) { fail++; }
+        }
+
+        showToast(`应用完成: 成功 ${success} 条, 失败 ${fail} 条`, fail > 0 ? 'warning' : 'success');
+        loadAllData();
+    } catch (e) {
+        showToast('JSON 格式错误: ' + e.message, 'danger');
+    }
+}
+
+// ============================================================
+// 导出
+// ============================================================
+function exportCSV() {
+    const params = new URLSearchParams();
+    if (currentSearch) params.set('search', currentSearch);
+    if (currentFilterGroup) { params.set('search_field', GROUP_BY); params.set('search', currentFilterGroup); }
+    window.open(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/export?${params}`, '_blank');
+}
+
+// ============================================================
+// 工具函数
+// ============================================================
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    const div = document.createElement('div');
+    div.textContent = String(str);
+    return div.innerHTML;
+}
+
+function onFilterChange() {
+    loadTableData(1);
+}
+</script>
+{% endblock %}
