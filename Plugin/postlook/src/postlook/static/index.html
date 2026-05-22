@@ -154,6 +154,20 @@
                             保存配置
                         </button>
                     </div>
+
+                    <!-- 日志目录扫描 -->
+                    <div class="scan-section">
+                        <div class="scan-header">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <span>扫描日志目录</span>
+                        </div>
+                        <div class="scan-input-row">
+                            <input type="text" id="scanBase" placeholder="输入基础路径，如 /main/app/" value="/main/app/">
+                            <button id="scanBtn" class="btn-secondary">扫描</button>
+                        </div>
+                        <div id="scanResults" class="scan-results"></div>
+                    </div>
+
                     <textarea id="configEditor" rows="18" placeholder="# postlook 配置文件 (TOML 格式)
 # 在此编辑配置内容...
 

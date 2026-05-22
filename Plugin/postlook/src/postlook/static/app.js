@@ -55,9 +55,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============================================================
     const logForm = document.getElementById('logForm');
     const logResults = document.getElementById('logResults');
+    var queryTimer = null;
+    var queryLoading = false;
 
     logForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+
+        // 防抖：300ms 内重复提交忽略
+        if (queryLoading) return;
+        queryLoading = true;
+        clearTimeout(queryTimer);
+        queryTimer = setTimeout(function() { queryLoading = false; }, 2000);
 
         // 构建请求体
         const formData = new FormData(logForm);
@@ -98,6 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
                 '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>' +
                 '</svg><span>请求失败: ' + escapeHtml(err.message) + '</span></div>';
+            queryLoading = false;
         }
     });
 
@@ -217,6 +226,91 @@ document.addEventListener('DOMContentLoaded', () => {
             configStatus.className = 'config-status info';
         }
     });
+
+    // ---- 日志目录扫描 ----
+    var scanBtn = document.getElementById('scanBtn');
+    var scanBase = document.getElementById('scanBase');
+    var scanResults = document.getElementById('scanResults');
+    var scanTimer = null;
+
+    scanBtn.addEventListener('click', function() {
+        doScan();
+    });
+
+    // 回车触发扫描
+    scanBase.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            doScan();
+        }
+    });
+
+    function doScan() {
+        var base = scanBase.value.trim();
+        if (!base) return;
+
+        scanBtn.disabled = true;
+        scanBtn.textContent = '扫描中...';
+        scanResults.innerHTML = '<div class="scan-loading"><div class="spinner"></div><span>正在扫描 ' + escapeHtml(base) + ' ...</span></div>';
+
+        fetch('/api/scan-dirs?base=' + encodeURIComponent(base))
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                scanBtn.disabled = false;
+                scanBtn.textContent = '扫描';
+
+                if (!data.exists) {
+                    scanResults.innerHTML = '<p class="scan-empty">路径不存在: ' + escapeHtml(base) + '</p>';
+                    return;
+                }
+                if (!data.dirs || data.dirs.length === 0) {
+                    scanResults.innerHTML = '<p class="scan-empty">未找到 log/logs 目录</p>';
+                    return;
+                }
+
+                var html = '<div class="scan-dir-list">';
+                data.dirs.forEach(function(dir) {
+                    var mtimeStr = dir.latest_mtime ? new Date(dir.latest_mtime * 1000).toLocaleString('zh-CN') : '-';
+                    html += '<label class="scan-dir-item">';
+                    html += '<input type="checkbox" class="scan-check" value="' + escapeHtml(dir.path) + '" checked>';
+                    html += '<span class="scan-dir-path">' + escapeHtml(dir.path) + '</span>';
+                    html += '<span class="scan-dir-info">' + dir.file_count + ' 文件 · ' + mtimeStr + '</span>';
+                    html += '</label>';
+                });
+                html += '<button id="addToWhitelistBtn" class="btn-primary" style="margin-top: 10px;">添加到白名单</button>';
+                html += '</div>';
+                scanResults.innerHTML = html;
+
+                // 添加到白名单按钮
+                document.getElementById('addToWhitelistBtn').addEventListener('click', function() {
+                    var checked = document.querySelectorAll('.scan-check:checked');
+                    var paths = [];
+                    checked.forEach(function(cb) { paths.push(cb.value); });
+                    if (paths.length === 0) return;
+
+                    // 读取当前 textarea 内容，追加到 root_dirs
+                    var content = configEditor.value;
+                    // 匹配 root_dirs 行
+                    var newDirs = paths.map(function(p) { return '"' + p + '"'; }).join(', ');
+                    if (content.indexOf('root_dirs = [') !== -1) {
+                        // 在现有数组中追加
+                        content = content.replace(/root_dirs = \[([^\]]*)\]/, function(match, existing) {
+                            var trimmed = existing.trim();
+                            var suffix = trimmed ? ', ' + newDirs : newDirs;
+                            return 'root_dirs = [' + trimmed + suffix + ']';
+                        });
+                    }
+                    configEditor.value = content;
+                    configStatus.innerHTML = '<span class="success">已添加 ' + paths.length + ' 个目录到白名单，请点击"保存配置"生效</span>';
+                    configStatus.className = 'config-status success';
+                });
+            })
+            .catch(function(err) {
+                scanBtn.disabled = false;
+                scanBtn.textContent = '扫描';
+                scanResults.innerHTML = '<p class="scan-empty">扫描失败: ' + escapeHtml(err.message) + '</p>';
+            });
+    }
 
     // ============================================================
     // 5. 服务状态检测
