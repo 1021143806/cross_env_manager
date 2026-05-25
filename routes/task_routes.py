@@ -5,7 +5,7 @@
 """
 
 # 任务查询模块版本号（修改本文件时递增末尾数字）
-TASK_VERSION = '2.1.6'
+TASK_VERSION = '2.3.0'
 
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session
 from functools import wraps
