@@ -462,15 +462,18 @@ def get_cross_model_process_info(template_code, server_ip="10.68.2.32"):
 
 def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
     """
-    跨环境任务重发逻辑（统一逻辑1+逻辑2+逻辑3）
+    跨环境任务重发逻辑（含设备预占 + 取消任务 + 重发）
     
     流程：
-    0. 调用远端服务器取消任务接口
+    0. 查询子任务完整信息（service_url, device_code, area_id, status）
     1. 前置任务检查（task_seq-1 是否还在执行中）
     2. 检查大模板状态
     3. 检查子模板状态
-    4. 生成新的 sub_order_id（子ID+1）
-    5. 修改数据库状态
+    4. 预占设备 POST /enableAGV（第一次）
+    5. 取消任务 POST /ics/out/task/cancelTask
+    6. 预占设备 POST /enableAGV（第二次，确保预占状态）
+    7. 生成新的 sub_order_id（子ID+1）
+    8. 修改数据库状态
     
     返回: dict { success, message, newSubOrderId?, code?, precedingTaskId?, serverUrl? }
     """
@@ -482,65 +485,28 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
     
     try:
         with conn.cursor() as cursor:
-            # ========== 步骤0: 调用远端服务器取消任务接口 ==========
-            # 先查询子任务的 service_url 获取服务器地址
+            # ========== 步骤0: 查询子任务完整信息 ==========
             sql = """
-                SELECT sub_order_id, service_url, status
-                FROM fy_cross_task_detail
+                SELECT * FROM fy_cross_task_detail
                 WHERE order_id = %s AND task_seq = %s
             """
             cursor.execute(sql, (order_id, task_seq))
-            sub_task_info = cursor.fetchone()
+            sub_task = cursor.fetchone()
             
-            if not sub_task_info:
+            if not sub_task:
                 return {
                     "success": False,
                     "code": "SUBTASK_NOT_FOUND",
                     "message": f"未找到子任务: order_id={order_id}, task_seq={task_seq}"
                 }
             
-            service_url = sub_task_info.get('service_url', '')
-            if service_url:
-                try:
-                    from urllib.parse import urlparse
-                    parsed = urlparse(service_url)
-                    cancel_server_ip = parsed.hostname
-                    if cancel_server_ip:
-                        cancel_url = f"http://{cancel_server_ip}:7000/ics/out/task/cancelTask"
-                        cancel_body = [{"orderId": sub_order_id, "destPosition": ""}]
-                        cancel_body_str = _json.dumps(cancel_body)
-                        t0 = _time.time()
-                        try:
-                            req = _urllib.Request(cancel_url, data=cancel_body_str.encode('utf-8'),
-                                headers={'Content-Type': 'application/json'}, method='POST')
-                            resp = _urllib.urlopen(req, timeout=10)
-                            elapsed_ms = round((_time.time() - t0) * 1000, 1)
-                            raw = resp.read().decode('utf-8')
-                            try:
-                                cancel_resp = _json.loads(raw)
-                            except:
-                                cancel_resp = raw
-                            # 检查取消结果：code=1000 表示成功
-                            if isinstance(cancel_resp, dict) and cancel_resp.get('code') != 1000:
-                                return {
-                                    "success": False,
-                                    "code": "CANCEL_FAILED",
-                                    "message": f"远端取消任务失败: {cancel_resp.get('message', cancel_resp)}",
-                                    "cancel_response": cancel_resp
-                                }
-                        except Exception as e:
-                            elapsed_ms = round((_time.time() - t0) * 1000, 1)
-                            return {
-                                "success": False,
-                                "code": "CANCEL_ERROR",
-                                "message": f"调用远端取消接口失败: {str(e)}",
-                                "cancel_url": cancel_url
-                            }
-                except Exception as e:
-                    # 解析 service_url 失败不阻塞，继续重发流程
-                    pass
+            sub_status = sub_task['status']
+            current_sub_order_id = sub_task['sub_order_id']
+            service_url = sub_task.get('service_url', '')
+            device_code = sub_task.get('device_code', '')
+            area_id = sub_task.get('area_id', '')
             
-            # ========== 步骤1: 前置任务检查（放到最前面） ==========
+            # ========== 步骤1: 前置任务检查 ==========
             if task_seq > 1:
                 preceding_seq = task_seq - 1
                 sql = """
@@ -552,7 +518,6 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
                 preceding_task = cursor.fetchone()
                 
                 if preceding_task and preceding_task['status'] in (4, 6, 9):
-                    # 上一条任务仍在执行中，不允许重发
                     return {
                         "success": False,
                         "code": "PRECEDING_TASK_ACTIVE",
@@ -579,7 +544,6 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
             
             main_status = main_task['task_status']
             
-            # 允许重发的大模板状态: 排除 6(执行中) 和 8(已完成)
             if main_status in (6, 8):
                 return {
                     "success": False,
@@ -588,24 +552,6 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
                 }
             
             # ========== 步骤3: 检查子模板状态 ==========
-            sql = """
-                SELECT * FROM fy_cross_task_detail
-                WHERE order_id = %s AND task_seq = %s
-            """
-            cursor.execute(sql, (order_id, task_seq))
-            sub_task = cursor.fetchone()
-            
-            if not sub_task:
-                return {
-                    "success": False,
-                    "code": "SUBTASK_NOT_FOUND",
-                    "message": f"未找到子任务: order_id={order_id}, task_seq={task_seq}"
-                }
-            
-            sub_status = sub_task['status']
-            current_sub_order_id = sub_task['sub_order_id']
-            
-            # 允许重发的子模板状态: 排除 6(执行中) 和 8(已完成)
             if sub_status in (6, 8):
                 return {
                     "success": False,
@@ -613,7 +559,7 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
                     "message": f"子任务状态不允许重发（当前状态: {sub_status}）"
                 }
             
-            # 逻辑3特殊处理: 检查是否有多个执行中的子任务（仅对状态4,6,9检查）
+            # 多个执行中子任务检查（仅对状态4,9检查）
             if sub_status in (4, 9):
                 sql = """
                     SELECT COUNT(*) as cnt FROM fy_cross_task_detail
@@ -623,7 +569,6 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
                 active_count = cursor.fetchone()['cnt']
                 
                 if active_count > 1:
-                    # 多个执行中任务，异常情况
                     sql = """
                         SELECT sub_order_id, task_seq, status, service_url, error_desc
                         FROM fy_cross_task_detail
@@ -643,7 +588,109 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
                         "activeTasks": active_tasks
                     }
             
-            # ========== 步骤4: 生成新的 sub_order_id ==========
+            # ========== 步骤4: 预占设备（第一次） ==========
+            # 从 service_url 解析服务器 IP
+            server_ip_for_op = None
+            if service_url:
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(service_url)
+                    server_ip_for_op = parsed.hostname
+                except Exception:
+                    pass
+            
+            if server_ip_for_op and device_code and area_id:
+                preempt_url = f"http://{server_ip_for_op}:7000/enableAGV"
+                preempt_body = {
+                    "areaId": int(area_id) if str(area_id).isdigit() else area_id,
+                    "enable": 1,
+                    "robotId": device_code,
+                    "lastUpdateTime": int(_time.time() * 1000),
+                    "stay": 1
+                }
+                preempt_body_str = _json.dumps(preempt_body)
+                try:
+                    req = _urllib.Request(preempt_url, data=preempt_body_str.encode('utf-8'),
+                        headers={'Content-Type': 'application/json'}, method='POST')
+                    resp = _urllib.urlopen(req, timeout=10)
+                    raw = resp.read().decode('utf-8')
+                    try:
+                        preempt_resp = _json.loads(raw)
+                    except:
+                        preempt_resp = raw
+                    if isinstance(preempt_resp, dict) and preempt_resp.get('code') != 1000:
+                        return {
+                            "success": False,
+                            "code": "PREEMPT_FAILED",
+                            "message": f"设备预占失败（第一次）: 设备 {device_code} 未添加至当前服务器 {server_ip_for_op}",
+                            "preempt_response": preempt_resp
+                        }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "code": "PREEMPT_ERROR",
+                        "message": f"调用设备预占接口失败（第一次）: {str(e)}",
+                        "preempt_url": preempt_url
+                    }
+            
+            # ========== 步骤5: 取消任务 ==========
+            if server_ip_for_op:
+                cancel_url = f"http://{server_ip_for_op}:7000/ics/out/task/cancelTask"
+                cancel_body = [{"orderId": current_sub_order_id, "destPosition": ""}]
+                cancel_body_str = _json.dumps(cancel_body)
+                try:
+                    req = _urllib.Request(cancel_url, data=cancel_body_str.encode('utf-8'),
+                        headers={'Content-Type': 'application/json'}, method='POST')
+                    resp = _urllib.urlopen(req, timeout=10)
+                    raw = resp.read().decode('utf-8')
+                    try:
+                        cancel_resp = _json.loads(raw)
+                    except:
+                        cancel_resp = raw
+                    if isinstance(cancel_resp, dict) and cancel_resp.get('code') != 1000:
+                        return {
+                            "success": False,
+                            "code": "CANCEL_FAILED",
+                            "message": f"远端取消任务失败: {cancel_resp.get('message', cancel_resp)}",
+                            "cancel_response": cancel_resp
+                        }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "code": "CANCEL_ERROR",
+                        "message": f"调用远端取消接口失败: {str(e)}",
+                        "cancel_url": cancel_url
+                    }
+            
+            # ========== 步骤6: 预占设备（第二次，确保预占状态） ==========
+            if server_ip_for_op and device_code and area_id:
+                preempt_body["lastUpdateTime"] = int(_time.time() * 1000)
+                preempt_body_str = _json.dumps(preempt_body)
+                try:
+                    req = _urllib.Request(preempt_url, data=preempt_body_str.encode('utf-8'),
+                        headers={'Content-Type': 'application/json'}, method='POST')
+                    resp = _urllib.urlopen(req, timeout=10)
+                    raw = resp.read().decode('utf-8')
+                    try:
+                        preempt_resp2 = _json.loads(raw)
+                    except:
+                        preempt_resp2 = raw
+                    if isinstance(preempt_resp2, dict) and preempt_resp2.get('code') != 1000:
+                        return {
+                            "success": False,
+                            "code": "PREEMPT_FAILED",
+                            "message": f"设备预占失败（第二次）: 设备 {device_code} 未添加至当前服务器 {server_ip_for_op}",
+                            "preempt_response": preempt_resp2
+                        }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "code": "PREEMPT_ERROR",
+                        "message": f"调用设备预占接口失败（第二次）: {str(e)}",
+                        "preempt_url": preempt_url
+                    }
+            
+            # ========== 步骤7: 生成新的 sub_order_id ==========
             new_sub_order_id = _generate_new_sub_order_id(current_sub_order_id)
             if not new_sub_order_id:
                 return {
@@ -652,15 +699,14 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
                     "message": f"无法解析 sub_order_id: {current_sub_order_id}"
                 }
             
-            # ========== 步骤5: 执行重发（修改数据库） ==========
+            # ========== 步骤8: 执行重发（修改数据库） ==========
             
-            # 5.1 判断是否需要修改大模板状态
-            # 大模板状态不是5,7时需要改为5
+            # 8.1 判断是否需要修改大模板状态
             if main_status not in (5, 7):
                 sql = "UPDATE fy_cross_task SET task_status = 5 WHERE orderId = %s"
                 cursor.execute(sql, (order_id,))
             
-            # 5.2 更新子模板
+            # 8.2 更新子模板
             sql = """
                 UPDATE fy_cross_task_detail
                 SET sub_order_id = %s, status = 5, error_desc = '重发中'
@@ -672,7 +718,7 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
             return {
                 "success": True,
                 "newSubOrderId": new_sub_order_id,
-                "message": f"重发成功，新子任务ID: {new_sub_order_id}，3秒后将自动刷新"
+                "message": f"重发成功，新子任务ID: {new_sub_order_id}，2秒后将自动刷新"
             }
             
     except Exception as e:
