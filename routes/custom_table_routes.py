@@ -5,7 +5,8 @@
 页面路由 + API 路由
 """
 
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, session
+from functools import wraps
 from modules.custom_table import get_config, CustomTableService
 
 custom_table_bp = Blueprint(
@@ -16,6 +17,19 @@ custom_table_bp = Blueprint(
 )
 
 CUSTOM_TABLE_VERSION = '1.0.0'
+
+
+def admin_required(f):
+    """管理员验证装饰器"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('is_admin'):
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'error': '需要管理员权限'}), 403
+            return '''<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"></head>
+<body><script>alert('需要管理员权限，请在首页启用管理员提权');history.back();</script></body></html>''', 403
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 def _get_service(server_key: str, table_name: str) -> tuple:
@@ -209,5 +223,134 @@ def api_get_groups(server_key, table_name):
     try:
         values = service.get_group_values(group_field)
         return jsonify({'success': True, 'data': values})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================
+# 配置管理 API（读写 custom_tables.toml）
+# ============================================================
+
+import os as _os
+import shutil as _shutil
+from datetime import datetime as _datetime
+
+_CONFIG_PATH = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), 'config', 'custom_tables.toml')
+_BACKUP_DIR = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), 'static', 'js', 'backups')
+
+
+@custom_table_bp.route('/api/config')
+@admin_required
+def api_get_config():
+    """获取 custom_tables.toml 原始内容"""
+    try:
+        if not _os.path.exists(_CONFIG_PATH):
+            return jsonify({'success': True, 'content': '', 'message': '配置文件不存在'})
+        with open(_CONFIG_PATH, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return jsonify({'success': True, 'content': content})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@custom_table_bp.route('/api/config', methods=['POST'])
+@admin_required
+def api_save_config():
+    """保存 custom_tables.toml 并自动备份"""
+    data = request.get_json(silent=True) or {}
+    content = data.get('content', '')
+    if not content:
+        return jsonify({'success': False, 'error': '内容不能为空'}), 400
+
+    try:
+        # 备份旧文件
+        if _os.path.exists(_CONFIG_PATH):
+            _os.makedirs(_BACKUP_DIR, exist_ok=True)
+            ts = _datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_name = f'custom_tables_{ts}.toml'
+            _shutil.copy2(_CONFIG_PATH, _os.path.join(_BACKUP_DIR, backup_name))
+
+        # 写入新内容
+        with open(_CONFIG_PATH, 'w', encoding='utf-8') as f:
+            f.write(content)
+
+        # 重新加载配置
+        from modules.custom_table import reload_config
+        reload_config()
+
+        return jsonify({'success': True, 'message': '配置已保存并生效'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@custom_table_bp.route('/api/config/backups')
+@admin_required
+def api_list_backups():
+    """列出备份文件"""
+    try:
+        _os.makedirs(_BACKUP_DIR, exist_ok=True)
+        files = []
+        for f in sorted(_os.listdir(_BACKUP_DIR), reverse=True):
+            if f.startswith('custom_tables_') and f.endswith('.toml'):
+                fp = _os.path.join(_BACKUP_DIR, f)
+                files.append({
+                    'name': f,
+                    'size': _os.path.getsize(fp),
+                    'timestamp': _os.path.getmtime(fp),
+                })
+        return jsonify({'success': True, 'backups': files})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@custom_table_bp.route('/api/config/backups/<name>')
+@admin_required
+def api_get_backup(name):
+    """获取备份内容"""
+    try:
+        fp = _os.path.join(_BACKUP_DIR, name)
+        if not _os.path.exists(fp):
+            return jsonify({'success': False, 'error': '备份不存在'}), 404
+        with open(fp, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return jsonify({'success': True, 'content': content, 'name': name})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@custom_table_bp.route('/api/config/backups/<name>/restore', methods=['POST'])
+@admin_required
+def api_restore_backup(name):
+    """恢复备份"""
+    try:
+        fp = _os.path.join(_BACKUP_DIR, name)
+        if not _os.path.exists(fp):
+            return jsonify({'success': False, 'error': '备份不存在'}), 404
+
+        # 备份当前文件
+        if _os.path.exists(_CONFIG_PATH):
+            ts = _datetime.now().strftime('%Y%m%d_%H%M%S')
+            _shutil.copy2(_CONFIG_PATH, _os.path.join(_BACKUP_DIR, f'custom_tables_before_restore_{ts}.toml'))
+
+        # 恢复
+        _shutil.copy2(fp, _CONFIG_PATH)
+
+        from modules.custom_table import reload_config
+        reload_config()
+
+        return jsonify({'success': True, 'message': f'已从 {name} 恢复'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@custom_table_bp.route('/api/config/backups/<name>', methods=['DELETE'])
+@admin_required
+def api_delete_backup(name):
+    """删除备份"""
+    try:
+        fp = _os.path.join(_BACKUP_DIR, name)
+        if _os.path.exists(fp):
+            _os.remove(fp)
+        return jsonify({'success': True, 'message': '已删除'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
