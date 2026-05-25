@@ -88,9 +88,6 @@
             <small class="text-muted ms-2">{{ server.host }} / {{ server.database }} / {{ table_name }}</small>
         </div>
         <div>
-            <button class="btn btn-success btn-sm me-1" onclick="saveAllChanges()">
-                <i class="bi bi-check-lg me-1"></i>保存全部更改
-            </button>
             <button class="btn btn-outline-success btn-sm me-1" onclick="exportCSV()">
                 <i class="bi bi-download me-1"></i>导出CSV
             </button>
@@ -284,7 +281,6 @@ const PK = '{{ table_config.primary_key }}';
 
 let allData = {};           // { groupValue: [rows...] }
 let allRows = [];           // 扁平化所有行
-let dirtyRecords = {};      // { id: {field: newValue} }  待保存的修改
 let currentGroup = null;
 let currentPage = 1;
 let currentSearch = '';
@@ -415,7 +411,6 @@ function renderVisualEditor(gv) {
             <div class="record-header">
                 <span><strong>#${rowId}</strong> <span class="text-muted ms-2">${escapeHtml(row.qr_code || '')}</span></span>
                 <div>
-                    <span class="badge bg-${getDirtyBadge(rowId)} me-1" id="dirtyBadge-${rowId}" style="display:none;">已修改</span>
                     <button class="btn btn-sm btn-outline-danger py-0" onclick="deleteRecord(${rowId})" title="删除">
                         <i class="bi bi-x-lg"></i>
                     </button>
@@ -440,7 +435,7 @@ function renderVisualEditor(gv) {
                     <input type="${col.type === 'number' ? 'number' : 'text'}"
                            value="${escapeHtml(String(val))}"
                            data-id="${rowId}" data-field="${col.field}"
-                           onchange="markDirty(${rowId}, '${col.field}', this.value)"
+                           onchange="saveField(${rowId}, '${col.field}', this.value, this)"
                            placeholder="${col.label}">
                 </div>`;
             }
@@ -450,31 +445,31 @@ function renderVisualEditor(gv) {
     });
 
     area.innerHTML = html;
-
-    // 恢复已修改记录的视觉状态
-    Object.keys(dirtyRecords).forEach(id => {
-        updateDirtyBadge(parseInt(id));
-    });
 }
 
-function getDirtyBadge(rowId) {
-    return dirtyRecords[rowId] ? '' : 'secondary';
-}
-
-function updateDirtyBadge(rowId) {
-    const badge = document.getElementById('dirtyBadge-' + rowId);
-    if (!badge) return;
-    if (dirtyRecords[rowId] && Object.keys(dirtyRecords[rowId]).length > 0) {
-        badge.style.display = '';
-    } else {
-        badge.style.display = 'none';
+async function saveField(rowId, field, value, inputEl) {
+    const originalBg = inputEl.style.background;
+    inputEl.style.background = '#fff3cd';
+    try {
+        const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${rowId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ [field]: value }),
+        });
+        const json = await res.json();
+        if (json.success) {
+            inputEl.style.background = '#d4edda';
+            setTimeout(() => { inputEl.style.background = originalBg; }, 800);
+        } else {
+            inputEl.style.background = '#f8d7da';
+            showToast('保存失败: ' + json.error, 'danger');
+            setTimeout(() => { inputEl.style.background = originalBg; }, 1500);
+        }
+    } catch (e) {
+        inputEl.style.background = '#f8d7da';
+        showToast('请求失败: ' + e.message, 'danger');
+        setTimeout(() => { inputEl.style.background = originalBg; }, 1500);
     }
-}
-
-function markDirty(rowId, field, value) {
-    if (!dirtyRecords[rowId]) dirtyRecords[rowId] = {};
-    dirtyRecords[rowId][field] = value;
-    updateDirtyBadge(rowId);
 }
 
 // ============================================================
@@ -497,7 +492,6 @@ async function deleteRecord(rowId) {
         const json = await res.json();
         if (json.success) {
             showToast(`已删除 #${rowId}`, 'success');
-            delete dirtyRecords[rowId];
             loadAllData();
         } else {
             showToast('删除失败: ' + json.error, 'danger');
@@ -522,42 +516,6 @@ async function deleteGroup(gv) {
     }
     showToast(`删除完成: 成功 ${success} 条, 失败 ${fail} 条`, fail > 0 ? 'warning' : 'success');
     loadAllData();
-}
-
-// ============================================================
-// 保存全部更改
-// ============================================================
-async function saveAllChanges() {
-    const ids = Object.keys(dirtyRecords).filter(id => Object.keys(dirtyRecords[id]).length > 0);
-    if (ids.length === 0) {
-        showToast('没有需要保存的更改', 'info');
-        return;
-    }
-
-    let success = 0, fail = 0;
-    for (const id of ids) {
-        try {
-            const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(dirtyRecords[id]),
-            });
-            const json = await res.json();
-            if (json.success) {
-                success++;
-                delete dirtyRecords[id];
-            } else {
-                fail++;
-                showToast(`保存 #${id} 失败: ${json.error}`, 'danger');
-            }
-        } catch (e) {
-            fail++;
-            showToast(`保存 #${id} 失败: ${e.message}`, 'danger');
-        }
-    }
-
-    showToast(`保存完成: 成功 ${success} 条, 失败 ${fail} 条`, fail > 0 ? 'warning' : 'success');
-    if (success > 0) loadAllData();
 }
 
 // ============================================================
