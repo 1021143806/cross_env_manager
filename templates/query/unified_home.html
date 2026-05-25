@@ -81,6 +81,32 @@
         border-radius: 8px;
     }
     
+    /* 重发进度动画 */
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    .spin {
+        display: inline-block;
+        animation: spin 1s linear infinite;
+    }
+    .resend-step {
+        padding: 6px 8px;
+        border-radius: 6px;
+        transition: background-color 0.2s;
+    }
+    .resend-step.table-active {
+        background-color: rgba(13, 110, 253, 0.08);
+    }
+    .resend-step.table-danger {
+        background-color: rgba(220, 53, 69, 0.08);
+    }
+    .resend-step-icon {
+        width: 24px;
+        text-align: center;
+        font-size: 1.1rem;
+    }
+    
     .info-btn {
         padding: 0.25rem 0.5rem;
         font-size: 0.875rem;
@@ -599,6 +625,30 @@
             </div>
             <div class="modal-body py-2" id="ddmBody">
                 <div class="text-center text-muted py-3">加载中...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 重发进度模态框（SSE 实时动画） -->
+<div class="modal fade" id="resendProgressModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-arrow-repeat me-2"></i>任务重发中...</h5>
+            </div>
+            <div class="modal-body">
+                <div id="resendProgressBody"></div>
+                <div class="mt-3">
+                    <div class="d-flex justify-content-between small text-muted mb-1">
+                        <span id="resendProgressText">0 / 9</span>
+                        <span id="resendTotalTime"></span>
+                    </div>
+                    <div class="progress" style="height: 8px;">
+                        <div id="resendProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-warning" 
+                            role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -2242,7 +2292,7 @@
             }
         };
 
-        // 任务重发（渐进刷新：2s→3s→4s，状态变为非5则停止）
+        // 任务重发（SSE 实时动画）
         window.resendTask = async function(subOrderId, orderId, taskSeq) {
             const confirmMsg = `确定要重发该子任务吗？\n\n` +
                 `子任务ID: ${subOrderId}\n` +
@@ -2252,75 +2302,134 @@
             
             if (!confirm(confirmMsg)) return;
             
-            try {
-                const res = await fetch('/api/task/resend', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        orderId: orderId,
-                        subOrderId: subOrderId,
-                        taskSeq: taskSeq
-                    })
-                });
-                const data = await res.json();
-                
-                if (data.success) {
-                    alert('✅ ' + data.message);
-                    // 渐进刷新：2s→3s→4s，状态变为非5则停止
-                    let refreshDelay = 2000;
-                    const maxAttempts = 3;
-                    let attempt = 0;
-                    
-                    function progressiveRefresh() {
-                        if (attempt >= maxAttempts) return;
-                        setTimeout(async () => {
-                            attempt++;
-                            // 先检查当前子任务状态
-                            try {
-                                const checkRes = await fetch('/api/task/local_detail/' + orderId);
-                                const checkData = await checkRes.json();
-                                const details = checkData.cross_task_details || [];
-                                const targetDetail = details.find(d => d.task_seq == taskSeq);
-                                const currentStatus = targetDetail ? targetDetail.status : null;
-                                
-                                // 状态变为非5（如6执行中/8已完成）则停止刷新
-                                if (currentStatus !== null && currentStatus != 5) {
-                                    executeQuery();
-                                    return;
-                                }
-                            } catch (e) {
-                                // 检查失败也执行刷新
-                            }
-                            executeQuery();
-                            // 如果还没到最大次数，继续下一次
-                            if (attempt < maxAttempts) {
-                                refreshDelay += 1000; // 每次增加1s
-                                progressiveRefresh();
-                            }
-                        }, refreshDelay);
-                    }
-                    progressiveRefresh();
-                } else {
-                    if (data.code === 'PRECEDING_TASK_ACTIVE') {
-                        alert('⚠️ 上一条任务仍在执行中，无法重发\n\n' +
-                            `上一条任务ID: ${data.precedingTaskId}\n` +
-                            `服务器地址: ${data.serverUrl}\n\n` +
-                            '请先到对应服务器查询或取消该任务后再重发。');
-                    } else if (data.code === 'MULTIPLE_ACTIVE') {
-                        alert('⚠️ ' + data.message + '\n\n' +
-                            '调试信息:\n' +
-                            (data.activeTasks || []).map(t => 
-                                `  task_seq=${t.task_seq} sub_order_id=${t.sub_order_id} status=${t.status}`
-                            ).join('\n'));
-                    } else if (data.code === 'PREEMPT_FAILED' || data.code === 'PREEMPT_ERROR') {
-                        alert('❌ 设备预占失败: ' + (data.message || '未知错误'));
-                    } else {
-                        alert('❌ 重发失败: ' + (data.message || '未知错误'));
-                    }
-                }
-            } catch (e) {
-                alert('❌ 请求失败: ' + e.message);
+            // 显示进度模态框
+            const modal = new bootstrap.Modal(document.getElementById('resendProgressModal'));
+            const progressBody = document.getElementById('resendProgressBody');
+            const progressBar = document.getElementById('resendProgressBar');
+            const progressText = document.getElementById('resendProgressText');
+            const totalTimeEl = document.getElementById('resendTotalTime');
+            
+            // 8步名称
+            const stepNames = [
+                "查询子任务信息",
+                "前置任务检查",
+                "检查大模板状态",
+                "检查子模板状态",
+                "预占设备（第一次）",
+                "取消任务",
+                "预占设备（第二次）",
+                "生成新子任务ID",
+                "修改数据库状态"
+            ];
+            
+            // 初始化进度面板
+            progressBody.innerHTML = stepNames.map((name, i) => `
+                <div class="resend-step d-flex align-items-center py-1" id="resend_step_${i}">
+                    <span class="resend-step-icon me-2" id="resend_step_icon_${i}">
+                        <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
+                    </span>
+                    <span class="resend-step-name flex-grow-1">${name}</span>
+                    <span class="resend-step-time text-muted small" id="resend_step_time_${i}"></span>
+                </div>
+            `).join('');
+            progressBar.style.width = '0%';
+            progressBar.setAttribute('aria-valuenow', 0);
+            progressText.textContent = '0 / 9';
+            totalTimeEl.textContent = '';
+            
+            // 所有步骤初始为等待状态
+            for (let i = 0; i < stepNames.length; i++) {
+                const icon = document.getElementById(`resend_step_icon_${i}`);
+                icon.innerHTML = '<span class="text-secondary"><i class="bi bi-hourglass"></i></span>';
             }
+            
+            modal.show();
+            
+            // 连接 SSE
+            const eventSource = new EventSource(
+                `/api/task/resend/stream?order_id=${encodeURIComponent(orderId)}&sub_order_id=${encodeURIComponent(subOrderId)}&task_seq=${taskSeq}`
+            );
+            
+            let completedSteps = 0;
+            let totalElapsed = 0;
+            
+            eventSource.onmessage = function(event) {
+                try {
+                    const msg = JSON.parse(event.data);
+                    
+                    if (msg.type === 'done') {
+                        eventSource.close();
+                        totalElapsed = msg.total_elapsed_ms || 0;
+                        totalTimeEl.textContent = `总耗时: ${totalElapsed}ms`;
+                        progressBar.style.width = '100%';
+                        progressBar.setAttribute('aria-valuenow', 100);
+                        progressText.textContent = '9 / 9';
+                        
+                        if (msg.success) {
+                            progressBar.classList.remove('bg-warning');
+                            progressBar.classList.add('bg-success');
+                            // 1s 后自动刷新
+                            setTimeout(() => {
+                                modal.hide();
+                                executeQuery();
+                            }, 1000);
+                        } else {
+                            progressBar.classList.remove('bg-warning');
+                            progressBar.classList.add('bg-danger');
+                        }
+                        return;
+                    }
+                    
+                    // 普通步骤消息
+                    const step = msg.step;
+                    const status = msg.status;
+                    const elapsed = msg.elapsed_ms || 0;
+                    const error = msg.error || '';
+                    
+                    const icon = document.getElementById(`resend_step_icon_${step}`);
+                    const timeEl = document.getElementById(`resend_step_time_${step}`);
+                    const stepEl = document.getElementById(`resend_step_${step}`);
+                    
+                    if (status === 'running') {
+                        icon.innerHTML = '<span class="text-primary"><i class="bi bi-arrow-repeat spin"></i></span>';
+                        timeEl.textContent = '';
+                        stepEl.classList.add('table-active');
+                    } else if (status === 'ok') {
+                        icon.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i></span>';
+                        timeEl.textContent = `${elapsed}ms`;
+                        stepEl.classList.remove('table-active');
+                        completedSteps++;
+                        progressBar.style.width = `${(completedSteps / 9) * 100}%`;
+                        progressBar.setAttribute('aria-valuenow', Math.round((completedSteps / 9) * 100));
+                        progressText.textContent = `${completedSteps} / 9`;
+                    } else if (status === 'fail') {
+                        icon.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>';
+                        timeEl.textContent = `${elapsed}ms`;
+                        stepEl.classList.remove('table-active');
+                        stepEl.classList.add('table-danger');
+                        // 在步骤名后显示错误信息
+                        const nameEl = stepEl.querySelector('.resend-step-name');
+                        if (nameEl && error) {
+                            nameEl.innerHTML = `${stepNames[step]} <small class="text-danger">(${error})</small>`;
+                        }
+                        completedSteps++;
+                        progressBar.style.width = `${(completedSteps / 9) * 100}%`;
+                        progressBar.setAttribute('aria-valuenow', Math.round((completedSteps / 9) * 100));
+                        progressText.textContent = `${completedSteps} / 9`;
+                    }
+                } catch (e) {
+                    console.error('SSE 消息解析失败:', e);
+                }
+            };
+            
+            eventSource.onerror = function() {
+                eventSource.close();
+                // 如果还没完成，显示错误
+                if (completedSteps < 9) {
+                    totalTimeEl.textContent = '连接中断';
+                    progressBar.classList.add('bg-danger');
+                }
+            };
         };
 
         // 异常完成（仅将子任务状态置为3）

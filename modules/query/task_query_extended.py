@@ -732,6 +732,269 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
         conn.close()
 
 
+def resend_cross_task_stream(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
+    """
+    跨环境任务重发生成器版本（SSE 实时推送）
+    
+    每步 yield 消息格式：
+    {"step": N, "name": "...", "status": "running"|"ok"|"fail", "elapsed_ms": N}
+    最终 yield:
+    {"type": "done", "success": True|False, "message": "...", "total_elapsed_ms": N}
+    """
+    import urllib.request as _urllib
+    import json as _json
+    import time as _time
+    
+    def _yield_step(step, name, status, elapsed_ms=0, error=None):
+        msg = {"step": step, "name": name, "status": status, "elapsed_ms": elapsed_ms}
+        if error:
+            msg["error"] = error
+        return msg
+    
+    def _yield_done(success, message, total_elapsed_ms, extra=None):
+        msg = {"type": "done", "success": success, "message": message, "total_elapsed_ms": total_elapsed_ms}
+        if extra:
+            msg.update(extra)
+        return msg
+    
+    conn = connect_to_production_db(server_ip)
+    total_t0 = _time.time()
+    
+    try:
+        with conn.cursor() as cursor:
+            # ========== 步骤0: 查询子任务完整信息 ==========
+            t0 = _time.time()
+            yield _yield_step(0, "查询子任务信息", "running")
+            sql = """
+                SELECT * FROM fy_cross_task_detail
+                WHERE order_id = %s AND task_seq = %s
+            """
+            cursor.execute(sql, (order_id, task_seq))
+            sub_task = cursor.fetchone()
+            
+            if not sub_task:
+                yield _yield_step(0, "查询子任务信息", "fail", round((_time.time() - t0) * 1000, 1),
+                    f"未找到子任务: order_id={order_id}, task_seq={task_seq}")
+                yield _yield_done(False, "未找到子任务", round((_time.time() - total_t0) * 1000, 1))
+                return
+            
+            sub_status = sub_task['status']
+            current_sub_order_id = sub_task['sub_order_id']
+            service_url = sub_task.get('service_url', '')
+            device_code = sub_task.get('device_code', '')
+            area_id = sub_task.get('area_id', '')
+            yield _yield_step(0, "查询子任务信息", "ok", round((_time.time() - t0) * 1000, 1))
+            
+            # ========== 步骤1: 前置任务检查 ==========
+            t0 = _time.time()
+            yield _yield_step(1, "前置任务检查", "running")
+            if task_seq > 1:
+                preceding_seq = task_seq - 1
+                sql = """
+                    SELECT sub_order_id, service_url, status
+                    FROM fy_cross_task_detail
+                    WHERE order_id = %s AND task_seq = %s
+                """
+                cursor.execute(sql, (order_id, preceding_seq))
+                preceding_task = cursor.fetchone()
+                
+                if preceding_task and preceding_task['status'] in (4, 6, 9):
+                    yield _yield_step(1, "前置任务检查", "fail", round((_time.time() - t0) * 1000, 1),
+                        f"上一条任务（task_seq={preceding_seq}）仍在执行中（status={preceding_task['status']}）")
+                    yield _yield_done(False, "上一条任务仍在执行中", round((_time.time() - total_t0) * 1000, 1),
+                        {"code": "PRECEDING_TASK_ACTIVE", "precedingTaskId": preceding_task['sub_order_id'], "serverUrl": preceding_task['service_url']})
+                    return
+            yield _yield_step(1, "前置任务检查", "ok", round((_time.time() - t0) * 1000, 1))
+            
+            # ========== 步骤2: 检查大模板状态 ==========
+            t0 = _time.time()
+            yield _yield_step(2, "检查大模板状态", "running")
+            sql = "SELECT task_status FROM fy_cross_task WHERE orderId = %s"
+            cursor.execute(sql, (order_id,))
+            main_task = cursor.fetchone()
+            
+            if not main_task:
+                yield _yield_step(2, "检查大模板状态", "fail", round((_time.time() - t0) * 1000, 1),
+                    f"未找到大模板任务: {order_id}")
+                yield _yield_done(False, "未找到大模板任务", round((_time.time() - total_t0) * 1000, 1))
+                return
+            
+            main_status = main_task['task_status']
+            
+            if main_status in (6, 8):
+                yield _yield_step(2, "检查大模板状态", "fail", round((_time.time() - t0) * 1000, 1),
+                    f"大模板状态不允许重发（当前状态: {main_status}）")
+                yield _yield_done(False, "大模板状态不允许重发", round((_time.time() - total_t0) * 1000, 1),
+                    {"code": "INVALID_STATUS"})
+                return
+            yield _yield_step(2, "检查大模板状态", "ok", round((_time.time() - t0) * 1000, 1))
+            
+            # ========== 步骤3: 检查子模板状态 ==========
+            t0 = _time.time()
+            yield _yield_step(3, "检查子模板状态", "running")
+            if sub_status in (6, 8):
+                yield _yield_step(3, "检查子模板状态", "fail", round((_time.time() - t0) * 1000, 1),
+                    f"子任务状态不允许重发（当前状态: {sub_status}）")
+                yield _yield_done(False, "子任务状态不允许重发", round((_time.time() - total_t0) * 1000, 1),
+                    {"code": "INVALID_STATUS"})
+                return
+            
+            if sub_status in (4, 9):
+                sql = """
+                    SELECT COUNT(*) as cnt FROM fy_cross_task_detail
+                    WHERE order_id = %s AND status IN (4, 6, 9)
+                """
+                cursor.execute(sql, (order_id,))
+                active_count = cursor.fetchone()['cnt']
+                
+                if active_count > 1:
+                    yield _yield_step(3, "检查子模板状态", "fail", round((_time.time() - t0) * 1000, 1),
+                        f"当前有 {active_count} 个执行中的子任务")
+                    yield _yield_done(False, "多个执行中的子任务", round((_time.time() - total_t0) * 1000, 1),
+                        {"code": "MULTIPLE_ACTIVE"})
+                    return
+            yield _yield_step(3, "检查子模板状态", "ok", round((_time.time() - t0) * 1000, 1))
+            
+            # ========== 步骤4: 预占设备（第一次） ==========
+            t0 = _time.time()
+            yield _yield_step(4, "预占设备（第一次）", "running")
+            server_ip_for_op = None
+            if service_url:
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(service_url)
+                    server_ip_for_op = parsed.hostname
+                except Exception:
+                    pass
+            
+            if server_ip_for_op and device_code and area_id:
+                preempt_url = f"http://{server_ip_for_op}:7000/enableAGV"
+                preempt_body = {
+                    "areaId": int(area_id) if str(area_id).isdigit() else area_id,
+                    "enable": 1,
+                    "robotId": device_code,
+                    "lastUpdateTime": int(_time.time() * 1000),
+                    "stay": 1
+                }
+                preempt_body_str = _json.dumps(preempt_body)
+                try:
+                    req = _urllib.Request(preempt_url, data=preempt_body_str.encode('utf-8'),
+                        headers={'Content-Type': 'application/json'}, method='POST')
+                    resp = _urllib.urlopen(req, timeout=10)
+                    raw = resp.read().decode('utf-8')
+                    try:
+                        preempt_resp = _json.loads(raw)
+                    except:
+                        preempt_resp = raw
+                    if isinstance(preempt_resp, dict) and preempt_resp.get('code') != 1000:
+                        yield _yield_step(4, "预占设备（第一次）", "fail", round((_time.time() - t0) * 1000, 1),
+                            f"设备 {device_code} 未添加至当前服务器 {server_ip_for_op}")
+                        yield _yield_done(False, "设备预占失败", round((_time.time() - total_t0) * 1000, 1),
+                            {"code": "PREEMPT_FAILED"})
+                        return
+                except Exception as e:
+                    yield _yield_step(4, "预占设备（第一次）", "fail", round((_time.time() - t0) * 1000, 1), str(e))
+                    yield _yield_done(False, "设备预占失败", round((_time.time() - total_t0) * 1000, 1),
+                        {"code": "PREEMPT_ERROR"})
+                    return
+            yield _yield_step(4, "预占设备（第一次）", "ok", round((_time.time() - t0) * 1000, 1))
+            
+            # ========== 步骤5: 取消任务 ==========
+            t0 = _time.time()
+            yield _yield_step(5, "取消任务", "running")
+            if server_ip_for_op:
+                cancel_url = f"http://{server_ip_for_op}:7000/ics/out/task/cancelTask"
+                cancel_body = [{"orderId": current_sub_order_id, "destPosition": ""}]
+                cancel_body_str = _json.dumps(cancel_body)
+                try:
+                    req = _urllib.Request(cancel_url, data=cancel_body_str.encode('utf-8'),
+                        headers={'Content-Type': 'application/json'}, method='POST')
+                    resp = _urllib.urlopen(req, timeout=10)
+                    raw = resp.read().decode('utf-8')
+                    try:
+                        cancel_resp = _json.loads(raw)
+                    except:
+                        cancel_resp = raw
+                    if isinstance(cancel_resp, dict) and cancel_resp.get('code') != 1000:
+                        yield _yield_step(5, "取消任务", "fail", round((_time.time() - t0) * 1000, 1),
+                            cancel_resp.get('message', str(cancel_resp)))
+                        yield _yield_done(False, "取消任务失败", round((_time.time() - total_t0) * 1000, 1),
+                            {"code": "CANCEL_FAILED"})
+                        return
+                except Exception as e:
+                    yield _yield_step(5, "取消任务", "fail", round((_time.time() - t0) * 1000, 1), str(e))
+                    yield _yield_done(False, "取消任务失败", round((_time.time() - total_t0) * 1000, 1),
+                        {"code": "CANCEL_ERROR"})
+                    return
+            yield _yield_step(5, "取消任务", "ok", round((_time.time() - t0) * 1000, 1))
+            
+            # ========== 步骤6: 预占设备（第二次） ==========
+            t0 = _time.time()
+            yield _yield_step(6, "预占设备（第二次）", "running")
+            if server_ip_for_op and device_code and area_id:
+                preempt_body["lastUpdateTime"] = int(_time.time() * 1000)
+                preempt_body_str = _json.dumps(preempt_body)
+                try:
+                    req = _urllib.Request(preempt_url, data=preempt_body_str.encode('utf-8'),
+                        headers={'Content-Type': 'application/json'}, method='POST')
+                    resp = _urllib.urlopen(req, timeout=10)
+                    raw = resp.read().decode('utf-8')
+                    try:
+                        preempt_resp2 = _json.loads(raw)
+                    except:
+                        preempt_resp2 = raw
+                    if isinstance(preempt_resp2, dict) and preempt_resp2.get('code') != 1000:
+                        yield _yield_step(6, "预占设备（第二次）", "fail", round((_time.time() - t0) * 1000, 1),
+                            f"设备 {device_code} 未添加至当前服务器 {server_ip_for_op}")
+                        yield _yield_done(False, "设备预占失败", round((_time.time() - total_t0) * 1000, 1),
+                            {"code": "PREEMPT_FAILED"})
+                        return
+                except Exception as e:
+                    yield _yield_step(6, "预占设备（第二次）", "fail", round((_time.time() - t0) * 1000, 1), str(e))
+                    yield _yield_done(False, "设备预占失败", round((_time.time() - total_t0) * 1000, 1),
+                        {"code": "PREEMPT_ERROR"})
+                    return
+            yield _yield_step(6, "预占设备（第二次）", "ok", round((_time.time() - t0) * 1000, 1))
+            
+            # ========== 步骤7: 生成新的 sub_order_id ==========
+            t0 = _time.time()
+            yield _yield_step(7, "生成新子任务ID", "running")
+            new_sub_order_id = _generate_new_sub_order_id(current_sub_order_id)
+            if not new_sub_order_id:
+                yield _yield_step(7, "生成新子任务ID", "fail", round((_time.time() - t0) * 1000, 1),
+                    f"无法解析 sub_order_id: {current_sub_order_id}")
+                yield _yield_done(False, "生成新子任务ID失败", round((_time.time() - total_t0) * 1000, 1))
+                return
+            yield _yield_step(7, "生成新子任务ID", "ok", round((_time.time() - t0) * 1000, 1))
+            
+            # ========== 步骤8: 修改数据库状态 ==========
+            t0 = _time.time()
+            yield _yield_step(8, "修改数据库状态", "running")
+            if main_status not in (5, 7):
+                sql = "UPDATE fy_cross_task SET task_status = 5 WHERE orderId = %s"
+                cursor.execute(sql, (order_id,))
+            
+            sql = """
+                UPDATE fy_cross_task_detail
+                SET sub_order_id = %s, status = 5, error_desc = '重发中'
+                WHERE order_id = %s AND task_seq = %s
+            """
+            cursor.execute(sql, (new_sub_order_id, order_id, task_seq))
+            conn.commit()
+            yield _yield_step(8, "修改数据库状态", "ok", round((_time.time() - t0) * 1000, 1))
+            
+            total_elapsed = round((_time.time() - total_t0) * 1000, 1)
+            yield _yield_done(True, f"重发成功，新子任务ID: {new_sub_order_id}", total_elapsed,
+                {"newSubOrderId": new_sub_order_id})
+            
+    except Exception as e:
+        conn.rollback()
+        total_elapsed = round((_time.time() - total_t0) * 1000, 1)
+        yield _yield_done(False, f"重发失败: {str(e)}", total_elapsed, {"code": "SERVER_ERROR"})
+    finally:
+        conn.close()
+
+
 def _generate_new_sub_order_id(sub_order_id):
     """
     生成新的 sub_order_id，将最后一段数字+1

@@ -698,6 +698,39 @@ def resend_task():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@task_bp.route('/api/task/resend/stream')
+@login_required
+@admin_required
+def resend_task_stream():
+    """
+    SSE 端点：任务重发实时流
+    每步推送一条 SSE 消息，前端实时展示进度动画
+    """
+    from flask import Response, stream_with_context
+    
+    order_id = request.args.get('order_id', '').strip()
+    sub_order_id = request.args.get('sub_order_id', '').strip()
+    task_seq = request.args.get('task_seq', type=int)
+    
+    if not order_id or not sub_order_id or task_seq is None:
+        return jsonify({'error': '缺少参数'}), 400
+    
+    def generate():
+        import json as _json
+        for msg in task_query_extended.resend_cross_task_stream(sub_order_id, order_id, task_seq):
+            yield f"data: {_json.dumps(msg, ensure_ascii=False)}\n\n"
+    
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive'
+        }
+    )
+
+
 # ========== 查询日志 API（在 app.py 中定义，避免蓝图 endpoint 冲突） ==========
 
 @task_bp.route('/api/task/force_complete', methods=['POST'])
