@@ -1060,7 +1060,7 @@
                     renderResult(deepResult);
                     loadTaskStatusChart();
                 } else {
-                    // 货架查询：先找 orderId 再走任务单号查询
+                    // 货架查询：先找 orderId 再走任务单号查询（含设备状态）
                     if (!isTaskQuery) {
                         orderId = await findOrderIdByShelf(shelf);
                         if (!orderId) {
@@ -1070,8 +1070,44 @@
                     }
 
                     addToHistory(`${shelf} (货架)`);
-                    const result = await performDeepQuery(orderId);
-                    renderResult(result);
+                    // 复用 /api/query/order_tasks API，与任务单号查询一致
+                    const serverIp = getFinalIp();
+                    const res = await fetch('/api/query/order_tasks', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ order_id: orderId, server_ip: serverIp })
+                    });
+                    const data = await res.json();
+                    if (data.query_debug) {
+                        window._queryDebug = data.query_debug;
+                    }
+                    if (!res.ok || data.error) {
+                        let errHtml = `<div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i> ${data.error || '查询失败'}
+                        </div>`;
+                        if (data.query_debug) {
+                            errHtml += `<div class="query-card mb-3"><div class="query-card-header bg-warning bg-opacity-10">
+                                <i class="bi bi-bug me-2"></i>查询调试信息
+                                <button class="btn btn-sm btn-outline-warning ms-2" onclick="renderQueryDebugPanel()">展开</button>
+                            </div><div id="queryDebugPanel" class="card-body" style="display:block;"></div></div>`;
+                            setTimeout(() => { if (window._queryDebug) renderQueryDebugPanel(); }, 100);
+                        }
+                        resultContainer.innerHTML = errHtml;
+                        return;
+                    }
+                    const deepResult = {
+                        orderId: data.order_id,
+                        baseUrl: data.baseUrl || '',
+                        mainTask: data.mainTask,
+                        subTasks: data.subTasks || [],
+                        deviceStatuses: data.device_statuses || [],
+                        device_code: data.device_code,
+                        query_debug: data.query_debug || {}
+                    };
+                    if (!deepResult.mainTask) {
+                        throw new Error('未找到该货架对应的主任务');
+                    }
+                    renderResult(deepResult);
                     loadTaskStatusChart();
                 }
             } catch (error) {
