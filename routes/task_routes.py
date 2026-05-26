@@ -731,6 +731,25 @@ def resend_task_stream():
     )
 
 
+@task_bp.route('/api/query/tasks_by_error', methods=['POST'])
+@login_required
+def api_tasks_by_error():
+    """根据错误描述查询当天的问题任务列表"""
+    try:
+        data = request.get_json() or {}
+        error_desc = data.get('error_desc', '').strip()
+        status = data.get('status', type=int)
+        limit = data.get('limit', 50)
+        
+        if not error_desc and status is None:
+            return jsonify({'error': '请提供 error_desc 或 status'}), 400
+        
+        result = task_query_extended.query_tasks_by_error(error_desc, status, limit)
+        return jsonify({'success': True, 'tasks': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # ========== 查询日志 API（在 app.py 中定义，避免蓝图 endpoint 冲突） ==========
 
 @task_bp.route('/api/task/force_complete', methods=['POST'])

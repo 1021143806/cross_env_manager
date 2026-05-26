@@ -385,6 +385,49 @@ def connect_to_production_db(server_ip, db_name="wms"):
     except Exception as e:
         raise Exception(f"连接生产环境数据库失败: {str(e)}")
 
+def query_tasks_by_error(error_desc=None, status=None, limit=50, server_ip="10.68.2.32"):
+    """
+    根据错误描述或状态查询当天的问题任务列表
+    用于饼图点击查看问题任务
+    
+    参数：
+        error_desc: 错误描述（模糊匹配）
+        status: 任务状态
+        limit: 返回条数
+    返回：
+        [{orderId, deviceCode, deviceNum, createTime, status, errorDesc}, ...]
+    """
+    conn = connect_to_production_db(server_ip)
+    try:
+        with conn.cursor() as cursor:
+            conditions = ["DATE(create_time) = CURDATE()"]
+            params = []
+            
+            if error_desc:
+                conditions.append("error_desc LIKE %s")
+                params.append(f"%{error_desc}%")
+            
+            if status is not None:
+                conditions.append("task_status = %s")
+                params.append(status)
+            
+            where_clause = " AND ".join(conditions)
+            sql = f"""
+                SELECT orderId, deviceCode, deviceNum, createTime, task_status as status, error_desc as errorDesc
+                FROM fy_cross_task
+                WHERE {where_clause}
+                ORDER BY create_time DESC
+                LIMIT %s
+            """
+            params.append(limit)
+            cursor.execute(sql, params)
+            return cursor.fetchall() or []
+    except Exception as e:
+        raise Exception(f"查询问题任务失败: {str(e)}")
+    finally:
+        conn.close()
+
+
 def search_tasks_by_template(template_code, server_ip="10.68.2.32"):
     """
     根据任务模板代码搜索任务
