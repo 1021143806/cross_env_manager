@@ -413,7 +413,7 @@ def query_tasks_by_error(error_desc=None, status=None, limit=50, server_ip="10.6
             
             where_clause = " AND ".join(conditions)
             sql = f"""
-                SELECT orderId, deviceCode, deviceNum, createTime, task_status as status, error_desc as errorDesc
+                SELECT orderId, deviceCode, deviceNum, createTime, task_status as status, task_error as errorDesc
                 FROM fy_cross_task
                 WHERE {where_clause}
                 ORDER BY create_time DESC
