@@ -240,19 +240,19 @@
             </div>
         </div>
 
-        {# ========== 源数据 ========== #}
+        {# ========== 源数据（只读查看） ========== #}
         <div class="tab-pane fade" id="sourceTab">
             <div class="mb-3">
-                <label class="form-label">JSON 数据（当前筛选结果）：</label>
-                <textarea id="sourceEditor" class="form-control" rows="20"
+                <label class="form-label">JSON 数据（只读，用于查看和复制）：</label>
+                <textarea id="sourceEditor" class="form-control" rows="20" readonly
                           style="font-family: monospace; background: #1e1e1e; color: #d4d4d4; border: 1px solid var(--border-color);"></textarea>
             </div>
             <div class="d-flex gap-2">
-                <button class="btn btn-warning" onclick="applySourceChanges()">
-                    <i class="bi bi-arrow-left-right me-1"></i>应用更改到数据库
-                </button>
                 <button class="btn btn-outline-secondary" onclick="refreshSourceData()">
                     <i class="bi bi-arrow-clockwise me-1"></i>重新加载
+                </button>
+                <button class="btn btn-outline-info" onclick="copySourceData()">
+                    <i class="bi bi-clipboard me-1"></i>复制到剪贴板
                 </button>
             </div>
         </div>
@@ -736,15 +736,49 @@ function startEdit(td) {
 
     const save = async () => {
         const newVal = input.value;
+        const colLabel = COLUMNS.find(c => c.field === field)?.label || field;
+
+        // 如果是 qr_code 字段，先查重
+        if (field === 'qr_code' || field === 'qrCode') {
+            const dup = await checkDuplicate(field, newVal, id);
+            if (dup && dup.duplicate) {
+                td.textContent = original;
+                td.style.background = '#f8d7da';
+                opLog(`⚠️ 点位 "${newVal}" 已存在，保存取消`, 'err');
+                showDuplicateAlert(dup, field, newVal);
+                setTimeout(() => td.style.background = '', 2000);
+                return;
+            }
+        }
+
         td.textContent = newVal;
+        td.style.background = '#fff3cd';
+        opLog(`保存中 #${id} ${colLabel} → ${newVal}`, 'pending');
         try {
             const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${id}`, {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ [field]: newVal }),
             });
             const json = await res.json();
-            if (!json.success) { td.textContent = original; showToast('保存失败: ' + json.error, 'danger'); }
-        } catch (e) { td.textContent = original; showToast('请求失败: ' + e.message, 'danger'); }
+            if (json.success) {
+                td.style.background = '#d4edda';
+                opLog(`✓ 已保存 #${id} ${colLabel} → ${newVal}`, 'ok');
+                showToast(`已保存 #${id} ${colLabel} → ${newVal}`, 'success');
+                setTimeout(() => td.style.background = '', 1500);
+            } else {
+                td.textContent = original;
+                td.style.background = '#f8d7da';
+                opLog(`✗ 保存失败 #${id} ${colLabel}: ${json.error}`, 'err');
+                showToast('保存失败: ' + json.error, 'danger');
+                setTimeout(() => td.style.background = '', 2000);
+            }
+        } catch (e) {
+            td.textContent = original;
+            td.style.background = '#f8d7da';
+            opLog(`✗ 请求失败 #${id} ${colLabel}: ${e.message}`, 'err');
+            showToast('请求失败: ' + e.message, 'danger');
+            setTimeout(() => td.style.background = '', 2000);
+        }
     };
     input.addEventListener('blur', save);
     input.addEventListener('keydown', e => {
@@ -830,42 +864,16 @@ function refreshSourceData() {
     document.getElementById('sourceEditor').value = JSON.stringify(allRows, null, 2);
 }
 
-async function applySourceChanges() {
-    try {
-        const newData = JSON.parse(document.getElementById('sourceEditor').value);
-        if (!Array.isArray(newData)) {
-            showToast('数据格式错误：应为数组', 'danger');
-            return;
-        }
-        if (!confirm(`将用当前 JSON 数据（${newData.length} 条）覆盖数据库中的记录。\n注意：这会删除不在 JSON 中的记录。\n确定继续？`)) return;
-
-        // 先删除所有，再批量插入
-        let success = 0, fail = 0;
-
-        // 删除所有现有记录
-        for (const row of allRows) {
-            try {
-                await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${row[PK]}`, { method: 'DELETE' });
-            } catch (e) { /* ignore */ }
-        }
-
-        // 插入新数据
-        for (const item of newData) {
-            const data = {};
-            EDITABLE_FIELDS.forEach(f => { if (item[f] !== undefined) data[f] = item[f]; });
-            try {
-                const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
-                });
-                (await res.json()).success ? success++ : fail++;
-            } catch (e) { fail++; }
-        }
-
-        showToast(`应用完成: 成功 ${success} 条, 失败 ${fail} 条`, fail > 0 ? 'warning' : 'success');
-        loadAllData();
-    } catch (e) {
-        showToast('JSON 格式错误: ' + e.message, 'danger');
-    }
+function copySourceData() {
+    const text = document.getElementById('sourceEditor').value;
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('已复制到剪贴板', 'success');
+    }).catch(() => {
+        // fallback
+        document.getElementById('sourceEditor').select();
+        document.execCommand('copy');
+        showToast('已复制到剪贴板', 'success');
+    });
 }
 
 // ============================================================
