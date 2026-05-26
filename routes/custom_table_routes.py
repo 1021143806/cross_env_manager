@@ -227,6 +227,32 @@ def api_get_groups(server_key, table_name):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@custom_table_bp.route('/api/<server_key>/<table_name>/check_duplicate')
+def api_check_duplicate(server_key, table_name):
+    """检查指定字段值是否重复"""
+    service, error = _get_service(server_key, table_name)
+    if error:
+        return error
+
+    field = request.args.get('field', None, type=str)
+    value = request.args.get('value', None, type=str)
+    exclude_pk = request.args.get('exclude_pk', None, type=int)
+
+    if not field or value is None:
+        return jsonify({'success': False, 'error': '缺少 field 或 value 参数'}), 400
+
+    try:
+        duplicates = service.check_duplicate(field, value, exclude_pk)
+        return jsonify({
+            'success': True,
+            'duplicate': len(duplicates) > 0,
+            'count': len(duplicates),
+            'rows': duplicates,
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ============================================================
 # 配置管理 API（读写 custom_tables.toml）
 # ============================================================

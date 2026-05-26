@@ -161,7 +161,7 @@
                         </div>
                         <div class="col-auto">
                             <input type="text" class="form-control form-control-sm" id="searchInput"
-                                   placeholder="搜索 qr_code / target_shop..." style="width:220px;"
+                                   placeholder="搜索 qr_code / target_shop... 支持逗号/空格/分号分隔多值" style="width:300px;"
                                    onkeydown="if(event.key==='Enter')loadTableData()">
                         </div>
                         <div class="col-auto">
@@ -447,7 +447,40 @@ function renderVisualEditor(gv) {
     area.innerHTML = html;
 }
 
+async function checkDuplicate(field, value, excludePk) {
+    try {
+        const params = new URLSearchParams({ field, value });
+        if (excludePk !== undefined && excludePk !== null) params.set('exclude_pk', excludePk);
+        const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/check_duplicate?${params}`);
+        const json = await res.json();
+        return json.success ? json : null;
+    } catch (e) { return null; }
+}
+
+function showDuplicateAlert(duplicates, field, value) {
+    const rows = duplicates.rows || [];
+    const msg = `⚠️ 点位 "${value}" 已存在${rows.length > 0 ? '（ID: ' + rows.map(r => r.id).join(', ') + '）' : ''}！\n\n是否前往表格视图查看并处理？`;
+    if (confirm(msg)) {
+        // 切换到表格编辑 Tab
+        document.querySelector('[data-bs-target="#tableTab"]').click();
+        // 填入搜索框并搜索
+        document.getElementById('searchInput').value = value;
+        loadTableData(1);
+    }
+}
+
 async function saveField(rowId, field, value, inputEl) {
+    // 如果是 qr_code 字段，先查重
+    if (field === 'qr_code' || field === 'qrCode') {
+        const dup = await checkDuplicate(field, value, rowId);
+        if (dup && dup.duplicate) {
+            inputEl.style.background = '#f8d7da';
+            showDuplicateAlert(dup, field, value);
+            setTimeout(() => { inputEl.style.background = ''; }, 2000);
+            return;
+        }
+    }
+
     const originalBg = inputEl.style.background;
     inputEl.style.background = '#fff3cd';
     try {
@@ -692,6 +725,17 @@ async function saveRow() {
         const input = form.querySelector(`[name="${f}"]`);
         if (input) data[f] = input.value;
     });
+
+    // 新增时检查 qr_code 是否重复
+    const qrField = COLUMNS.find(c => c.field === 'qr_code' || c.field === 'qrCode');
+    if (qrField && data[qrField.field]) {
+        const dup = await checkDuplicate(qrField.field, data[qrField.field]);
+        if (dup && dup.duplicate) {
+            showDuplicateAlert(dup, qrField.field, data[qrField.field]);
+            return;
+        }
+    }
+
     try {
         const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
