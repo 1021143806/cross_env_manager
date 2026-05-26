@@ -749,6 +749,8 @@ function renderPagination(data) {
 }
 
 function startEdit(td) {
+    // 防抖：保存中不允许编辑
+    if (td.dataset.saving === 'true') return;
     if (td.querySelector('input')) return;
     const field = td.dataset.field;
     const id = td.dataset.id;
