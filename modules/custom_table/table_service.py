@@ -51,23 +51,39 @@ class CustomTableService:
         return errors
 
     def _build_where(self, search: str = None, search_field: str = None) -> tuple:
-        """构建 WHERE 子句"""
+        """构建 WHERE 子句
+        
+        支持多值搜索：用逗号(中英文)、空格、换行、分号分隔多个关键词，
+        每个关键词用 LIKE 匹配，关键词之间用 OR 连接。
+        """
         where_parts = []
         params = []
 
-        if search and search_field:
-            where_parts.append(f"`{search_field}` LIKE %s")
-            params.append(f"%{search}%")
-        elif search:
-            # 全局搜索：在所有文本字段中搜索
-            text_fields = [
-                c['field'] for c in self._columns
-                if c.get('type') == 'text'
-            ]
-            if text_fields:
-                like_parts = [f"`{f}` LIKE %s" for f in text_fields]
+        if search:
+            # 解析多值分隔符：中文逗号、英文逗号、空格、换行、分号
+            import re
+            values = re.split(r'[，,、\s\n;；]+', search.strip())
+            values = [v.strip() for v in values if v.strip()]
+
+            if search_field:
+                # 指定字段搜索：每个值用 OR 连接
+                like_parts = [f"`{search_field}` LIKE %s" for _ in values]
                 where_parts.append(f"({' OR '.join(like_parts)})")
-                params.extend([f"%{search}%"] * len(text_fields))
+                params.extend([f"%{v}%" for v in values])
+            else:
+                # 全局搜索：在所有文本字段中搜索
+                text_fields = [
+                    c['field'] for c in self._columns
+                    if c.get('type') == 'text'
+                ]
+                if text_fields:
+                    # 每个值在所有字段中搜索，值之间用 OR 连接
+                    all_likes = []
+                    for v in values:
+                        field_likes = [f"`{f}` LIKE %s" for f in text_fields]
+                        all_likes.append(f"({' OR '.join(field_likes)})")
+                        params.extend([f"%{v}%"] * len(text_fields))
+                    where_parts.append(f"({' OR '.join(all_likes)})")
 
         where_clause = ' AND '.join(where_parts) if where_parts else '1=1'
         return where_clause, params
@@ -302,6 +318,34 @@ class CustomTableService:
             )
             cursor.execute(sql)
             return [row['value'] for row in cursor.fetchall()]
+        finally:
+            cursor.close()
+            conn.close()
+
+    def check_duplicate(self, field: str, value: str, exclude_pk: int = None) -> list:
+        """
+        检查指定字段的值是否重复
+        :param field: 字段名
+        :param value: 要检查的值
+        :param exclude_pk: 排除的主键值（更新时排除自身）
+        :return: 重复记录列表
+        """
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        try:
+            if exclude_pk is not None:
+                sql = (
+                    f"SELECT * FROM `{self._table_name}` "
+                    f"WHERE `{field}` = %s AND `{self._primary_key}` != %s"
+                )
+                cursor.execute(sql, (value, exclude_pk))
+            else:
+                sql = (
+                    f"SELECT * FROM `{self._table_name}` "
+                    f"WHERE `{field}` = %s"
+                )
+                cursor.execute(sql, (value,))
+            return cursor.fetchall()
         finally:
             cursor.close()
             conn.close()
