@@ -5,7 +5,7 @@
 """
 
 # 任务查询模块版本号（修改本文件时递增末尾数字）
-TASK_VERSION = '2.1.6'
+TASK_VERSION = '2.3.0'
 
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session
 from functools import wraps
@@ -696,6 +696,58 @@ def resend_task():
         return jsonify(result)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@task_bp.route('/api/task/resend/stream')
+@login_required
+@admin_required
+def resend_task_stream():
+    """
+    SSE 端点：任务重发实时流
+    每步推送一条 SSE 消息，前端实时展示进度动画
+    """
+    from flask import Response, stream_with_context
+    
+    order_id = request.args.get('order_id', '').strip()
+    sub_order_id = request.args.get('sub_order_id', '').strip()
+    task_seq = request.args.get('task_seq', type=int)
+    
+    if not order_id or not sub_order_id or task_seq is None:
+        return jsonify({'error': '缺少参数'}), 400
+    
+    def generate():
+        import json as _json
+        for msg in task_query_extended.resend_cross_task_stream(sub_order_id, order_id, task_seq):
+            yield f"data: {_json.dumps(msg, ensure_ascii=False)}\n\n"
+    
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive'
+        }
+    )
+
+
+@task_bp.route('/api/query/tasks_by_error', methods=['POST'])
+@login_required
+def api_tasks_by_error():
+    """根据错误描述查询当天的问题任务列表"""
+    try:
+        data = request.get_json() or {}
+        error_desc = data.get('error_desc', '').strip()
+        status = data.get('status', type=int)
+        limit = data.get('limit', 50)
+        
+        if not error_desc and status is None:
+            return jsonify({'error': '请提供 error_desc 或 status'}), 400
+        
+        result = task_query_extended.query_tasks_by_error(error_desc, status, limit)
+        return jsonify({'success': True, 'tasks': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ========== 查询日志 API（在 app.py 中定义，避免蓝图 endpoint 冲突） ==========
