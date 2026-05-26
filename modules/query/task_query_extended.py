@@ -428,6 +428,43 @@ def query_tasks_by_error(error_desc=None, status=None, limit=50, server_ip="10.6
         conn.close()
 
 
+def query_debug_cross_task_detail(device_num=None, device_code=None, limit=10, server_ip="10.68.2.32"):
+    """
+    查询 fy_cross_task_detail 表原始数据（调试用）
+    按 device_num 或 device_code 查询最近记录
+    """
+    conn = connect_to_production_db(server_ip)
+    try:
+        with conn.cursor() as cursor:
+            conditions = []
+            params = []
+            
+            if device_num:
+                conditions.append("device_num = %s")
+                params.append(device_num)
+            if device_code:
+                conditions.append("device_code = %s")
+                params.append(device_code)
+            
+            if not conditions:
+                return []
+            
+            where_clause = " AND ".join(conditions)
+            sql = f"""
+                SELECT * FROM fy_cross_task_detail
+                WHERE {where_clause}
+                ORDER BY update_time DESC
+                LIMIT %s
+            """
+            params.append(limit)
+            cursor.execute(sql, params)
+            return cursor.fetchall() or []
+    except Exception as e:
+        raise Exception(f"查询调试数据失败: {str(e)}")
+    finally:
+        conn.close()
+
+
 def search_tasks_by_template(template_code, server_ip="10.68.2.32"):
     """
     根据任务模板代码搜索任务

@@ -5,7 +5,7 @@
 """
 
 # 任务查询模块版本号（修改本文件时递增末尾数字）
-TASK_VERSION = '2.3.0'
+TASK_VERSION = '2.3.1'
 
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session
 from functools import wraps
@@ -751,6 +751,25 @@ def api_tasks_by_error():
         
         result = task_query_extended.query_tasks_by_error(error_desc, status, limit)
         return jsonify({'success': True, 'tasks': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@task_bp.route('/api/query/debug_cross_task_detail', methods=['POST'])
+@login_required
+def api_debug_cross_task_detail():
+    """查询 fy_cross_task_detail 表原始数据（调试用）"""
+    try:
+        data = request.get_json() or {}
+        device_num = data.get('device_num', '').strip()
+        device_code = data.get('device_code', '').strip()
+        limit = int(data.get('limit', 10))
+        
+        if not device_num and not device_code:
+            return jsonify({'error': '请提供 device_num 或 device_code'}), 400
+        
+        result = task_query_extended.query_debug_cross_task_detail(device_num, device_code, limit)
+        return jsonify({'success': True, 'tasks': result, 'count': len(result)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
