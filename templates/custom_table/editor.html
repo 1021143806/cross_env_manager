@@ -71,11 +71,42 @@
     .table-group-header:hover { background: rgba(var(--bs-primary-rgb, 13, 110, 253), 0.08) !important; }
     .group-icon { transition: transform 0.2s; }
     .toast-container { z-index: 9999; }
+    .db-hint-bar {
+        background: #fff3cd; color: #856404; padding: 0.4rem 1rem;
+        border-radius: 8px; font-size: 0.85rem; margin-bottom: 0.75rem;
+        display: flex; align-items: center; gap: 0.5rem;
+        border: 1px solid #ffc107;
+    }
+    [data-bs-theme="dark"] .db-hint-bar {
+        background: #3d3200; color: #ffd970; border-color: #665500;
+    }
+    .op-log-bar {
+        background: var(--detail-card-bg); border: 1px solid var(--border-color);
+        border-radius: 8px; padding: 0.35rem 0.75rem; margin-top: 0.75rem;
+        font-size: 0.8rem; font-family: monospace;
+        display: flex; align-items: center; gap: 0.5rem;
+        min-height: 2rem; overflow: hidden;
+    }
+    .op-log-bar .op-time { color: var(--text-muted); white-space: nowrap; }
+    .op-log-bar .op-msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .op-log-bar .op-status { white-space: nowrap; font-weight: bold; }
+    .op-log-bar .op-status.ok { color: #198754; }
+    .op-log-bar .op-status.err { color: #dc3545; }
+    .op-log-bar .op-status.pending { color: #ffc107; }
+    .field-saving { border-color: #198754 !important; box-shadow: 0 0 0 2px rgba(25,135,84,0.2) !important; }
+    .field-saved { border-color: #198754 !important; transition: border-color 0.8s; }
+    .field-error { border-color: #dc3545 !important; box-shadow: 0 0 0 2px rgba(220,53,69,0.2) !important; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid py-3">
+    {# 数据库操作提示 #}
+    <div class="db-hint-bar">
+        <i class="bi bi-database-gear"></i>
+        <span><strong>直接操作数据库</strong> — 修改后立即保存，请谨慎操作</span>
+    </div>
+
     {# 顶部导航 #}
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
@@ -264,6 +295,13 @@
 
 {# Toast 容器 #}
 <div id="toastContainer" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+    {# 操作日志行（类似CAD命令行） #}
+    <div class="op-log-bar" id="opLogBar">
+        <span class="op-time" id="opLogTime">--:--:--</span>
+        <span class="op-msg" id="opLogMsg">就绪</span>
+        <span class="op-status" id="opLogStatus"></span>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -447,6 +485,19 @@ function renderVisualEditor(gv) {
     area.innerHTML = html;
 }
 
+// ============================================================
+// 操作日志（类似CAD命令行）
+// ============================================================
+function opLog(msg, status) {
+    const now = new Date();
+    const time = now.toLocaleTimeString('zh-CN', { hour12: false });
+    document.getElementById('opLogTime').textContent = time;
+    document.getElementById('opLogMsg').textContent = msg;
+    const statusEl = document.getElementById('opLogStatus');
+    statusEl.textContent = status === 'ok' ? '✓' : status === 'err' ? '✗' : status === 'pending' ? '⏳' : '';
+    statusEl.className = 'op-status ' + (status || '');
+}
+
 async function checkDuplicate(field, value, excludePk) {
     try {
         const params = new URLSearchParams({ field, value });
@@ -470,19 +521,24 @@ function showDuplicateAlert(duplicates, field, value) {
 }
 
 async function saveField(rowId, field, value, inputEl) {
+    const colLabel = COLUMNS.find(c => c.field === field)?.label || field;
+
     // 如果是 qr_code 字段，先查重
     if (field === 'qr_code' || field === 'qrCode') {
         const dup = await checkDuplicate(field, value, rowId);
         if (dup && dup.duplicate) {
-            inputEl.style.background = '#f8d7da';
+            inputEl.classList.add('field-error');
+            opLog(`⚠️ 点位 "${value}" 已存在，保存取消`, 'err');
             showDuplicateAlert(dup, field, value);
-            setTimeout(() => { inputEl.style.background = ''; }, 2000);
+            setTimeout(() => inputEl.classList.remove('field-error'), 2000);
             return;
         }
     }
 
-    const originalBg = inputEl.style.background;
-    inputEl.style.background = '#fff3cd';
+    // 编辑中状态
+    inputEl.classList.add('field-saving');
+    opLog(`保存中 #${rowId} ${colLabel} → ${value}`, 'pending');
+
     try {
         const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${rowId}`, {
             method: 'PUT',
@@ -491,17 +547,24 @@ async function saveField(rowId, field, value, inputEl) {
         });
         const json = await res.json();
         if (json.success) {
-            inputEl.style.background = '#d4edda';
-            setTimeout(() => { inputEl.style.background = originalBg; }, 800);
+            inputEl.classList.remove('field-saving');
+            inputEl.classList.add('field-saved');
+            opLog(`✓ 已保存 #${rowId} ${colLabel} → ${value}`, 'ok');
+            showToast(`已保存 #${rowId} ${colLabel} → ${value}`, 'success');
+            setTimeout(() => inputEl.classList.remove('field-saved'), 1500);
         } else {
-            inputEl.style.background = '#f8d7da';
+            inputEl.classList.remove('field-saving');
+            inputEl.classList.add('field-error');
+            opLog(`✗ 保存失败 #${rowId} ${colLabel}: ${json.error}`, 'err');
             showToast('保存失败: ' + json.error, 'danger');
-            setTimeout(() => { inputEl.style.background = originalBg; }, 1500);
+            setTimeout(() => inputEl.classList.remove('field-error'), 2000);
         }
     } catch (e) {
-        inputEl.style.background = '#f8d7da';
+        inputEl.classList.remove('field-saving');
+        inputEl.classList.add('field-error');
+        opLog(`✗ 请求失败 #${rowId} ${colLabel}: ${e.message}`, 'err');
         showToast('请求失败: ' + e.message, 'danger');
-        setTimeout(() => { inputEl.style.background = originalBg; }, 1500);
+        setTimeout(() => inputEl.classList.remove('field-error'), 2000);
     }
 }
 
@@ -524,12 +587,15 @@ async function deleteRecord(rowId) {
         const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${rowId}`, { method: 'DELETE' });
         const json = await res.json();
         if (json.success) {
+            opLog(`✓ 已删除 #${rowId}`, 'ok');
             showToast(`已删除 #${rowId}`, 'success');
             loadAllData();
         } else {
+            opLog(`✗ 删除失败 #${rowId}: ${json.error}`, 'err');
             showToast('删除失败: ' + json.error, 'danger');
         }
     } catch (e) {
+        opLog(`✗ 删除失败 #${rowId}: ${e.message}`, 'err');
         showToast('请求失败: ' + e.message, 'danger');
     }
 }
@@ -736,6 +802,7 @@ async function saveRow() {
         }
     }
 
+    opLog('新增中...', 'pending');
     try {
         const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
@@ -743,12 +810,15 @@ async function saveRow() {
         const json = await res.json();
         if (json.success) {
             editModal.hide();
-            showToast('新增成功', 'success');
+            opLog(`✓ 新增成功 ID=${json.id}`, 'ok');
+            showToast(`新增成功 ID=${json.id}`, 'success');
             loadAllData();
         } else {
+            opLog(`✗ 新增失败: ${json.error}`, 'err');
             showToast('保存失败: ' + json.error, 'danger');
         }
     } catch (e) {
+        opLog(`✗ 新增失败: ${e.message}`, 'err');
         showToast('请求失败: ' + e.message, 'danger');
     }
 }
