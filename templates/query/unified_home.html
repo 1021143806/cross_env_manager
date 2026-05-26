@@ -2306,19 +2306,27 @@
             modal.show();
             
             try {
+                const reqBody = { error_desc: errorDesc, status: status, limit: 100 };
                 const res = await fetch('/api/query/tasks_by_error', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ error_desc: errorDesc, status: status, limit: 100 })
+                    body: JSON.stringify(reqBody)
                 });
                 const data = await res.json();
                 
+                // 调试信息
+                let debugHtml = `<div class="small text-muted mb-2 p-2 bg-light rounded" style="font-size:0.7rem;">
+                    <div>🔍 查询参数: status=${status}, error_desc=${escapeHtml(errorDesc)}</div>
+                    <div>📡 HTTP状态: ${res.status}</div>
+                    <div>📦 返回数据: ${escapeHtml(JSON.stringify(data).substring(0, 200))}</div>
+                </div>`;
+                
                 if (!data.success || !data.tasks || data.tasks.length === 0) {
-                    body.innerHTML = '<div class="text-center text-muted py-4">暂无相关任务</div>';
+                    body.innerHTML = debugHtml + '<div class="text-center text-muted py-4">暂无相关任务</div>';
                     return;
                 }
                 
-                let html = `<div class="small text-muted mb-2">共 ${data.tasks.length} 条记录</div>
+                let html = debugHtml + `<div class="small text-muted mb-2">共 ${data.tasks.length} 条记录</div>
                     <div class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">`;
                 
                 for (const task of data.tasks) {
@@ -2330,8 +2338,8 @@
                         <div class="flex-grow-1">
                             <div><code>${task.orderId}</code> ${statusLabel}</div>
                             <div class="small text-muted">
-                                ${task.deviceNum ? `设备: ${task.deviceNum}` : ''}
-                                ${task.deviceCode ? ` · 序列号: ${task.deviceCode}` : ''}
+                                ${task.device_num ? `设备: ${task.device_num}` : ''}
+                                ${task.device_code ? ` · 序列号: ${task.device_code}` : ''}
                                 <span class="ms-2">${timeStr}</span>
                             </div>
                         </div>

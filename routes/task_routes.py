@@ -738,8 +738,13 @@ def api_tasks_by_error():
     try:
         data = request.get_json() or {}
         error_desc = data.get('error_desc', '').strip()
-        status = data.get('status', type=int)
-        limit = data.get('limit', 50)
+        status = data.get('status')
+        if status is not None:
+            try:
+                status = int(status)
+            except (ValueError, TypeError):
+                status = None
+        limit = int(data.get('limit', 50))
         
         if not error_desc and status is None:
             return jsonify({'error': '请提供 error_desc 或 status'}), 400
