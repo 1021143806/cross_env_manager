@@ -532,15 +532,15 @@ function showDuplicateAlert(duplicates, field, value) {
 }
 
 function showStatusBadge(inputEl, status, msg) {
-    // 移除旧的 badge
-    const old = inputEl.parentElement.querySelector('.status-badge');
-    if (old) old.remove();
+    // 移除所有旧的 badge
+    const parent = inputEl.parentElement;
+    parent.querySelectorAll('.status-badge').forEach(el => el.remove());
 
     const badge = document.createElement('span');
     badge.className = 'status-badge ' + status;
     badge.textContent = msg;
     badge.style.marginLeft = '6px';
-    inputEl.parentElement.appendChild(badge);
+    parent.appendChild(badge);
 
     if (status !== 'pending') {
         setTimeout(() => { badge.remove(); }, 2000);
@@ -548,6 +548,10 @@ function showStatusBadge(inputEl, status, msg) {
 }
 
 async function saveField(rowId, field, value, inputEl) {
+    // 防抖：如果正在保存中，忽略本次请求
+    if (inputEl.dataset.saving === 'true') return;
+    inputEl.dataset.saving = 'true';
+
     const colLabel = COLUMNS.find(c => c.field === field)?.label || field;
 
     // 如果是 qr_code 字段，先查重
@@ -557,6 +561,7 @@ async function saveField(rowId, field, value, inputEl) {
             showStatusBadge(inputEl, 'err', '⚠️ 已存在');
             opLog(`⚠️ 点位 "${value}" 已存在，保存取消`, 'err');
             showDuplicateAlert(dup, field, value);
+            inputEl.dataset.saving = 'false';
             return;
         }
     }
@@ -589,6 +594,8 @@ async function saveField(rowId, field, value, inputEl) {
         showStatusBadge(inputEl, 'err', '✗ 请求失败');
         opLog(`✗ 请求失败 #${rowId} ${colLabel}: ${e.message}`, 'err');
         showToast('请求失败: ' + e.message, 'danger');
+    } finally {
+        inputEl.dataset.saving = 'false';
     }
 }
 
@@ -759,6 +766,10 @@ function startEdit(td) {
     input.focus(); input.select();
 
     const save = async () => {
+        // 防抖：如果正在保存中，忽略本次请求
+        if (td.dataset.saving === 'true') return;
+        td.dataset.saving = 'true';
+
         const newVal = input.value;
         const colLabel = COLUMNS.find(c => c.field === field)?.label || field;
 
@@ -769,6 +780,7 @@ function startEdit(td) {
                 td.innerHTML = `<span class="status-badge err">⚠️ 已存在</span> ${escapeHtml(original)}`;
                 opLog(`⚠️ 点位 "${newVal}" 已存在，保存取消`, 'err');
                 showDuplicateAlert(dup, field, newVal);
+                td.dataset.saving = 'false';
                 return;
             }
         }
@@ -798,6 +810,7 @@ function startEdit(td) {
             showToast('请求失败: ' + e.message, 'danger');
             setTimeout(() => { td.textContent = original; }, 2000);
         }
+        td.dataset.saving = 'false';
     };
     input.addEventListener('blur', save);
     input.addEventListener('keydown', e => {
