@@ -96,6 +96,17 @@
     .field-saving { border-color: #198754 !important; box-shadow: 0 0 0 2px rgba(25,135,84,0.2) !important; }
     .field-saved { border-color: #198754 !important; transition: border-color 0.8s; }
     .field-error { border-color: #dc3545 !important; box-shadow: 0 0 0 2px rgba(220,53,69,0.2) !important; }
+    .status-badge {
+        display: inline-block; padding: 0.15rem 0.5rem; border-radius: 6px;
+        font-size: 0.75rem; font-weight: 500; white-space: nowrap;
+        transition: all 0.3s;
+    }
+    .status-badge.pending { background: #fff3cd; color: #856404; border: 1px solid #ffc107; }
+    .status-badge.ok { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .status-badge.err { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    [data-bs-theme="dark"] .status-badge.pending { background: #3d3200; color: #ffd970; border-color: #665500; }
+    [data-bs-theme="dark"] .status-badge.ok { background: #1a3a1a; color: #7ddf7d; border-color: #2d5a2d; }
+    [data-bs-theme="dark"] .status-badge.err { background: #3a1a1a; color: #ff7d7d; border-color: #5a2d2d; }
 </style>
 {% endblock %}
 
@@ -520,6 +531,22 @@ function showDuplicateAlert(duplicates, field, value) {
     }
 }
 
+function showStatusBadge(inputEl, status, msg) {
+    // 移除旧的 badge
+    const old = inputEl.parentElement.querySelector('.status-badge');
+    if (old) old.remove();
+
+    const badge = document.createElement('span');
+    badge.className = 'status-badge ' + status;
+    badge.textContent = msg;
+    badge.style.marginLeft = '6px';
+    inputEl.parentElement.appendChild(badge);
+
+    if (status !== 'pending') {
+        setTimeout(() => { badge.remove(); }, 2000);
+    }
+}
+
 async function saveField(rowId, field, value, inputEl) {
     const colLabel = COLUMNS.find(c => c.field === field)?.label || field;
 
@@ -527,15 +554,15 @@ async function saveField(rowId, field, value, inputEl) {
     if (field === 'qr_code' || field === 'qrCode') {
         const dup = await checkDuplicate(field, value, rowId);
         if (dup && dup.duplicate) {
-            inputEl.classList.add('field-error');
+            showStatusBadge(inputEl, 'err', '⚠️ 已存在');
             opLog(`⚠️ 点位 "${value}" 已存在，保存取消`, 'err');
             showDuplicateAlert(dup, field, value);
-            setTimeout(() => inputEl.classList.remove('field-error'), 2000);
             return;
         }
     }
 
-    // 编辑中状态
+    // 编辑中状态：圆角框
+    showStatusBadge(inputEl, 'pending', '⏳ 保存中');
     inputEl.classList.add('field-saving');
     opLog(`保存中 #${rowId} ${colLabel} → ${value}`, 'pending');
 
@@ -548,23 +575,20 @@ async function saveField(rowId, field, value, inputEl) {
         const json = await res.json();
         if (json.success) {
             inputEl.classList.remove('field-saving');
-            inputEl.classList.add('field-saved');
+            showStatusBadge(inputEl, 'ok', '✓ 已保存');
             opLog(`✓ 已保存 #${rowId} ${colLabel} → ${value}`, 'ok');
             showToast(`已保存 #${rowId} ${colLabel} → ${value}`, 'success');
-            setTimeout(() => inputEl.classList.remove('field-saved'), 1500);
         } else {
             inputEl.classList.remove('field-saving');
-            inputEl.classList.add('field-error');
+            showStatusBadge(inputEl, 'err', '✗ 保存失败');
             opLog(`✗ 保存失败 #${rowId} ${colLabel}: ${json.error}`, 'err');
             showToast('保存失败: ' + json.error, 'danger');
-            setTimeout(() => inputEl.classList.remove('field-error'), 2000);
         }
     } catch (e) {
         inputEl.classList.remove('field-saving');
-        inputEl.classList.add('field-error');
+        showStatusBadge(inputEl, 'err', '✗ 请求失败');
         opLog(`✗ 请求失败 #${rowId} ${colLabel}: ${e.message}`, 'err');
         showToast('请求失败: ' + e.message, 'danger');
-        setTimeout(() => inputEl.classList.remove('field-error'), 2000);
     }
 }
 
@@ -742,17 +766,14 @@ function startEdit(td) {
         if (field === 'qr_code' || field === 'qrCode') {
             const dup = await checkDuplicate(field, newVal, id);
             if (dup && dup.duplicate) {
-                td.textContent = original;
-                td.style.background = '#f8d7da';
+                td.innerHTML = `<span class="status-badge err">⚠️ 已存在</span> ${escapeHtml(original)}`;
                 opLog(`⚠️ 点位 "${newVal}" 已存在，保存取消`, 'err');
                 showDuplicateAlert(dup, field, newVal);
-                setTimeout(() => td.style.background = '', 2000);
                 return;
             }
         }
 
-        td.textContent = newVal;
-        td.style.background = '#fff3cd';
+        td.innerHTML = `${escapeHtml(newVal)} <span class="status-badge pending">⏳ 保存中</span>`;
         opLog(`保存中 #${id} ${colLabel} → ${newVal}`, 'pending');
         try {
             const res = await fetch(`/custom_table/api/${SERVER_KEY}/${TABLE_NAME}/row/${id}`, {
@@ -761,23 +782,21 @@ function startEdit(td) {
             });
             const json = await res.json();
             if (json.success) {
-                td.style.background = '#d4edda';
+                td.innerHTML = `${escapeHtml(newVal)} <span class="status-badge ok">✓ 已保存</span>`;
                 opLog(`✓ 已保存 #${id} ${colLabel} → ${newVal}`, 'ok');
                 showToast(`已保存 #${id} ${colLabel} → ${newVal}`, 'success');
-                setTimeout(() => td.style.background = '', 1500);
+                setTimeout(() => { td.textContent = newVal; }, 2000);
             } else {
-                td.textContent = original;
-                td.style.background = '#f8d7da';
+                td.innerHTML = `${escapeHtml(original)} <span class="status-badge err">✗ 保存失败</span>`;
                 opLog(`✗ 保存失败 #${id} ${colLabel}: ${json.error}`, 'err');
                 showToast('保存失败: ' + json.error, 'danger');
-                setTimeout(() => td.style.background = '', 2000);
+                setTimeout(() => { td.textContent = original; }, 2000);
             }
         } catch (e) {
-            td.textContent = original;
-            td.style.background = '#f8d7da';
+            td.innerHTML = `${escapeHtml(original)} <span class="status-badge err">✗ 请求失败</span>`;
             opLog(`✗ 请求失败 #${id} ${colLabel}: ${e.message}`, 'err');
             showToast('请求失败: ' + e.message, 'danger');
-            setTimeout(() => td.style.background = '', 2000);
+            setTimeout(() => { td.textContent = original; }, 2000);
         }
     };
     input.addEventListener('blur', save);
