@@ -5,7 +5,7 @@
 """
 
 # 任务查询模块版本号（修改本文件时递增末尾数字）
-TASK_VERSION = '2.1.6'
+TASK_VERSION = '2.3.0'
 
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session
 from functools import wraps
@@ -288,21 +288,44 @@ def api_device_tasks():
         device_code = None
         status_priority = ['6', '7', '5', '9', '4', '3', '2', '1', '8']
         step1_attempts = []
+        recent_tasks = []  # 最近任务列表
+        seen_order_ids = set()
+        MAX_RECENT = 5
+        
         for status in status_priority:
+            if len(recent_tasks) >= MAX_RECENT:
+                break
             res, debug = _api_post_with_debug('/crossTask/query', {
-                "taskStatus": status, "deviceNum": device_num, "pageSize": 1, "pageNo": 1
+                "taskStatus": status, "deviceNum": device_num, "pageSize": MAX_RECENT, "pageNo": 1
             })
             debug['query_status'] = status
             step1_attempts.append(debug)
             if res and res.get('code') == 1000 and res.get('data', {}).get('list'):
-                task = res['data']['list'][0]
-                order_id = task.get('orderId', '')
-                device_code = task.get('deviceCode', '')
-                break
+                for task in res['data']['list']:
+                    oid = task.get('orderId', '')
+                    if oid and oid not in seen_order_ids:
+                        seen_order_ids.add(oid)
+                        recent_tasks.append({
+                            "orderId": oid,
+                            "deviceCode": task.get('deviceCode', ''),
+                            "taskStatus": task.get('taskStatus', status),
+                            "taskStatusName": task.get('taskStatusName', ''),
+                            "createTime": task.get('createTime', ''),
+                            "modelProcessName": task.get('modelProcessName', ''),
+                            "areaId": task.get('areaId', '')
+                        })
+                        if len(recent_tasks) >= MAX_RECENT:
+                            break
+        
+        # 默认取第一条作为当前查询目标
+        if recent_tasks:
+            order_id = recent_tasks[0]['orderId']
+            device_code = recent_tasks[0]['deviceCode']
         
         query_debug['step1_find_order'] = {
-            "description": f"按设备号 {device_num} 查询任务单号",
-            "attempts": step1_attempts, "result_order_id": order_id, "result_device_code": device_code
+            "description": f"按设备号 {device_num} 查询任务单号（最近{MAX_RECENT}条）",
+            "attempts": step1_attempts, "result_order_id": order_id, "result_device_code": device_code,
+            "recent_tasks_count": len(recent_tasks)
         }
         
         if not order_id:
@@ -401,10 +424,202 @@ def api_device_tasks():
         return jsonify({
             'success': True, 'device_num': device_num, 'device_code': device_code,
             'order_id': order_id, 'baseUrl': base_url, 'mainTask': main_task,
-            'subTasks': sub_tasks_sorted, 'device_statuses': device_statuses, 'query_debug': query_debug
+            'subTasks': sub_tasks_sorted, 'device_statuses': device_statuses, 'query_debug': query_debug,
+            'recent_tasks': recent_tasks
         })
     except Exception as e:
         return jsonify({'error': f'查询失败: {str(e)}'}), 500
+
+# ========== 深度查询辅助函数（step2~step4，供 device_task_detail 和 order_tasks 复用） ==========
+
+def _deep_query_by_order_id(order_id, base_url, device_code=None, server_ip="10.68.2.32"):
+    """根据 orderId 执行 step2~step4 深度查询，返回完整结果字典"""
+    import urllib.request as _urllib
+    import json as _json
+    import time as _time
+    
+    query_debug = {}
+    
+    def _api_post_with_debug(path, body, timeout=15):
+        url = f"{base_url}{path}"
+        t0 = _time.time()
+        try:
+            req = _urllib.Request(url, data=_json.dumps(body).encode('utf-8'),
+                headers={'Content-Type': 'application/json'})
+            resp = _urllib.urlopen(req, timeout=timeout)
+            elapsed_ms = round((_time.time() - t0) * 1000, 1)
+            raw = resp.read().decode('utf-8')
+            data = _json.loads(raw)
+            return data, {"request_url": url, "request_body": body, "response_body": data,
+                "http_status": resp.getcode(), "elapsed_ms": elapsed_ms, "success": True}
+        except Exception as e:
+            elapsed_ms = round((_time.time() - t0) * 1000, 1)
+            return None, {"request_url": url, "request_body": body, "response_body": None,
+                "http_status": None, "elapsed_ms": elapsed_ms, "success": False, "error": str(e)}
+    
+    # step2: 查询主任务
+    main_task = None
+    main_res, step2_debug = _api_post_with_debug('/crossTask/query', {"orderId": order_id, "pageSize": 1, "pageNo": 1})
+    query_debug['step2_main_task'] = {"description": f"查询主任务 orderId={order_id}", **step2_debug}
+    if main_res and main_res.get('code') == 1000 and main_res.get('data', {}).get('list'):
+        main_task = main_res['data']['list'][0]
+    
+    if not main_task:
+        return {
+            'success': False,
+            'error': f'未找到该任务单号 {order_id} 对应的主任务（远程API step2返回空）',
+            'order_id': order_id,
+            'baseUrl': base_url,
+            'query_debug': query_debug
+        }
+    
+    # 从主任务提取 device_code（如果未传入）
+    if not device_code:
+        device_code = main_task.get('deviceCode') or main_task.get('device_code') or ''
+    
+    # enrich 主任务
+    task_query_extended.enrich_task_dict(main_task, device_code)
+    
+    # step3: 查询子任务
+    sub_tasks_sorted = []
+    detail_res, step3_debug = _api_post_with_debug('/crossTask/detail', {"id": main_task['id']})
+    query_debug['step3_sub_tasks'] = {"description": f"查询子任务 main_task.id={main_task['id']}", **step3_debug}
+    if detail_res and detail_res.get('code') == 1000 and detail_res.get('data'):
+        sub_tasks_sorted = sorted(detail_res['data'], key=lambda x: x.get('taskSeq', 0))
+    
+    for task in sub_tasks_sorted:
+        task_query_extended.enrich_task_dict(task)
+    
+    # step4: 查询设备实时状态
+    device_statuses = []
+    seen_servers = set()
+    step4_details = []
+    
+    for task in sub_tasks_sorted:
+        service_url = task.get('serviceUrl', task.get('service_url', ''))
+        if not service_url or service_url in seen_servers:
+            continue
+        seen_servers.add(service_url)
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(service_url)
+            task_server_ip = parsed.hostname
+        except:
+            task_server_ip = server_ip
+        area_id = task.get('areaId', task.get('area_id', '0'))
+        area_id_source = 'sub_task'
+        if area_id == '0' and device_code:
+            try:
+                area_info = task_query_extended.get_device_area_from_server(task_server_ip, device_code)
+                if area_info and not area_info.get('error') and area_info.get('area_id') is not None:
+                    db_area = str(area_info['area_id'])
+                    if db_area != '0':
+                        area_id = db_area
+                        area_id_source = 'agv_robot_ext'
+            except Exception:
+                pass
+        status_info = task_query_extended.query_device_status_via_service(service_url, area_id, device_code)
+        status_info['service_url'] = service_url
+        status_info['server_ip'] = task_server_ip
+        status_info['area_id'] = area_id
+        status_info['area_id_source'] = area_id_source
+        device_statuses.append(status_info)
+        step4_details.append({
+            "server_ip": task_server_ip, "service_url": service_url, "area_id": area_id,
+            "area_id_source": area_id_source,
+            "device_code": device_code, "request_url": status_info.get('request_url', ''),
+            "request_body": status_info.get('request_body', {}),
+            "response_body": status_info.get('response_body'),
+            "http_status": status_info.get('http_status'),
+            "elapsed_ms": status_info.get('elapsed_ms'),
+            "state": status_info.get('state', '查询失败'),
+            "error": status_info.get('error', '')
+        })
+    
+    query_debug['step4_device_status'] = {
+        "description": f"查询设备实时状态（{len(step4_details)}个服务器）", "servers": step4_details
+    }
+    
+    total_elapsed = sum(d.get('elapsed_ms', 0) for d in [step2_debug, step3_debug])
+    total_elapsed += sum(s.get('elapsed_ms', 0) for s in step4_details)
+    query_debug['total_elapsed_ms'] = round(total_elapsed, 1)
+    
+    return {
+        'success': True,
+        'order_id': order_id,
+        'device_code': device_code,
+        'baseUrl': base_url,
+        'mainTask': main_task,
+        'subTasks': sub_tasks_sorted,
+        'device_statuses': device_statuses,
+        'query_debug': query_debug
+    }
+
+
+@task_bp.route('/api/query/device_task_detail', methods=['POST'])
+@login_required
+def api_device_task_detail():
+    """根据 orderId 获取深度查询结果（需求1：设备号查询切换任务时使用）"""
+    try:
+        data = request.get_json() or {}
+        order_id = data.get('order_id', '').strip()
+        server_ip = data.get('server_ip', '').strip()
+        device_code = data.get('device_code', '').strip()
+        
+        if not order_id:
+            return jsonify({'error': '请输入任务单号'}), 400
+        
+        if server_ip and len(server_ip) < 4:
+            server_ip = f"10.68.2.{server_ip}"
+        if not server_ip:
+            server_ip = "10.68.2.32"
+        
+        base_url = f"http://{server_ip}:8315"
+        result = _deep_query_by_order_id(order_id, base_url, device_code, server_ip)
+        
+        if not result.get('success'):
+            return jsonify(result), 404
+        
+        write_query_log('device_task_detail',
+            f'设备任务详情查询: order_id={order_id}, 子任务 {len(result.get("subTasks", []))}个',
+            'info', {'order_id': order_id})
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': f'查询失败: {str(e)}'}), 500
+
+
+@task_bp.route('/api/query/order_tasks', methods=['POST'])
+@login_required
+def api_order_tasks():
+    """按 orderId 查询任务详情 + 设备实时状态（需求3：任务单号查询展示设备状态）"""
+    try:
+        data = request.get_json() or {}
+        order_id = data.get('order_id', '').strip()
+        server_ip = data.get('server_ip', '').strip()
+        
+        if not order_id:
+            return jsonify({'error': '请输入任务单号'}), 400
+        
+        if server_ip and len(server_ip) < 4:
+            server_ip = f"10.68.2.{server_ip}"
+        if not server_ip:
+            server_ip = "10.68.2.32"
+        
+        base_url = f"http://{server_ip}:8315"
+        result = _deep_query_by_order_id(order_id, base_url, server_ip=server_ip)
+        
+        if not result.get('success'):
+            return jsonify(result), 404
+        
+        write_query_log('order_tasks',
+            f'任务单号查询: {order_id}, 子任务 {len(result.get("subTasks", []))}个, 设备状态 {len(result.get("device_statuses", []))}个服务器',
+            'info', {'order_id': order_id})
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': f'查询失败: {str(e)}'}), 500
+
 
 # ========== 任务重发 API ==========
 
@@ -481,6 +696,58 @@ def resend_task():
         return jsonify(result)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@task_bp.route('/api/task/resend/stream')
+@login_required
+@admin_required
+def resend_task_stream():
+    """
+    SSE 端点：任务重发实时流
+    每步推送一条 SSE 消息，前端实时展示进度动画
+    """
+    from flask import Response, stream_with_context
+    
+    order_id = request.args.get('order_id', '').strip()
+    sub_order_id = request.args.get('sub_order_id', '').strip()
+    task_seq = request.args.get('task_seq', type=int)
+    
+    if not order_id or not sub_order_id or task_seq is None:
+        return jsonify({'error': '缺少参数'}), 400
+    
+    def generate():
+        import json as _json
+        for msg in task_query_extended.resend_cross_task_stream(sub_order_id, order_id, task_seq):
+            yield f"data: {_json.dumps(msg, ensure_ascii=False)}\n\n"
+    
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive'
+        }
+    )
+
+
+@task_bp.route('/api/query/tasks_by_error', methods=['POST'])
+@login_required
+def api_tasks_by_error():
+    """根据错误描述查询当天的问题任务列表"""
+    try:
+        data = request.get_json() or {}
+        error_desc = data.get('error_desc', '').strip()
+        status = data.get('status', type=int)
+        limit = data.get('limit', 50)
+        
+        if not error_desc and status is None:
+            return jsonify({'error': '请提供 error_desc 或 status'}), 400
+        
+        result = task_query_extended.query_tasks_by_error(error_desc, status, limit)
+        return jsonify({'success': True, 'tasks': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ========== 查询日志 API（在 app.py 中定义，避免蓝图 endpoint 冲突） ==========

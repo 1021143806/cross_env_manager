@@ -31,10 +31,117 @@ echo "用户: $(whoami)"
 echo "时间: $(date)"
 echo "========================================"
 
+# ---- 内部函数：源码编译 Python 3.9 ----
+_compile_python() {
+    local SRC_DIR="$DEPLOY_DIR/centos7_rpms"
+    local SRC_TAR="$SRC_DIR/Python-3.9.20.tar.xz"
+    local PREFIX="/usr/local/python3"
+
+    if [ ! -f "$SRC_TAR" ]; then
+        echo "   ❌ 未找到 Python 源码包: $SRC_TAR"
+        exit 1
+    fi
+
+    echo "   源码编译 Python 3.9 (约 5-15 分钟)..."
+    echo "   检查编译依赖..."
+
+    # 尝试从 centos7_rpms 安装缺失的 devel 包
+    for rpm_pkg in openssl-devel bzip2-devel libffi-devel; do
+        if ! rpm -qa | grep -q "^${rpm_pkg}-"; then
+            local rpm_file=$(ls "$SRC_DIR/${rpm_pkg}"*.rpm 2>/dev/null | head -1)
+            if [ -f "$rpm_file" ]; then
+                echo "   安装 $rpm_pkg..."
+                rpm -ivh "$rpm_file" --nodeps 2>/dev/null || true
+            fi
+        fi
+    done
+
+    local MISSING=""
+    command -v gcc &>/dev/null || MISSING="$MISSING gcc"
+    command -v make &>/dev/null || MISSING="$MISSING make"
+    if [ -n "$MISSING" ]; then
+        echo "   ❌ 缺少编译依赖:$MISSING"
+        echo "   CentOS 7 通常已预装 gcc/make，请检查"
+        exit 1
+    fi
+
+    echo "   解压源码..."
+    tar -xf "$SRC_TAR" -C /tmp/
+
+    cd /tmp/Python-3.9.20
+    echo "   配置..."
+    ./configure --prefix="$PREFIX" --enable-optimizations --with-ensurepip=install 2>&1 | tail -1
+    echo "   编译中..."
+    make -j$(nproc) 2>&1 | tail -1
+    echo "   安装..."
+    make install 2>&1 | tail -1
+
+    cd "$PROJECT_DIR"
+    rm -rf /tmp/Python-3.9.20
+
+    if [ -x "$PREFIX/bin/python3" ]; then
+        PYTHON3="$PREFIX/bin/python3"
+        echo "   ✅ Python 3.9 编译安装成功: $PYTHON3"
+    else
+        echo "   ❌ 编译安装失败"
+        exit 1
+    fi
+}
+
 # ---- 1. 检查环境 ----
 echo ""
 echo "1. 检查环境..."
-echo "   Python版本: $(python3 --version 2>&1)"
+
+# 自动检测 python3 路径
+if [ -n "$PYTHON3_PATH" ] && [ -x "$PYTHON3_PATH" ]; then
+    PYTHON3="$PYTHON3_PATH"
+elif command -v python3 &>/dev/null; then
+    PYTHON3="python3"
+elif [ -x "/opt/rh/rh-python39/root/bin/python3" ]; then
+    PYTHON3="/opt/rh/rh-python39/root/bin/python3"
+elif [ -x "/usr/local/bin/python3" ]; then
+    PYTHON3="/usr/local/bin/python3"
+else
+    echo "   ❌ 未找到 python3"
+
+    # 尝试从预编译包解压 Python 3.9
+    SCL_RPM_DIR="$DEPLOY_DIR/centos7_rpms"
+    PYTHON_TGZ="$SCL_RPM_DIR/python39_build.tar.gz"
+    PYTHON_PREFIX="/usr/local/python3"
+
+    if [ -f "$PYTHON_TGZ" ]; then
+        echo "   检测到预编译 Python 3.9 包，解压安装..."
+        tar -xzf "$PYTHON_TGZ" -C /usr/local/
+        if [ -d /usr/local/python39_build ] && [ ! -d "$PYTHON_PREFIX" ]; then
+            mv /usr/local/python39_build "$PYTHON_PREFIX"
+        fi
+        if [ -x "$PYTHON_PREFIX/bin/python3" ]; then
+            # 验证 glibc 兼容性
+            if $PYTHON_PREFIX/bin/python3 --version &>/dev/null; then
+                PYTHON3="$PYTHON_PREFIX/bin/python3"
+                echo "   ✅ Python 3.9 安装成功: $PYTHON3"
+            else
+                echo "   ⚠️  预编译包 glibc 不兼容，尝试源码编译..."
+                rm -rf "$PYTHON_PREFIX" /usr/local/python39_build 2>/dev/null
+                _compile_python
+            fi
+        else
+            echo "   ❌ 解压后未找到 python3"
+            exit 1
+        fi
+    elif [ -f "$SCL_RPM_DIR/Python-3.9.20.tar.xz" ]; then
+        _compile_python
+    else
+        echo "   请安装 Python 3.9+:"
+        echo "   在线安装: yum install -y centos-release-scl-rh && yum install -y rh-python39"
+        echo "   离线安装: 将 python39_build.tar.gz 放入 $SCL_RPM_DIR/ 目录"
+        echo "   或设置 PYTHON3_PATH 指向 python3 路径"
+        exit 1
+    fi
+fi
+
+echo "   Python: $($PYTHON3 --version 2>&1)"
+echo "   Python路径: $PYTHON3"
 echo "   项目目录: $PROJECT_DIR"
 echo "   部署目录: $DEPLOY_DIR"
 
@@ -43,6 +150,14 @@ if [ ! -f "src/postlook/app.py" ]; then
     exit 1
 fi
 echo "   ✅ 项目文件检查通过"
+
+# 初始化配置文件（不存在或为空时从模板复制）
+if [ ! -f "config/env.toml" ] || [ ! -s "config/env.toml" ]; then
+    if [ -f "config/template/env.toml" ]; then
+        cp config/template/env.toml config/env.toml
+        echo "   ✅ 配置文件已从模板初始化: config/env.toml"
+    fi
+fi
 
 # ---- 2. 检查离线依赖包 ----
 echo ""
@@ -59,7 +174,7 @@ WHL_COUNT=$(find "$VENDOR_PATH" -name "*.whl" | wc -l)
 echo "   离线包数量: $WHL_COUNT"
 
 # 检查关键包
-KEY_PACKAGES=("fastapi" "uvicorn" "pydantic" "starlette" "anyio")
+KEY_PACKAGES=("fastapi" "uvicorn" "pydantic" "starlette" "anyio" "tomli")
 for pkg in "${KEY_PACKAGES[@]}"; do
     file=$(find "$VENDOR_PATH" -type f -iname "*${pkg}*.whl" | head -1)
     if [ -f "$file" ]; then
@@ -74,7 +189,7 @@ done
 echo ""
 echo "3. 清理并创建虚拟环境..."
 rm -rf "$VENV_DIR" 2>/dev/null || true
-python3 -m venv "$VENV_DIR"
+$PYTHON3 -m venv "$VENV_DIR"
 
 if [ ! -f "$VENV_DIR/bin/python" ]; then
     echo "   ❌ 虚拟环境创建失败"
@@ -92,7 +207,7 @@ echo ""
 echo "5. 安装离线依赖包..."
 echo "   安装策略: 从本地 vendor_packages 离线安装"
 
-if pip install --no-index --find-links="$VENDOR_PATH" fastapi uvicorn pydantic starlette anyio 2>/dev/null; then
+if pip install --no-index --find-links="$VENDOR_PATH" fastapi uvicorn pydantic starlette anyio tomli 2>/dev/null; then
     echo "   ✅ 批量依赖安装成功"
 else
     echo "   ⚠️  批量安装失败，尝试逐个安装..."
@@ -132,12 +247,13 @@ SUPERVISOR_CONF="$SUPERVISOR_CONF_DIR/${PROJECT_NAME}.conf"
 LOG_PATH="$LOG_DIR"
 
 mkdir -p "$LOG_PATH" 2>/dev/null || true
+# 确保日志目录属于 supervisor 运行用户
+chown "$SUPERVISOR_USER:$SUPERVISOR_USER" "$LOG_PATH" 2>/dev/null || true
 
-# 构建 uvicorn 启动命令
+# 构建 uvicorn 启动命令（使用 venv 的 python，兼容 CentOS 7 SCL）
+UVICORN_CMD="$PROJECT_DIR/$VENV_DIR/bin/python -m uvicorn $APP_MODULE --host $SERVER_HOST --port $APP_PORT"
 if [ "$RELOAD_MODE" = "true" ]; then
-    UVICORN_CMD="$PROJECT_DIR/$VENV_DIR/bin/uvicorn $APP_MODULE --host $SERVER_HOST --port $APP_PORT --reload"
-else
-    UVICORN_CMD="$PROJECT_DIR/$VENV_DIR/bin/uvicorn $APP_MODULE --host $SERVER_HOST --port $APP_PORT"
+    UVICORN_CMD="$UVICORN_CMD --reload"
 fi
 
 if [ -f "$SUPERVISOR_CONF" ]; then

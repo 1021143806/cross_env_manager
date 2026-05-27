@@ -15,8 +15,7 @@ dev/
 # 计划文档
 plans/
 
-# 离线依赖包（体积大，不提交）
-deploy/vendor_packages/
+# 离线依赖包（需提交，离线部署必需）
 
 # Python
 __pycache__/

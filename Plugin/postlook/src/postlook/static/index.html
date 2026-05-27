@@ -70,14 +70,14 @@
                 <form id="logForm" class="glass-card">
                     <div class="form-grid">
                         <div class="form-group">
-                            <label for="folder">目录路径</label>
-                            <input type="text" id="folder" name="folder" placeholder="例如: 2025-05 或 /var/log/app" required>
-                            <span class="form-hint">相对于 POSTLOOK_ROOT 的子目录或白名单内的绝对路径</span>
+                            <label for="folder">目录或文件路径</label>
+                            <input type="text" id="folder" name="folder" placeholder="目录: /var/log  文件: /var/log/app.log" required>
+                            <span class="form-hint">白名单内的目录（配合通配符搜索）或直接指定文件路径</span>
                         </div>
                         <div class="form-group">
                             <label for="pattern">文件名匹配</label>
                             <input type="text" id="pattern" name="pattern" value="*.log" placeholder="*.log">
-                            <span class="form-hint">支持通配符，如 *.log, error*.txt</span>
+                            <span class="form-hint">目录模式下生效，支持通配符如 *.log；文件模式下忽略</span>
                         </div>
                         <div class="form-group">
                             <label for="keyword">搜索关键字</label>
@@ -85,9 +85,14 @@
                             <span class="form-hint">留空则返回文件尾部或头部行</span>
                         </div>
                         <div class="form-group">
-                            <label for="lines">返回行数</label>
-                            <input type="number" id="lines" name="lines" value="50" min="1" max="100">
-                            <span class="form-hint">1-100，默认 50</span>
+                            <label for="line_start">起始行号</label>
+                            <input type="number" id="line_start" name="line_start" value="1" min="1">
+                            <span class="form-hint">从第几行开始读取，默认 1</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="line_end">结束行号</label>
+                            <input type="number" id="line_end" name="line_end" value="100" min="1">
+                            <span class="form-hint">到第几行结束（含），默认 100</span>
                         </div>
                         <div class="form-group">
                             <label for="tail">读取方向</label>
@@ -95,7 +100,7 @@
                                 <option value="true" selected>文件尾部 (tail)</option>
                                 <option value="false">文件头部 (head)</option>
                             </select>
-                            <span class="form-hint">有关键字时忽略此设置</span>
+                            <span class="form-hint">无行号范围时生效，有关键字时忽略</span>
                         </div>
                         <div class="form-group">
                             <label for="recent_files">最近文件数</label>
@@ -149,6 +154,20 @@
                             保存配置
                         </button>
                     </div>
+
+                    <!-- 日志目录扫描 -->
+                    <div class="scan-section">
+                        <div class="scan-header">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <span>扫描日志目录</span>
+                        </div>
+                        <div class="scan-input-row">
+                            <input type="text" id="scanBase" placeholder="输入基础路径，如 /main/app/" value="/main/app/">
+                            <button id="scanBtn" class="btn-secondary">扫描</button>
+                        </div>
+                        <div id="scanResults" class="scan-results"></div>
+                    </div>
+
                     <textarea id="configEditor" rows="18" placeholder="# postlook 配置文件 (TOML 格式)
 # 在此编辑配置内容...
 

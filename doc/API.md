@@ -1,6 +1,6 @@
 # 跨环境任务模板管理系统 - API 接口文档
 
-> 版本: 1.2 | 最后更新: 2026-04-27 | 基础路径: `http://{host}:5000`
+> 版本: 1.3 | 最后更新: 2026-05-22 | 基础路径: `http://{host}:5000`
 
 ---
 
@@ -15,6 +15,7 @@
 7. [配置管理 API](#7-配置管理-api)
 8. [认证 API](#8-认证-api)
 9. [系统 API](#9-系统-api)
+10. [定制表编辑 API](#10-定制表编辑-api)
 
 ---
 
@@ -660,3 +661,93 @@ GET /api/stats/main_task_status
   ]
 }
 ```
+
+---
+
+## 10. 定制表编辑 API
+
+> 配置驱动，支持跨服务器、跨数据库的通用表编辑功能。
+> 配置文件: `config/custom_tables.toml`
+
+### 10.1 定制表首页
+```
+GET /custom_table
+```
+返回服务器卡片选择页。
+
+### 10.2 表编辑器页面
+```
+GET /custom_table/{server_key}/{table_name}
+```
+返回指定服务器和表的编辑器页面。
+
+### 10.3 查询表数据
+```
+GET /api/custom_table/{server_key}/{table_name}/rows
+```
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| page | int | 否 | 页码，默认1 |
+| page_size | int | 否 | 每页条数，默认25 |
+| search | string | 否 | 搜索关键词 |
+| search_field | string | 否 | 指定搜索字段 |
+| order_by | string | 否 | 排序字段 |
+| order_dir | string | 否 | 排序方向 asc/desc |
+| group_by | string | 否 | 分组字段 |
+
+**响应示例:**
+```json
+{
+  "success": true,
+  "data": {
+    "rows": [{"id": 1, "qr_code": "59006462", "target_shop": "2.19_3F"}],
+    "total": 219,
+    "page": 1,
+    "page_size": 25,
+    "total_pages": 9,
+    "groups": [{"_group": "2.19_1F", "_count": 40}]
+  }
+}
+```
+
+### 10.4 新增行
+```
+POST /api/custom_table/{server_key}/{table_name}/row
+```
+**请求体:** `{"qr_code": "...", "target_shop": "...", ...}`
+
+**响应:** `{"success": true, "id": 228}`
+
+### 10.5 更新行
+```
+PUT /api/custom_table/{server_key}/{table_name}/row/{pk_value}
+```
+**请求体:** `{"off_shelf_template": "xialiaoDE01-XXX"}`
+
+**响应:** `{"success": true, "message": "已更新 1 行"}`
+
+### 10.6 删除行
+```
+DELETE /api/custom_table/{server_key}/{table_name}/row/{pk_value}
+```
+**响应:** `{"success": true, "message": "已删除 1 行"}`
+
+### 10.7 批量更新
+```
+PUT /api/custom_table/{server_key}/{table_name}/batch_update
+```
+**请求体:** `{"_group_field": "target_shop", "_group_value": "2.19_1F", "off_shelf_template": "xxx"}`
+
+**响应:** `{"success": true, "message": "已批量更新 40 行"}`
+
+### 10.8 导出 CSV
+```
+GET /api/custom_table/{server_key}/{table_name}/export?search=xxx
+```
+返回 CSV 文件下载。
+
+### 10.9 获取分组值
+```
+GET /api/custom_table/{server_key}/{table_name}/groups?field=target_shop
+```
+**响应:** `{"success": true, "data": ["2.19_1F", "2.19_3F", ...]}`

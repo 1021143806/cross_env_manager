@@ -1,0 +1,509 @@
+{% extends "base.html" %}
+
+{% block title %}定制表编辑 - 跨环境任务管理系统{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-edit.png?v=1">
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .config-section {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+    }
+    .config-section .section-header {
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex; align-items: center; justify-content: space-between;
+    }
+    .config-section .section-body { padding: 1.25rem; }
+    .server-card-visual {
+        background: var(--detail-card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        margin-bottom: 1rem;
+        overflow: hidden;
+    }
+    .server-card-visual .server-header {
+        padding: 0.6rem 1rem;
+        background: var(--card-bg);
+        border-bottom: 1px solid var(--border-color);
+        display: flex; align-items: center; justify-content: space-between;
+    }
+    .server-card-visual .server-body { padding: 1rem; }
+    .server-card-visual input, .server-card-visual select {
+        background: var(--bg-color);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        border-radius: 6px; padding: 0.35rem 0.5rem; font-size: 0.85rem;
+    }
+    .server-card-visual input:focus { border-color: var(--primary-color, #0d6efd); outline: none; box-shadow: 0 0 0 2px rgba(13,110,253,0.15); }
+    .table-card {
+        background: var(--bg-color);
+        border: 1px dashed var(--border-color);
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin-top: 0.5rem;
+    }
+    .table-card .table-header {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 0.5rem;
+    }
+    .column-row {
+        display: flex; align-items: center; gap: 0.35rem;
+        padding: 0.25rem 0; font-size: 0.8rem;
+    }
+    .column-row input, .column-row select { font-size: 0.8rem; padding: 0.2rem 0.35rem; }
+    .nav-tabs .nav-link { color: var(--text-color); }
+    .nav-tabs .nav-link.active { background: var(--card-bg); border-color: var(--border-color); color: var(--text-color); }
+    .tab-content { background: var(--card-bg); border: 1px solid var(--border-color); border-top: none; border-radius: 0 0 12px 12px; padding: 1.25rem; }
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 8px; overflow: auto; max-height: 500px; }
+    .backup-item {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0.75rem; margin-bottom: 0.5rem;
+        background: var(--detail-card-bg); border-radius: 8px;
+        border: 1px solid var(--border-color);
+    }
+    .backup-item:hover { border-color: var(--primary-color); }
+    .toast-container { z-index: 9999; }
+    .server-entry-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+        border: 1px solid var(--border-color);
+        cursor: pointer;
+    }
+    .server-entry-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0"><i class="bi bi-table me-2"></i>定制表编辑</h4>
+        <div>
+            <button class="btn btn-outline-primary btn-sm me-1" onclick="toggleConfigPanel()">
+                <i class="bi bi-gear me-1"></i>配置管理
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">
+                <i class="bi bi-arrow-clockwise me-1"></i>刷新
+            </button>
+        </div>
+    </div>
+
+    {# ========== 服务器入口卡片 ========== #}
+    <div class="config-section">
+        <div class="section-header">
+            <span><i class="bi bi-server me-2"></i><strong>服务器列表</strong> — 点击进入数据编辑</span>
+        </div>
+        <div class="section-body">
+            <div class="row g-3" id="serverEntryList">
+                <div class="text-center text-muted py-3 w-100">加载中...</div>
+            </div>
+        </div>
+    </div>
+
+    {# ========== 配置管理（默认隐藏） ========== #}
+    <div class="config-section" id="configPanel" style="display:none;">
+        <div class="section-header">
+            <span><i class="bi bi-gear me-2"></i><strong>配置管理</strong></span>
+            <div>
+                <button class="btn btn-success btn-sm me-1" onclick="saveConfig()"><i class="bi bi-check-lg me-1"></i>保存配置</button>
+                <button class="btn btn-outline-secondary btn-sm" onclick="toggleConfigPanel()"><i class="bi bi-x-lg"></i></button>
+            </div>
+        </div>
+        <div class="section-body p-0">
+            <ul class="nav nav-tabs" id="configTabs" role="tablist" style="padding: 0 1.25rem; background: var(--detail-card-bg);">
+                <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#visualTab">可视化编辑</button></li>
+                <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#sourceTab">源文件编辑</button></li>
+                <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#backupTab">备份恢复</button></li>
+            </ul>
+            <div class="tab-content" style="border:none;">
+                <div class="tab-pane fade show active" id="visualTab">
+                    <div id="serverList"></div>
+                    <button class="btn btn-primary mt-2" onclick="addServer()"><i class="bi bi-plus-lg"></i> 新增服务器</button>
+                </div>
+                <div class="tab-pane fade" id="sourceTab">
+                    <textarea id="sourceEditor" class="form-control" rows="18"
+                              style="font-family: monospace; background: #1e1e1e; color: #d4d4d4; border: 1px solid var(--border-color);"></textarea>
+                    <button class="btn btn-warning mt-2" onclick="applySource()"><i class="bi bi-arrow-left-right me-1"></i>应用到可视化编辑器</button>
+                </div>
+                <div class="tab-pane fade" id="backupTab">
+                    <div class="d-flex gap-2 mb-3">
+                        <button class="btn btn-primary" onclick="createBackup()"><i class="bi bi-save me-1"></i>创建备份</button>
+                        <button class="btn btn-outline-info" onclick="loadBackups()"><i class="bi bi-arrow-clockwise me-1"></i>刷新</button>
+                    </div>
+                    <div id="backupList"><div class="text-center text-muted py-3">加载中...</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="toastContainer" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let configToml = '';
+let configData = { servers: [] };
+
+document.addEventListener('DOMContentLoaded', () => loadConfig());
+
+function toggleConfigPanel() {
+    const panel = document.getElementById('configPanel');
+    panel.style.display = panel.style.display === 'none' ? '' : 'none';
+}
+
+function showToast(msg, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    const id = 'toast_' + Date.now();
+    const bg = { success: 'bg-success', danger: 'bg-danger', warning: 'bg-warning', info: 'bg-info' }[type] || 'bg-info';
+    container.innerHTML += `<div id="${id}" class="toast align-items-center text-white ${bg} border-0" role="alert">
+        <div class="d-flex"><div class="toast-body">${msg}</div>
+        <button class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`;
+    const el = document.getElementById(id);
+    const toast = new bootstrap.Toast(el, { delay: 3000 });
+    toast.show();
+    el.addEventListener('hidden.bs.toast', () => el.remove());
+}
+
+// ============================================================
+// 配置加载
+// ============================================================
+async function loadConfig() {
+    try {
+        const res = await fetch('/custom_table/api/config');
+        const json = await res.json();
+        if (!json.success) { showToast('加载失败: ' + json.error, 'danger'); return; }
+        configToml = json.content || '';
+        document.getElementById('sourceEditor').value = configToml;
+        parseTomlToData(configToml);
+        renderServerEntries();
+        renderVisualEditor();
+        loadBackups();
+    } catch (e) { showToast('加载失败: ' + e.message, 'danger'); }
+}
+
+function parseTomlToData(toml) {
+    configData = { servers: [] };
+    const lines = toml.split('\n');
+    let currentServer = null, currentTable = null, inColumns = false;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line || line.startsWith('#')) continue;
+
+        if (line.startsWith('[[servers]]')) {
+            if (currentServer) configData.servers.push(currentServer);
+            currentServer = { key: '', name: '', host: '', port: 3306, user: '', password: '', database: '', charset: 'utf8mb4', tables: [] };
+            currentTable = null; inColumns = false;
+        } else if (line.startsWith('[[servers.tables]]')) {
+            currentTable = { table_name: '', display_name: '', primary_key: 'id', page_size: 25, group_by: '', columns: [] };
+            if (currentServer) currentServer.tables.push(currentTable);
+            inColumns = false;
+        } else if (line.startsWith('columns = [')) {
+            inColumns = true;
+        } else if (inColumns && line === ']') {
+            inColumns = false;
+        } else if (inColumns && line.includes('field =')) {
+            const col = {};
+            const fm = line.match(/field\s*=\s*"([^"]+)"/); if (fm) col.field = fm[1];
+            const lm = line.match(/label\s*=\s*"([^"]+)"/); if (lm) col.label = lm[1];
+            const tm = line.match(/type\s*=\s*"([^"]+)"/); if (tm) col.type = tm[1];
+            col.readonly = line.includes('readonly = true');
+            col.required = line.includes('required = true');
+            col.hidden = line.includes('hidden = true');
+            const wm = line.match(/width\s*=\s*"([^"]+)"/); if (wm) col.width = wm[1];
+            if (currentTable) currentTable.columns.push(col);
+        } else if (line.includes('=') && !inColumns) {
+            const m = line.match(/^(\w+)\s*=\s*"?([^"]*)"?/);
+            if (m) {
+                const key = m[1], val = m[2];
+                if (currentTable) {
+                    if (['table_name','display_name','primary_key','group_by'].includes(key)) currentTable[key] = val;
+                    else if (key === 'page_size') currentTable[key] = parseInt(val) || 25;
+                } else if (currentServer) {
+                    if (key === 'port') currentServer[key] = parseInt(val) || 3306;
+                    else if (['key','name','host','user','password','database','charset'].includes(key)) currentServer[key] = val;
+                }
+            }
+        }
+    }
+    if (currentServer) configData.servers.push(currentServer);
+}
+
+function dataToToml() {
+    let lines = ['# 跨环境定制表编辑 — 服务器和表配置', '# 通过 Web 界面可视化编辑，也可直接修改此文件', ''];
+    for (const s of configData.servers) {
+        lines.push('[[servers]]');
+        lines.push(`key = "${s.key || ''}"`);
+        lines.push(`name = "${s.name || ''}"`);
+        lines.push(`host = "${s.host || ''}"`);
+        lines.push(`port = ${s.port || 3306}`);
+        lines.push(`user = "${s.user || ''}"`);
+        lines.push(`password = "${s.password || ''}"`);
+        lines.push(`database = "${s.database || ''}"`);
+        lines.push(`charset = "${s.charset || 'utf8mb4'}"`);
+        lines.push('');
+        for (const t of (s.tables || [])) {
+            lines.push('[[servers.tables]]');
+            lines.push(`table_name = "${t.table_name || ''}"`);
+            lines.push(`display_name = "${t.display_name || ''}"`);
+            lines.push(`primary_key = "${t.primary_key || 'id'}"`);
+            lines.push(`page_size = ${t.page_size || 25}`);
+            if (t.group_by) lines.push(`group_by = "${t.group_by}"`);
+            lines.push('columns = [');
+            for (const c of (t.columns || [])) {
+                const parts = [`  { field = "${c.field || ''}", label = "${c.label || ''}", type = "${c.type || 'text'}"`];
+                if (c.readonly) parts.push(', readonly = true');
+                if (c.required) parts.push(', required = true');
+                if (c.hidden) parts.push(', hidden = true');
+                if (c.width) parts.push(`, width = "${c.width}"`);
+                parts.push(' },');
+                lines.push(parts.join(''));
+            }
+            lines.push(']'); lines.push('');
+        }
+    }
+    return lines.join('\n');
+}
+
+// ============================================================
+// 服务器入口卡片（点击进入 editor.html）
+// ============================================================
+function renderServerEntries() {
+    const container = document.getElementById('serverEntryList');
+    if (!configData.servers.length) {
+        container.innerHTML = `<div class="text-center text-muted py-3 w-100">
+            <i class="bi bi-inbox me-2"></i>暂无服务器，请在下方配置管理中添加
+        </div>`;
+        return;
+    }
+    container.innerHTML = configData.servers.map(s => {
+        const tables = s.tables || [];
+        const firstTable = tables.length > 0 ? tables[0].table_name : '';
+        const href = firstTable ? `/custom_table/${s.key}/${firstTable}` : '#';
+        return `<div class="col-md-4 col-lg-3">
+            <div class="card h-100 server-entry-card" onclick="${firstTable ? `location.href='${href}'` : ''}">
+                <div class="card-body text-center">
+                    <div class="mb-3"><i class="bi bi-server text-primary" style="font-size: 2.5rem;"></i></div>
+                    <h5 class="card-title">${s.name || '未命名'}</h5>
+                    <p class="card-text text-muted small mb-1"><i class="bi bi-hdd me-1"></i>${s.host || '-'}:${s.port || 3306}</p>
+                    <p class="card-text text-muted small mb-1"><i class="bi bi-database me-1"></i>${s.database || '-'}</p>
+                    <p class="card-text text-muted small"><i class="bi bi-grid me-1"></i>${tables.length} 个表</p>
+                </div>
+                <div class="card-footer bg-transparent text-center">
+                    <small class="text-primary"><i class="bi bi-arrow-right-circle me-1"></i>进入编辑</small>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ============================================================
+// 可视化编辑渲染（配置管理 Tab）
+// ============================================================
+function renderVisualEditor() {
+    const container = document.getElementById('serverList');
+    if (!configData.servers.length) {
+        container.innerHTML = `<div class="text-center py-4 text-muted">
+            <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+            <p class="mt-2">暂无服务器配置，点击下方按钮添加</p>
+        </div>`;
+        return;
+    }
+
+    container.innerHTML = configData.servers.map((s, si) => {
+        const tablesHtml = (s.tables || []).map((t, ti) => {
+            const colsHtml = (t.columns || []).map((c, ci) => `
+                <div class="column-row">
+                    <input value="${c.field || ''}" placeholder="字段名" style="width:100px;" onchange="updateColumn(${si},${ti},${ci},'field',this.value)">
+                    <input value="${c.label || ''}" placeholder="标签" style="width:100px;" onchange="updateColumn(${si},${ti},${ci},'label',this.value)">
+                    <select style="width:70px;" onchange="updateColumn(${si},${ti},${ci},'type',this.value)">
+                        <option value="text" ${c.type==='text'?'selected':''}>文本</option>
+                        <option value="number" ${c.type==='number'?'selected':''}>数字</option>
+                    </select>
+                    <label style="font-size:0.75rem;white-space:nowrap;"><input type="checkbox" ${c.readonly?'checked':''} onchange="updateColumn(${si},${ti},${ci},'readonly',this.checked)"> 只读</label>
+                    <label style="font-size:0.75rem;white-space:nowrap;"><input type="checkbox" ${c.required?'checked':''} onchange="updateColumn(${si},${ti},${ci},'required',this.checked)"> 必填</label>
+                    <label style="font-size:0.75rem;white-space:nowrap;"><input type="checkbox" ${c.hidden?'checked':''} onchange="updateColumn(${si},${ti},${ci},'hidden',this.checked)"> 隐藏</label>
+                    <button class="btn btn-sm btn-outline-danger py-0" onclick="removeColumn(${si},${ti},${ci})">×</button>
+                </div>`).join('');
+
+            return `<div class="table-card">
+                <div class="table-header">
+                    <strong><i class="bi bi-grid me-1"></i>表 #${ti+1}</strong>
+                    <button class="btn btn-sm btn-outline-danger py-0" onclick="removeTable(${si},${ti})"><i class="bi bi-trash"></i></button>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-md-3"><label class="form-label small">表名</label><input class="form-control form-control-sm" value="${t.table_name||''}" onchange="updateTable(${si},${ti},'table_name',this.value)"></div>
+                    <div class="col-md-3"><label class="form-label small">显示名称</label><input class="form-control form-control-sm" value="${t.display_name||''}" onchange="updateTable(${si},${ti},'display_name',this.value)"></div>
+                    <div class="col-md-2"><label class="form-label small">主键</label><input class="form-control form-control-sm" value="${t.primary_key||'id'}" onchange="updateTable(${si},${ti},'primary_key',this.value)"></div>
+                    <div class="col-md-2"><label class="form-label small">每页条数</label><input class="form-control form-control-sm" type="number" value="${t.page_size||25}" onchange="updateTable(${si},${ti},'page_size',parseInt(this.value)||25)"></div>
+                    <div class="col-md-2"><label class="form-label small">分组字段</label><input class="form-control form-control-sm" value="${t.group_by||''}" onchange="updateTable(${si},${ti},'group_by',this.value)"></div>
+                </div>
+                <label class="form-label small fw-bold mt-1">字段列表：</label>
+                ${colsHtml}
+                <button class="btn btn-sm btn-outline-secondary mt-1" onclick="addColumn(${si},${ti})"><i class="bi bi-plus"></i> 添加字段</button>
+            </div>`;
+        }).join('');
+
+        return `<div class="server-card-visual">
+            <div class="server-header">
+                <span><strong><i class="bi bi-server me-2"></i>${s.name || '未命名服务器'}</strong> <small class="text-muted">${s.host||''}:${s.port||3306}/${s.database||''}</small></span>
+                <button class="btn btn-sm btn-outline-danger" onclick="removeServer(${si})"><i class="bi bi-trash"></i></button>
+            </div>
+            <div class="server-body">
+                <div class="row g-2 mb-2">
+                    <div class="col-md-2"><label class="form-label small">标识(key)</label><input class="form-control form-control-sm" value="${s.key||''}" onchange="updateServer(${si},'key',this.value)"></div>
+                    <div class="col-md-2"><label class="form-label small">名称</label><input class="form-control form-control-sm" value="${s.name||''}" onchange="updateServer(${si},'name',this.value)"></div>
+                    <div class="col-md-2"><label class="form-label small">主机</label><input class="form-control form-control-sm" value="${s.host||''}" onchange="updateServer(${si},'host',this.value)"></div>
+                    <div class="col-md-1"><label class="form-label small">端口</label><input class="form-control form-control-sm" type="number" value="${s.port||3306}" onchange="updateServer(${si},'port',parseInt(this.value)||3306)"></div>
+                    <div class="col-md-2"><label class="form-label small">用户名</label><input class="form-control form-control-sm" value="${s.user||''}" onchange="updateServer(${si},'user',this.value)"></div>
+                    <div class="col-md-2"><label class="form-label small">密码</label><input class="form-control form-control-sm" type="password" value="${s.password||''}" onchange="updateServer(${si},'password',this.value)"></div>
+                    <div class="col-md-1"><label class="form-label small">数据库</label><input class="form-control form-control-sm" value="${s.database||''}" onchange="updateServer(${si},'database',this.value)"></div>
+                </div>
+                ${tablesHtml}
+                <button class="btn btn-sm btn-outline-primary mt-2" onclick="addTable(${si})"><i class="bi bi-plus"></i> 添加表</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ============================================================
+// 数据操作
+// ============================================================
+function updateServer(si, field, value) { if (configData.servers[si]) configData.servers[si][field] = value; syncSourceEditor(); }
+function addServer() {
+    configData.servers.push({ key: 'new_server', name: '新服务器', host: '', port: 3306, user: '', password: '', database: '', charset: 'utf8mb4', tables: [] });
+    renderServerEntries(); renderVisualEditor(); syncSourceEditor();
+}
+function removeServer(si) {
+    if (!confirm('确定删除该服务器配置？')) return;
+    configData.servers.splice(si, 1);
+    renderServerEntries(); renderVisualEditor(); syncSourceEditor();
+}
+function addTable(si) {
+    if (!configData.servers[si]) return;
+    configData.servers[si].tables.push({ table_name: '', display_name: '', primary_key: 'id', page_size: 25, group_by: '', columns: [] });
+    renderServerEntries(); renderVisualEditor(); syncSourceEditor();
+}
+function removeTable(si, ti) {
+    configData.servers[si].tables.splice(ti, 1);
+    renderServerEntries(); renderVisualEditor(); syncSourceEditor();
+}
+function updateTable(si, ti, field, value) {
+    if (configData.servers[si]?.tables[ti]) configData.servers[si].tables[ti][field] = value;
+    syncSourceEditor();
+}
+function addColumn(si, ti) {
+    configData.servers[si].tables[ti].columns.push({ field: '', label: '', type: 'text', readonly: false, required: false, hidden: false });
+    renderVisualEditor(); syncSourceEditor();
+}
+function removeColumn(si, ti, ci) {
+    configData.servers[si].tables[ti].columns.splice(ci, 1);
+    renderVisualEditor(); syncSourceEditor();
+}
+function updateColumn(si, ti, ci, field, value) {
+    if (configData.servers[si]?.tables[ti]?.columns[ci]) configData.servers[si].tables[ti].columns[ci][field] = value;
+    syncSourceEditor();
+}
+
+// ============================================================
+// 源文件编辑
+// ============================================================
+function syncSourceEditor() {
+    configToml = dataToToml();
+    document.getElementById('sourceEditor').value = configToml;
+}
+function applySource() {
+    try {
+        configToml = document.getElementById('sourceEditor').value;
+        parseTomlToData(configToml);
+        renderServerEntries(); renderVisualEditor();
+        showToast('已应用到可视化编辑器', 'success');
+    } catch (e) { showToast('解析失败: ' + e.message, 'danger'); }
+}
+
+// ============================================================
+// 保存
+// ============================================================
+async function saveConfig() {
+    configToml = dataToToml();
+    document.getElementById('sourceEditor').value = configToml;
+    try {
+        const res = await fetch('/custom_table/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: configToml }),
+        });
+        const json = await res.json();
+        if (json.success) {
+            showToast('配置已保存并生效', 'success');
+            renderServerEntries();
+            loadBackups();
+        } else {
+            showToast('保存失败: ' + json.error, 'danger');
+        }
+    } catch (e) { showToast('保存失败: ' + e.message, 'danger'); }
+}
+
+// ============================================================
+// 备份管理
+// ============================================================
+async function loadBackups() {
+    try {
+        const res = await fetch('/custom_table/api/config/backups');
+        const json = await res.json();
+        if (!json.success) return;
+        const el = document.getElementById('backupList');
+        if (!json.backups.length) {
+            el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-inbox me-2"></i>暂无备份</div>';
+            return;
+        }
+        el.innerHTML = json.backups.map(b => `
+            <div class="backup-item">
+                <div><strong>${b.name}</strong>
+                    <div class="text-muted small">${new Date(b.timestamp*1000).toLocaleString()} | ${(b.size/1024).toFixed(2)} KB</div>
+                </div>
+                <div class="d-flex gap-1">
+                    <button class="btn btn-sm btn-outline-primary" onclick="restoreBackup('${b.name}')" title="恢复"><i class="bi bi-arrow-counterclockwise"></i></button>
+                    <button class="btn btn-sm btn-outline-info" onclick="viewBackup('${b.name}')" title="查看"><i class="bi bi-eye"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteBackup('${b.name}')" title="删除"><i class="bi bi-trash"></i></button>
+                </div>
+            </div>`).join('');
+    } catch (e) { /* ignore */ }
+}
+
+async function createBackup() { await saveConfig(); loadBackups(); }
+async function restoreBackup(name) {
+    if (!confirm(`确定从 ${name} 恢复配置？`)) return;
+    try {
+        const res = await fetch(`/custom_table/api/config/backups/${name}/restore`, { method: 'POST' });
+        const json = await res.json();
+        if (json.success) { showToast('恢复成功', 'success'); loadConfig(); }
+        else showToast('恢复失败: ' + json.error, 'danger');
+    } catch (e) { showToast('恢复失败: ' + e.message, 'danger'); }
+}
+async function viewBackup(name) {
+    try {
+        const res = await fetch(`/custom_table/api/config/backups/${name}`);
+        const json = await res.json();
+        if (json.success) {
+            document.getElementById('sourceEditor').value = json.content;
+            document.querySelector('[data-bs-target="#sourceTab"]').click();
+            showToast(`正在查看: ${name}`, 'info');
+        }
+    } catch (e) { showToast('查看失败: ' + e.message, 'danger'); }
+}
+async function deleteBackup(name) {
+    if (!confirm(`确定删除备份 ${name}？`)) return;
+    try { await fetch(`/custom_table/api/config/backups/${name}`, { method: 'DELETE' }); showToast('已删除', 'success'); loadBackups(); }
+    catch (e) { showToast('删除失败: ' + e.message, 'danger'); }
+}
+</script>
+{% endblock %}
