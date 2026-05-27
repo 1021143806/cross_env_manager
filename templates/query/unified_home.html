@@ -2410,7 +2410,7 @@
                                     <i class="bi bi-arrow-up"></i> 优先执行
                                 </button>` : ''}
                             ${status != 8 && status != 6 ? 
-                                `<button class="btn btn-sm btn-outline-warning" onclick="resendTask('${subOrderId}', '${orderId}', ${taskSeq})" title="重发任务（先预占设备→取消任务→再预占→修改数据库）">
+                                `<button class="btn btn-sm btn-outline-warning" onclick="resendTask('${subOrderId}', '${orderId}', ${taskSeq}, '${serverIp}')" title="重发任务（先预占设备→取消任务→再预占→修改数据库）">
                                     <i class="bi bi-arrow-repeat"></i> 重发
                                 </button>` : ''}
                             ${status == 5 ? 
@@ -2578,11 +2578,12 @@
         };
 
         // 任务重发（SSE 实时动画）
-        window.resendTask = async function(subOrderId, orderId, taskSeq) {
+        window.resendTask = async function(subOrderId, orderId, taskSeq, serverIp) {
             const confirmMsg = `确定要重发该子任务吗？\n\n` +
                 `子任务ID: ${subOrderId}\n` +
                 `任务单号: ${orderId}\n` +
-                `任务序号: ${taskSeq}\n\n` +
+                `任务序号: ${taskSeq}\n` +
+                `服务器IP: ${serverIp || '默认'}\n\n` +
                 `点击确定后将执行重发操作。`;
             
             if (!confirm(confirmMsg)) return;
@@ -2634,9 +2635,9 @@
             modal.show();
             
             // 连接 SSE
-            const eventSource = new EventSource(
-                `/api/task/resend/stream?order_id=${encodeURIComponent(orderId)}&sub_order_id=${encodeURIComponent(subOrderId)}&task_seq=${taskSeq}`
-            );
+            const sseUrl = `/api/task/resend/stream?order_id=${encodeURIComponent(orderId)}&sub_order_id=${encodeURIComponent(subOrderId)}&task_seq=${taskSeq}` +
+                (serverIp ? `&server_ip=${encodeURIComponent(serverIp)}` : '');
+            const eventSource = new EventSource(sseUrl);
             
             let completedSteps = 0;
             let totalElapsed = 0;

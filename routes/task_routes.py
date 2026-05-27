@@ -711,6 +711,7 @@ def resend_task_stream():
     order_id = request.args.get('order_id', '').strip()
     sub_order_id = request.args.get('sub_order_id', '').strip()
     task_seq = request.args.get('task_seq', type=int)
+    server_ip = request.args.get('server_ip', '').strip()
     
     if not order_id or not sub_order_id or task_seq is None:
         return jsonify({'error': '缺少参数'}), 400
@@ -719,7 +720,7 @@ def resend_task_stream():
         import json as _json
         import traceback as _traceback
         try:
-            for msg in task_query_extended.resend_cross_task_stream(sub_order_id, order_id, task_seq):
+            for msg in task_query_extended.resend_cross_task_stream(sub_order_id, order_id, task_seq, server_ip):
                 line = f"data: {_json.dumps(msg, ensure_ascii=False)}\n\n"
                 yield line
         except Exception as e:
