@@ -1181,8 +1181,8 @@ def handle_status_report(data):
         
         cc_change = ', currentCount ' + '; '.join(cc_change_parts) if cc_change_parts else ''
         change_summary = f'模板-{template_name} -{template_removed}{cc_change}'
-        # 更新每日统计（status=8 完成时）
-        if status == 8:
+        # 更新每日统计（status=8/10 完成时）
+        if status in (8, 10):
             _update_daily_stats(region_key, task_type)
     
     # 更新设备历史记录（记录这个区域48小时内来过哪些设备）
