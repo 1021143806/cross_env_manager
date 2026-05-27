@@ -667,9 +667,11 @@ def calculate_area_balance(region_key, region_config):
                         except Exception as e:
                             write_global_log('execute_mutex', region_key,
                                 f'解死锁取消失败: {template_code} order={oid} error={str(e)}')
-                    # 取消成功后清理本地 JSON
-                    if deadlock_cancelled > 0:
-                        tasks = [t for t in tasks if t.get('status') not in (6, 9, 10)]
+                    # 清理本地 JSON（无论取消成功与否，都清理已尝试取消的任务，避免死循环）
+                    if deadlock_cancelled > 0 or len(deadlock_tasks) > 0:
+                        # 移除已尝试取消的任务（按 order_id 匹配）
+                        cancelled_oids = {pt.get('order_id', '') for pt in deadlock_tasks if pt.get('order_id')}
+                        tasks = [t for t in tasks if t.get('order_id', '') not in cancelled_oids]
                         _save_json(fpath, tasks)
                         # 重新检查是否还有阻塞
                         pending_after = [t for t in tasks if t.get('status') in (6, 9, 10) and not t.get('_low_battery')]
