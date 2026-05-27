@@ -1030,9 +1030,9 @@ def handle_status_report(data):
         tasks = _load_json(template_file)
         old_count = len(tasks)
         if order_id:
-            tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') in (6, 9))]
+            tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') in (6, 9, 10))]
         if device_code:
-            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') in (6, 9))]
+            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') in (6, 9, 10))]
         template_removed = old_count - len(tasks)
         if template_removed > 0:
             _save_json(template_file, tasks)
