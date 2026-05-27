@@ -717,14 +717,24 @@ def resend_task_stream():
     
     def generate():
         import json as _json
-        for msg in task_query_extended.resend_cross_task_stream(sub_order_id, order_id, task_seq):
-            yield f"data: {_json.dumps(msg, ensure_ascii=False)}\n\n"
+        import traceback as _traceback
+        try:
+            for msg in task_query_extended.resend_cross_task_stream(sub_order_id, order_id, task_seq):
+                line = f"data: {_json.dumps(msg, ensure_ascii=False)}\n\n"
+                yield line
+        except Exception as e:
+            # 捕获生成器中的异常并推送给前端
+            error_msg = {"type": "done", "success": False, "message": f"重发异常: {str(e)}", "total_elapsed_ms": 0}
+            yield f"data: {_json.dumps(error_msg, ensure_ascii=False)}\n\n"
+            # 打印到日志
+            print(f"[SSE Error] resend_task_stream: {e}")
+            _traceback.print_exc()
     
     return Response(
         stream_with_context(generate()),
         mimetype='text/event-stream',
         headers={
-            'Cache-Control': 'no-cache',
+            'Cache-Control': 'no-cache, no-transform',
             'X-Accel-Buffering': 'no',
             'Connection': 'keep-alive'
         }

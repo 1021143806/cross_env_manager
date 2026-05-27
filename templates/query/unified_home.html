@@ -817,19 +817,10 @@
                 toggleQueryPanel();
                 shelfInput.value = urlParams.get('shelf');
                 setTimeout(executeQuery, 200);
-            } else {
-                // 无URL参数时，自动查询最近一条任务
-                fetch('/api/query/latest_order')
-                    .then(r => r.json())
-                    .then(data => {
-                        if (data.success && data.order_id) {
-                            typeTaskRadio.checked = true;
-                            toggleQueryPanel();
-                            orderIdInput.value = data.order_id;
-                            setTimeout(executeQuery, 300);
-                        }
-                    })
-                    .catch(() => {});
+            } else if (queryHistory.length > 0) {
+                // 有最近查询历史时，自动用最近一条记录查询
+                const latest = queryHistory[0];
+                setTimeout(() => fillHistory(latest), 300);
             }
             
             // 初始化图表
@@ -2618,12 +2609,15 @@
             
             // 初始化进度面板
             progressBody.innerHTML = stepNames.map((name, i) => `
-                <div class="resend-step d-flex align-items-center py-1" id="resend_step_${i}">
-                    <span class="resend-step-icon me-2" id="resend_step_icon_${i}">
-                        <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
-                    </span>
-                    <span class="resend-step-name flex-grow-1">${name}</span>
-                    <span class="resend-step-time text-muted small" id="resend_step_time_${i}"></span>
+                <div class="resend-step py-1" id="resend_step_${i}">
+                    <div class="d-flex align-items-center">
+                        <span class="resend-step-icon me-2" id="resend_step_icon_${i}">
+                            <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
+                        </span>
+                        <span class="resend-step-name flex-grow-1">${name}</span>
+                        <span class="resend-step-time text-muted small" id="resend_step_time_${i}"></span>
+                    </div>
+                    <div class="resend-step-detail small text-muted ms-4" id="resend_step_detail_${i}" style="font-size:0.65rem;display:none;"></div>
                 </div>
             `).join('');
             progressBar.style.width = '0%';
@@ -2662,9 +2656,8 @@
                         if (msg.success) {
                             progressBar.classList.remove('bg-warning');
                             progressBar.classList.add('bg-success');
-                            // 1s 后自动刷新
+                            // 不关闭模态框，直接刷新页面
                             setTimeout(() => {
-                                modal.hide();
                                 executeQuery();
                             }, 1000);
                         } else {
@@ -2679,10 +2672,12 @@
                     const status = msg.status;
                     const elapsed = msg.elapsed_ms || 0;
                     const error = msg.error || '';
+                    const detail = msg.detail || null;
                     
                     const icon = document.getElementById(`resend_step_icon_${step}`);
                     const timeEl = document.getElementById(`resend_step_time_${step}`);
                     const stepEl = document.getElementById(`resend_step_${step}`);
+                    const detailEl = document.getElementById(`resend_step_detail_${step}`);
                     
                     if (status === 'running') {
                         icon.innerHTML = '<span class="text-primary"><i class="bi bi-arrow-repeat spin"></i></span>';
@@ -2696,15 +2691,39 @@
                         progressBar.style.width = `${(completedSteps / 9) * 100}%`;
                         progressBar.setAttribute('aria-valuenow', Math.round((completedSteps / 9) * 100));
                         progressText.textContent = `${completedSteps} / 9`;
+                        // 显示调试报文
+                        if (detail) {
+                            let detailHtml = '';
+                            if (detail.url) detailHtml += `URL: ${detail.url}<br>`;
+                            if (detail.request) detailHtml += `请求: ${escapeHtml(JSON.stringify(detail.request))}<br>`;
+                            if (detail.response) detailHtml += `响应: ${escapeHtml(JSON.stringify(detail.response))}<br>`;
+                            if (detail.http_status) detailHtml += `HTTP: ${detail.http_status}<br>`;
+                            if (detail.note) detailHtml += `说明: ${detail.note}`;
+                            if (detailHtml) {
+                                detailEl.innerHTML = detailHtml;
+                                detailEl.style.display = 'block';
+                            }
+                        }
                     } else if (status === 'fail') {
                         icon.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>';
                         timeEl.textContent = `${elapsed}ms`;
                         stepEl.classList.remove('table-active');
                         stepEl.classList.add('table-danger');
-                        // 在步骤名后显示错误信息
                         const nameEl = stepEl.querySelector('.resend-step-name');
                         if (nameEl && error) {
                             nameEl.innerHTML = `${stepNames[step]} <small class="text-danger">(${error})</small>`;
+                        }
+                        // 显示调试报文
+                        if (detail) {
+                            let detailHtml = '';
+                            if (detail.url) detailHtml += `URL: ${detail.url}<br>`;
+                            if (detail.request) detailHtml += `请求: ${escapeHtml(JSON.stringify(detail.request))}<br>`;
+                            if (detail.response) detailHtml += `响应: ${escapeHtml(JSON.stringify(detail.response))}<br>`;
+                            if (detail.error) detailHtml += `错误: ${detail.error}`;
+                            if (detailHtml) {
+                                detailEl.innerHTML = detailHtml;
+                                detailEl.style.display = 'block';
+                            }
                         }
                         completedSteps++;
                         progressBar.style.width = `${(completedSteps / 9) * 100}%`;
