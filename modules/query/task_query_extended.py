@@ -404,7 +404,7 @@ def query_tasks_by_error(error_desc=None, status=None, limit=50, server_ip="10.6
             params = []
             
             if error_desc:
-                conditions.append("error_desc LIKE %s")
+                conditions.append("task_error LIKE %s")
                 params.append(f"%{error_desc}%")
             
             if status is not None:
@@ -413,7 +413,7 @@ def query_tasks_by_error(error_desc=None, status=None, limit=50, server_ip="10.6
             
             where_clause = " AND ".join(conditions)
             sql = f"""
-                SELECT orderId, deviceCode, deviceNum, createTime, task_status as status, error_desc as errorDesc
+                SELECT orderId, device_code, device_num, create_time, task_status as status, task_error as errorDesc
                 FROM fy_cross_task
                 WHERE {where_clause}
                 ORDER BY create_time DESC
@@ -424,6 +424,43 @@ def query_tasks_by_error(error_desc=None, status=None, limit=50, server_ip="10.6
             return cursor.fetchall() or []
     except Exception as e:
         raise Exception(f"查询问题任务失败: {str(e)}")
+    finally:
+        conn.close()
+
+
+def query_debug_cross_task_detail(device_num=None, device_code=None, limit=10, server_ip="10.68.2.32"):
+    """
+    查询 fy_cross_task_detail 表原始数据（调试用）
+    按 device_num 或 device_code 查询最近记录
+    """
+    conn = connect_to_production_db(server_ip)
+    try:
+        with conn.cursor() as cursor:
+            conditions = []
+            params = []
+            
+            if device_num:
+                conditions.append("device_num = %s")
+                params.append(device_num)
+            if device_code:
+                conditions.append("device_code = %s")
+                params.append(device_code)
+            
+            if not conditions:
+                return []
+            
+            where_clause = " AND ".join(conditions)
+            sql = f"""
+                SELECT * FROM fy_cross_task_detail
+                WHERE {where_clause}
+                ORDER BY update_time DESC
+                LIMIT %s
+            """
+            params.append(limit)
+            cursor.execute(sql, params)
+            return cursor.fetchall() or []
+    except Exception as e:
+        raise Exception(f"查询调试数据失败: {str(e)}")
     finally:
         conn.close()
 
@@ -524,10 +561,15 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
     import json as _json
     import time as _time
     
-    conn = connect_to_production_db(server_ip)
-    
     try:
+        # 数据库始终连接 10.68.2.32，server_ip 用于预占和取消操作
+        db_server_ip = "10.68.2.32"
+        op_server_ip = server_ip or "10.68.2.32"
+        conn = connect_to_production_db(db_server_ip)
         with conn.cursor() as cursor:
+            # sub_order_id 参数实际是真正的 orderId（前端传的 orderId）
+            real_order_id = sub_order_id or order_id
+            
             # ========== 步骤0: 查询子任务完整信息 ==========
             sql = """
                 SELECT * FROM fy_cross_task_detail
@@ -536,18 +578,56 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
             cursor.execute(sql, (order_id, task_seq))
             sub_task = cursor.fetchone()
             
-            if not sub_task:
-                return {
-                    "success": False,
-                    "code": "SUBTASK_NOT_FOUND",
-                    "message": f"未找到子任务: order_id={order_id}, task_seq={task_seq}"
-                }
+            sub_status = None
+            current_sub_order_id = sub_order_id
+            service_url = ''
+            device_code = ''
+            area_id = ''
             
-            sub_status = sub_task['status']
-            current_sub_order_id = sub_task['sub_order_id']
-            service_url = sub_task.get('service_url', '')
-            device_code = sub_task.get('device_code', '')
-            area_id = sub_task.get('area_id', '')
+            if sub_task:
+                sub_status = sub_task['status']
+                current_sub_order_id = sub_task.get('sub_order_id', sub_order_id)
+                service_url = sub_task.get('service_url', '') or ''
+                device_code = sub_task.get('device_code', '') or ''
+                area_id = sub_task.get('area_id', '') or ''
+            
+            # 如果子任务中缺少 device_code，从主任务补充
+            if not device_code:
+                sql2 = "SELECT device_code, device_num FROM fy_cross_task WHERE orderId = %s"
+                cursor.execute(sql2, (real_order_id,))
+                main_info = cursor.fetchone()
+                if main_info:
+                    device_code = main_info.get('device_code', '') or ''
+            
+            # 如果缺少 service_url，从同 order_id 的其他子任务获取
+            if not service_url:
+                sql3 = """
+                    SELECT service_url FROM fy_cross_task_detail
+                    WHERE order_id LIKE CONCAT(%s, '_', '%%') AND service_url IS NOT NULL AND service_url != ''
+                    LIMIT 1
+                """
+                cursor.execute(sql3, (real_order_id,))
+                svc_info = cursor.fetchone()
+                if svc_info:
+                    service_url = svc_info.get('service_url', '') or ''
+            
+            # 从模板子任务配置的 template_code 中提取 area_id（最后一段数字）
+            # 例如 FangXia_DJQ4-OtherLine-23 → 23
+            sql4 = """
+                SELECT fcmpd.template_code FROM fy_cross_model_process_detail fcmpd
+                JOIN fy_cross_model_process fcmp ON fcmp.id = fcmpd.model_process_id
+                JOIN fy_cross_task fct ON fct.model_process_code = fcmp.model_process_code
+                WHERE fct.orderId = %s AND fcmpd.task_seq = %s
+                LIMIT 1
+            """
+            cursor.execute(sql4, (real_order_id, task_seq))
+            tc_info = cursor.fetchone()
+            if tc_info and tc_info.get('template_code'):
+                tc = tc_info['template_code']
+                parts = tc.split('-')
+                last_part = parts[-1] if parts else ''
+                if last_part.isdigit():
+                    area_id = last_part
             
             # ========== 步骤1: 前置任务检查 ==========
             if task_seq > 1:
@@ -574,15 +654,21 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
                     }
             
             # ========== 步骤2: 检查大模板状态 ==========
+            # order_id 参数实际是 sub_order_id（前端传的 subOrderId），格式: {orderId}_{taskSeq}_{subId}
+            # 例如: "pad_html2026-05-26 14:54:19_3_1067" → 提取 "pad_html2026-05-26 14:54:19"
+            # sub_order_id 参数实际是真正的 orderId（前端传的 orderId）
+            real_order_id = sub_order_id or order_id
+            if not real_order_id:
+                real_order_id = order_id
             sql = "SELECT task_status FROM fy_cross_task WHERE orderId = %s"
-            cursor.execute(sql, (order_id,))
+            cursor.execute(sql, (real_order_id,))
             main_task = cursor.fetchone()
             
             if not main_task:
                 return {
                     "success": False,
                     "code": "TASK_NOT_FOUND",
-                    "message": f"未找到大模板任务: {order_id}"
+                    "message": f"未找到大模板任务: {real_order_id}"
                 }
             
             main_status = main_task['task_status']
@@ -595,12 +681,14 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
                 }
             
             # ========== 步骤3: 检查子模板状态 ==========
-            if sub_status in (6, 8):
-                return {
-                    "success": False,
-                    "code": "INVALID_STATUS",
-                    "message": f"子任务状态不允许重发（当前状态: {sub_status}）"
-                }
+            # sub_status 为 None 表示子任务记录不存在（已从主任务获取 device_code），跳过状态检查
+            if sub_status is not None:
+                if sub_status in (6, 8):
+                    return {
+                        "success": False,
+                        "code": "INVALID_STATUS",
+                        "message": f"子任务状态不允许重发（当前状态: {sub_status}）"
+                    }
             
             # 多个执行中子任务检查（仅对状态4,9检查）
             if sub_status in (4, 9):
@@ -641,6 +729,9 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
                     server_ip_for_op = parsed.hostname
                 except Exception:
                     pass
+            # 如果 service_url 为空，使用前端传的 server_ip
+            if not server_ip_for_op:
+                server_ip_for_op = op_server_ip
             
             if server_ip_for_op and device_code and area_id:
                 preempt_url = f"http://{server_ip_for_op}:7000/enableAGV"
@@ -690,7 +781,9 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
                         cancel_resp = _json.loads(raw)
                     except:
                         cancel_resp = raw
-                    if isinstance(cancel_resp, dict) and cancel_resp.get('code') != 1000:
+                    cancel_code = cancel_resp.get('code') if isinstance(cancel_resp, dict) else 1000
+                    # code=8007 表示订单不存在，也视为取消成功
+                    if cancel_code != 1000 and cancel_code != 8007:
                         return {
                             "success": False,
                             "code": "CANCEL_FAILED",
@@ -747,15 +840,11 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
             # 8.1 判断是否需要修改大模板状态
             if main_status not in (5, 7):
                 sql = "UPDATE fy_cross_task SET task_status = 5 WHERE orderId = %s"
-                cursor.execute(sql, (order_id,))
+                cursor.execute(sql, (real_order_id,))
             
-            # 8.2 更新子模板
-            sql = """
-                UPDATE fy_cross_task_detail
-                SET sub_order_id = %s, status = 5, error_desc = '重发中'
-                WHERE order_id = %s AND task_seq = %s
-            """
-            cursor.execute(sql, (new_sub_order_id, order_id, task_seq))
+            # 8.2 更新子模板状态（用 sub_order_id 匹配）
+            sql = "UPDATE fy_cross_task_detail SET status = 5, error_desc = '重发中' WHERE sub_order_id = %s"
+            cursor.execute(sql, (order_id,))
             conn.commit()
             
             return {
@@ -788,23 +877,33 @@ def resend_cross_task_stream(order_id, sub_order_id, task_seq, server_ip="10.68.
     import json as _json
     import time as _time
     
-    def _yield_step(step, name, status, elapsed_ms=0, error=None):
+    def _yield_step(step, name, status, elapsed_ms=0, error=None, detail=None):
         msg = {"step": step, "name": name, "status": status, "elapsed_ms": elapsed_ms}
         if error:
             msg["error"] = error
+        if detail:
+            msg["detail"] = detail
+        print(f"[SSE] step={step} name={name} status={status} elapsed={elapsed_ms}ms", flush=True)
         return msg
     
     def _yield_done(success, message, total_elapsed_ms, extra=None):
         msg = {"type": "done", "success": success, "message": message, "total_elapsed_ms": total_elapsed_ms}
         if extra:
             msg.update(extra)
+        print(f"[SSE] done success={success} msg={message} total={total_elapsed_ms}ms", flush=True)
         return msg
     
-    conn = connect_to_production_db(server_ip)
     total_t0 = _time.time()
+    # 数据库始终连接 10.68.2.32，server_ip 用于预占和取消操作
+    db_server_ip = "10.68.2.32"
+    op_server_ip = server_ip or "10.68.2.32"
     
     try:
+        conn = connect_to_production_db(db_server_ip)
         with conn.cursor() as cursor:
+            # sub_order_id 参数实际是真正的 orderId（前端传的 orderId）
+            real_order_id = sub_order_id or order_id
+            
             # ========== 步骤0: 查询子任务完整信息 ==========
             t0 = _time.time()
             yield _yield_step(0, "查询子任务信息", "running")
@@ -815,18 +914,59 @@ def resend_cross_task_stream(order_id, sub_order_id, task_seq, server_ip="10.68.
             cursor.execute(sql, (order_id, task_seq))
             sub_task = cursor.fetchone()
             
-            if not sub_task:
-                yield _yield_step(0, "查询子任务信息", "fail", round((_time.time() - t0) * 1000, 1),
-                    f"未找到子任务: order_id={order_id}, task_seq={task_seq}")
-                yield _yield_done(False, "未找到子任务", round((_time.time() - total_t0) * 1000, 1))
-                return
+            sub_status = None
+            current_sub_order_id = sub_order_id
+            service_url = ''
+            device_code = ''
+            area_id = ''
             
-            sub_status = sub_task['status']
-            current_sub_order_id = sub_task['sub_order_id']
-            service_url = sub_task.get('service_url', '')
-            device_code = sub_task.get('device_code', '')
-            area_id = sub_task.get('area_id', '')
-            yield _yield_step(0, "查询子任务信息", "ok", round((_time.time() - t0) * 1000, 1))
+            if sub_task:
+                sub_status = sub_task['status']
+                current_sub_order_id = sub_task.get('sub_order_id', sub_order_id)
+                service_url = sub_task.get('service_url', '') or ''
+                device_code = sub_task.get('device_code', '') or ''
+                area_id = sub_task.get('area_id', '') or ''
+            
+            # 如果子任务中缺少 device_code，从主任务补充
+            if not device_code:
+                sql2 = "SELECT device_code, device_num FROM fy_cross_task WHERE orderId = %s"
+                cursor.execute(sql2, (real_order_id,))
+                main_info = cursor.fetchone()
+                if main_info:
+                    device_code = main_info.get('device_code', '') or ''
+            
+            # 如果缺少 service_url，从同 order_id 的其他子任务获取
+            if not service_url:
+                sql3 = """
+                    SELECT service_url FROM fy_cross_task_detail
+                    WHERE order_id LIKE CONCAT(%s, '_', '%%') AND service_url IS NOT NULL AND service_url != ''
+                    LIMIT 1
+                """
+                cursor.execute(sql3, (real_order_id,))
+                svc_info = cursor.fetchone()
+                if svc_info:
+                    service_url = svc_info.get('service_url', '') or ''
+            
+            # 从模板子任务配置的 template_code 中提取 area_id（最后一段数字）
+            # 例如 FangXia_DJQ4-OtherLine-23 → 23
+            sql4 = """
+                SELECT fcmpd.template_code FROM fy_cross_model_process_detail fcmpd
+                JOIN fy_cross_model_process fcmp ON fcmp.id = fcmpd.model_process_id
+                JOIN fy_cross_task fct ON fct.model_process_code = fcmp.model_process_code
+                WHERE fct.orderId = %s AND fcmpd.task_seq = %s
+                LIMIT 1
+            """
+            cursor.execute(sql4, (real_order_id, task_seq))
+            tc_info = cursor.fetchone()
+            if tc_info and tc_info.get('template_code'):
+                tc = tc_info['template_code']
+                parts = tc.split('-')
+                last_part = parts[-1] if parts else ''
+                if last_part.isdigit():
+                    area_id = last_part
+            
+            yield _yield_step(0, "查询子任务信息", "ok", round((_time.time() - t0) * 1000, 1),
+                detail={"device_code": device_code or '-', "area_id": area_id or '-', "service_url": service_url or '-'})
             
             # ========== 步骤1: 前置任务检查 ==========
             t0 = _time.time()
@@ -852,13 +992,15 @@ def resend_cross_task_stream(order_id, sub_order_id, task_seq, server_ip="10.68.
             # ========== 步骤2: 检查大模板状态 ==========
             t0 = _time.time()
             yield _yield_step(2, "检查大模板状态", "running")
+            # sub_order_id 参数实际是真正的 orderId（前端传的 orderId）
+            real_order_id = sub_order_id or order_id
             sql = "SELECT task_status FROM fy_cross_task WHERE orderId = %s"
-            cursor.execute(sql, (order_id,))
+            cursor.execute(sql, (real_order_id,))
             main_task = cursor.fetchone()
             
             if not main_task:
                 yield _yield_step(2, "检查大模板状态", "fail", round((_time.time() - t0) * 1000, 1),
-                    f"未找到大模板任务: {order_id}")
+                    f"未找到大模板任务: {real_order_id}")
                 yield _yield_done(False, "未找到大模板任务", round((_time.time() - total_t0) * 1000, 1))
                 return
             
@@ -875,12 +1017,14 @@ def resend_cross_task_stream(order_id, sub_order_id, task_seq, server_ip="10.68.
             # ========== 步骤3: 检查子模板状态 ==========
             t0 = _time.time()
             yield _yield_step(3, "检查子模板状态", "running")
-            if sub_status in (6, 8):
-                yield _yield_step(3, "检查子模板状态", "fail", round((_time.time() - t0) * 1000, 1),
-                    f"子任务状态不允许重发（当前状态: {sub_status}）")
-                yield _yield_done(False, "子任务状态不允许重发", round((_time.time() - total_t0) * 1000, 1),
-                    {"code": "INVALID_STATUS"})
-                return
+            # sub_status 为 None 表示子任务记录不存在，跳过状态检查
+            if sub_status is not None:
+                if sub_status in (6, 8):
+                    yield _yield_step(3, "检查子模板状态", "fail", round((_time.time() - t0) * 1000, 1),
+                        f"子任务状态不允许重发（当前状态: {sub_status}）")
+                    yield _yield_done(False, "子任务状态不允许重发", round((_time.time() - total_t0) * 1000, 1),
+                        {"code": "INVALID_STATUS"})
+                    return
             
             if sub_status in (4, 9):
                 sql = """
@@ -909,6 +1053,9 @@ def resend_cross_task_stream(order_id, sub_order_id, task_seq, server_ip="10.68.
                     server_ip_for_op = parsed.hostname
                 except Exception:
                     pass
+            # 如果 service_url 为空，使用前端传的 server_ip
+            if not server_ip_for_op:
+                server_ip_for_op = op_server_ip
             
             if server_ip_for_op and device_code and area_id:
                 preempt_url = f"http://{server_ip_for_op}:7000/enableAGV"
@@ -929,18 +1076,23 @@ def resend_cross_task_stream(order_id, sub_order_id, task_seq, server_ip="10.68.
                         preempt_resp = _json.loads(raw)
                     except:
                         preempt_resp = raw
+                    detail = {"url": preempt_url, "request": preempt_body, "response": preempt_resp, "http_status": resp.getcode()}
                     if isinstance(preempt_resp, dict) and preempt_resp.get('code') != 1000:
                         yield _yield_step(4, "预占设备（第一次）", "fail", round((_time.time() - t0) * 1000, 1),
-                            f"设备 {device_code} 未添加至当前服务器 {server_ip_for_op}")
+                            f"设备 {device_code} 未添加至当前服务器 {server_ip_for_op}", detail)
                         yield _yield_done(False, "设备预占失败", round((_time.time() - total_t0) * 1000, 1),
                             {"code": "PREEMPT_FAILED"})
                         return
+                    yield _yield_step(4, "预占设备（第一次）", "ok", round((_time.time() - t0) * 1000, 1), detail=detail)
                 except Exception as e:
-                    yield _yield_step(4, "预占设备（第一次）", "fail", round((_time.time() - t0) * 1000, 1), str(e))
+                    yield _yield_step(4, "预占设备（第一次）", "fail", round((_time.time() - t0) * 1000, 1), str(e),
+                        {"url": preempt_url, "request": preempt_body, "error": str(e)})
                     yield _yield_done(False, "设备预占失败", round((_time.time() - total_t0) * 1000, 1),
                         {"code": "PREEMPT_ERROR"})
                     return
-            yield _yield_step(4, "预占设备（第一次）", "ok", round((_time.time() - t0) * 1000, 1))
+            else:
+                yield _yield_step(4, "预占设备（第一次）", "ok", round((_time.time() - t0) * 1000, 1),
+                    detail={"note": "跳过：缺少 service_url/device_code/area_id"})
             
             # ========== 步骤5: 取消任务 ==========
             t0 = _time.time()
@@ -958,18 +1110,25 @@ def resend_cross_task_stream(order_id, sub_order_id, task_seq, server_ip="10.68.
                         cancel_resp = _json.loads(raw)
                     except:
                         cancel_resp = raw
-                    if isinstance(cancel_resp, dict) and cancel_resp.get('code') != 1000:
+                    detail = {"url": cancel_url, "request": cancel_body, "response": cancel_resp, "http_status": resp.getcode()}
+                    cancel_code = cancel_resp.get('code') if isinstance(cancel_resp, dict) else 1000
+                    # code=8007 表示订单不存在，也视为取消成功
+                    if cancel_code != 1000 and cancel_code != 8007:
                         yield _yield_step(5, "取消任务", "fail", round((_time.time() - t0) * 1000, 1),
-                            cancel_resp.get('message', str(cancel_resp)))
+                            cancel_resp.get('message', str(cancel_resp)), detail)
                         yield _yield_done(False, "取消任务失败", round((_time.time() - total_t0) * 1000, 1),
                             {"code": "CANCEL_FAILED"})
                         return
+                    yield _yield_step(5, "取消任务", "ok", round((_time.time() - t0) * 1000, 1), detail=detail)
                 except Exception as e:
-                    yield _yield_step(5, "取消任务", "fail", round((_time.time() - t0) * 1000, 1), str(e))
+                    yield _yield_step(5, "取消任务", "fail", round((_time.time() - t0) * 1000, 1), str(e),
+                        {"url": cancel_url, "request": cancel_body, "error": str(e)})
                     yield _yield_done(False, "取消任务失败", round((_time.time() - total_t0) * 1000, 1),
                         {"code": "CANCEL_ERROR"})
                     return
-            yield _yield_step(5, "取消任务", "ok", round((_time.time() - t0) * 1000, 1))
+            else:
+                yield _yield_step(5, "取消任务", "ok", round((_time.time() - t0) * 1000, 1),
+                    detail={"note": "跳过：缺少 server_ip"})
             
             # ========== 步骤6: 预占设备（第二次） ==========
             t0 = _time.time()
@@ -986,18 +1145,23 @@ def resend_cross_task_stream(order_id, sub_order_id, task_seq, server_ip="10.68.
                         preempt_resp2 = _json.loads(raw)
                     except:
                         preempt_resp2 = raw
+                    detail = {"url": preempt_url, "request": preempt_body, "response": preempt_resp2, "http_status": resp.getcode()}
                     if isinstance(preempt_resp2, dict) and preempt_resp2.get('code') != 1000:
                         yield _yield_step(6, "预占设备（第二次）", "fail", round((_time.time() - t0) * 1000, 1),
-                            f"设备 {device_code} 未添加至当前服务器 {server_ip_for_op}")
+                            f"设备 {device_code} 未添加至当前服务器 {server_ip_for_op}", detail)
                         yield _yield_done(False, "设备预占失败", round((_time.time() - total_t0) * 1000, 1),
                             {"code": "PREEMPT_FAILED"})
                         return
+                    yield _yield_step(6, "预占设备（第二次）", "ok", round((_time.time() - t0) * 1000, 1), detail=detail)
                 except Exception as e:
-                    yield _yield_step(6, "预占设备（第二次）", "fail", round((_time.time() - t0) * 1000, 1), str(e))
+                    yield _yield_step(6, "预占设备（第二次）", "fail", round((_time.time() - t0) * 1000, 1), str(e),
+                        {"url": preempt_url, "request": preempt_body, "error": str(e)})
                     yield _yield_done(False, "设备预占失败", round((_time.time() - total_t0) * 1000, 1),
                         {"code": "PREEMPT_ERROR"})
                     return
-            yield _yield_step(6, "预占设备（第二次）", "ok", round((_time.time() - t0) * 1000, 1))
+            else:
+                yield _yield_step(6, "预占设备（第二次）", "ok", round((_time.time() - t0) * 1000, 1),
+                    detail={"note": "跳过：缺少 service_url/device_code/area_id"})
             
             # ========== 步骤7: 生成新的 sub_order_id ==========
             t0 = _time.time()
@@ -1013,18 +1177,22 @@ def resend_cross_task_stream(order_id, sub_order_id, task_seq, server_ip="10.68.
             # ========== 步骤8: 修改数据库状态 ==========
             t0 = _time.time()
             yield _yield_step(8, "修改数据库状态", "running")
-            if main_status not in (5, 7):
-                sql = "UPDATE fy_cross_task SET task_status = 5 WHERE orderId = %s"
-                cursor.execute(sql, (order_id,))
+            detail8 = {"sqls": []}
             
-            sql = """
-                UPDATE fy_cross_task_detail
-                SET sub_order_id = %s, status = 5, error_desc = '重发中'
-                WHERE order_id = %s AND task_seq = %s
-            """
-            cursor.execute(sql, (new_sub_order_id, order_id, task_seq))
+            # 8.1 更新大模板状态
+            if main_status not in (5, 7):
+                sql1 = "UPDATE fy_cross_task SET task_status = 5 WHERE orderId = %s"
+                cursor.execute(sql1, (real_order_id,))
+                detail8["sqls"].append(f"UPDATE fy_cross_task SET task_status=5 WHERE orderId='{real_order_id}'")
+            else:
+                detail8["sqls"].append(f"大模板状态={main_status}，无需修改")
+            
+            # 8.2 更新子模板状态（用 sub_order_id 匹配）
+            sql2 = "UPDATE fy_cross_task_detail SET status = 5, error_desc = '重发中' WHERE sub_order_id = %s"
+            cursor.execute(sql2, (order_id,))
+            detail8["sqls"].append(f"UPDATE fy_cross_task_detail SET status=5 WHERE sub_order_id='{order_id}'")
             conn.commit()
-            yield _yield_step(8, "修改数据库状态", "ok", round((_time.time() - t0) * 1000, 1))
+            yield _yield_step(8, "修改数据库状态", "ok", round((_time.time() - t0) * 1000, 1), detail=detail8)
             
             total_elapsed = round((_time.time() - total_t0) * 1000, 1)
             yield _yield_done(True, f"重发成功，新子任务ID: {new_sub_order_id}", total_elapsed,
@@ -1035,7 +1203,10 @@ def resend_cross_task_stream(order_id, sub_order_id, task_seq, server_ip="10.68.
         total_elapsed = round((_time.time() - total_t0) * 1000, 1)
         yield _yield_done(False, f"重发失败: {str(e)}", total_elapsed, {"code": "SERVER_ERROR"})
     finally:
-        conn.close()
+        try:
+            conn.close()
+        except:
+            pass
 
 
 def _generate_new_sub_order_id(sub_order_id):

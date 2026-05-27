@@ -5,7 +5,7 @@
 """
 
 # 任务查询模块版本号（修改本文件时递增末尾数字）
-TASK_VERSION = '2.3.0'
+TASK_VERSION = '2.3.1'
 
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session
 from functools import wraps
@@ -711,20 +711,31 @@ def resend_task_stream():
     order_id = request.args.get('order_id', '').strip()
     sub_order_id = request.args.get('sub_order_id', '').strip()
     task_seq = request.args.get('task_seq', type=int)
+    server_ip = request.args.get('server_ip', '').strip()
     
     if not order_id or not sub_order_id or task_seq is None:
         return jsonify({'error': '缺少参数'}), 400
     
     def generate():
         import json as _json
-        for msg in task_query_extended.resend_cross_task_stream(sub_order_id, order_id, task_seq):
-            yield f"data: {_json.dumps(msg, ensure_ascii=False)}\n\n"
+        import traceback as _traceback
+        try:
+            for msg in task_query_extended.resend_cross_task_stream(sub_order_id, order_id, task_seq, server_ip):
+                line = f"data: {_json.dumps(msg, ensure_ascii=False)}\n\n"
+                yield line
+        except Exception as e:
+            # 捕获生成器中的异常并推送给前端
+            error_msg = {"type": "done", "success": False, "message": f"重发异常: {str(e)}", "total_elapsed_ms": 0}
+            yield f"data: {_json.dumps(error_msg, ensure_ascii=False)}\n\n"
+            # 打印到日志
+            print(f"[SSE Error] resend_task_stream: {e}")
+            _traceback.print_exc()
     
     return Response(
         stream_with_context(generate()),
         mimetype='text/event-stream',
         headers={
-            'Cache-Control': 'no-cache',
+            'Cache-Control': 'no-cache, no-transform',
             'X-Accel-Buffering': 'no',
             'Connection': 'keep-alive'
         }
@@ -738,14 +749,38 @@ def api_tasks_by_error():
     try:
         data = request.get_json() or {}
         error_desc = data.get('error_desc', '').strip()
-        status = data.get('status', type=int)
-        limit = data.get('limit', 50)
+        status = data.get('status')
+        if status is not None:
+            try:
+                status = int(status)
+            except (ValueError, TypeError):
+                status = None
+        limit = int(data.get('limit', 50))
         
         if not error_desc and status is None:
             return jsonify({'error': '请提供 error_desc 或 status'}), 400
         
         result = task_query_extended.query_tasks_by_error(error_desc, status, limit)
         return jsonify({'success': True, 'tasks': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@task_bp.route('/api/query/debug_cross_task_detail', methods=['POST'])
+@login_required
+def api_debug_cross_task_detail():
+    """查询 fy_cross_task_detail 表原始数据（调试用）"""
+    try:
+        data = request.get_json() or {}
+        device_num = data.get('device_num', '').strip()
+        device_code = data.get('device_code', '').strip()
+        limit = int(data.get('limit', 10))
+        
+        if not device_num and not device_code:
+            return jsonify({'error': '请提供 device_num 或 device_code'}), 400
+        
+        result = task_query_extended.query_debug_cross_task_detail(device_num, device_code, limit)
+        return jsonify({'success': True, 'tasks': result, 'count': len(result)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
