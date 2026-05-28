@@ -364,8 +364,34 @@ class TemplateService:
     # 以 xialiaoDA02-LH023_521 为模板复制新增
     
     def _prod_query(self, query, params=None, fetch=True):
-        """使用生产库连接执行查询"""
-        return execute_query(query, params, fetch=fetch, config=PROD_DB_CONFIG)
+        """使用生产库连接池执行查询"""
+        from modules.database.connection import _pool_instance
+        try:
+            conn = _pool_instance.get_conn2()
+        except (RuntimeError, Exception) as e:
+            print(f"[RCS同步] 生产库连接池获取失败，回退到直连: {e}")
+            return execute_query(query, params, fetch=fetch, config=PROD_DB_CONFIG)
+        
+        from pymysql.cursors import DictCursor
+        cursor = None
+        try:
+            cursor = conn.cursor(DictCursor)
+            cursor.execute(query, params or ())
+            if fetch:
+                result = cursor.fetchall() if query.strip().upper().startswith('SELECT') else []
+            else:
+                conn.commit()
+                result = cursor.lastrowid if query.strip().upper().startswith('INSERT') else cursor.rowcount
+            return result
+        except Exception as e:
+            print(f"[RCS同步] 生产库查询错误: {e}")
+            conn.rollback()
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
     
     def _get_template_data(self, template_code):
         """获取 xialiaoDA02-LH023_521 的完整数据作为模板"""

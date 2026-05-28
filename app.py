@@ -2620,7 +2620,18 @@ if __name__ == '__main__':
         pool = DatabasePool()
         db_pool_config = get_db_config_from_toml(args.config)
         pool.init_pool(db_pool_config)
-        print(f"[启动] 数据库连接池已初始化")
+        print(f"[启动] 数据库连接池已初始化 (测试库)")
+        
+        # 初始化生产库连接池（用于 RCS 模板同步）
+        prod_config = {
+            'host': '10.68.2.32', 'port': 3306,
+            'user': 'wms', 'password': 'CCshenda889',
+            'database': 'wms', 'charset': 'utf8mb4',
+            'connect_timeout': 5,
+            'maxconnections': 5, 'mincached': 1, 'maxcached': 2,
+        }
+        pool.init_second_pool(prod_config)
+        print(f"[启动] 生产库连接池已初始化 (10.68.2.32)")
     except Exception as e:
         print(f"[启动] 警告: 连接池初始化失败，将使用传统连接方式: {e}")
     
