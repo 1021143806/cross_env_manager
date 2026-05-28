@@ -59,19 +59,18 @@ task_template.id (PK, 自增)  ────→  task_relation.template_id (FK)
     - [7.2 取消模板的特殊用途](#72-取消模板的特殊用途)
     - [7.3 模板优先级说明](#73-模板优先级说明)
     - [7.4 注意事项](#74-注意事项)
-  - [8. 按模板名称查询](#8-按模板名称查询)
+  - [8. model\_process \& model\_process\_detail — 业务流程模板](#8-model_process--model_process_detail--业务流程模板)
+    - [8.1 概述](#81-概述)
+    - [8.2 model\_process — 业务流程模板](#82-model_process--业务流程模板)
+    - [8.3 model\_process\_detail — 业务流程子任务](#83-model_process_detail--业务流程子任务)
+    - [8.4 四表完整关联链路](#84-四表完整关联链路)
+    - [8.5 关键发现](#85-关键发现)
+    - [8.6 常用 SQL](#86-常用-sql)
+  - [9. 按模板名称查询](#9-按模板名称查询)
     - [8.1 查询模板基本信息及子任务步骤](#81-查询模板基本信息及子任务步骤)
     - [8.2 查询模板的完整关联链路](#82-查询模板的完整关联链路)
     - [8.3 查询模板被引用情况](#83-查询模板被引用情况)
     - [8.4 一键查询脚本（Python）](#84-一键查询脚本python)
-
----
-
-## 1. 表关系总览
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    任务模板体系 ER 图                            │
 │                                                                 │
 │  task_template (任务模板)                                        │
 │  ├── id (PK)                                                    │
@@ -576,7 +575,206 @@ LIMIT 30;
 
 ---
 
-## 8. 按模板名称查询
+## 8. model_process & model_process_detail — 业务流程模板
+
+### 8.1 概述
+
+`model_process` 和 `model_process_detail` 是 RCS 系统的**业务流程模板配置表**，与 `task_template` / `task_relation` 共同构成完整的模板体系。
+
+**统计**：
+- `model_process`：534 条（业务流程模板）
+- `model_process_detail`：536 条（子任务关联）
+- `task_template`：534 条（任务模板）
+- `task_relation`：1095 条（子任务步骤）
+
+### 8.2 model_process — 业务流程模板
+
+**表注释**: 流程模式  
+**记录数**: 534 条  
+**主键**: `id` (自增)  
+**唯一键**: `model_process_code`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | int | 主键，自增 |
+| `area_id` | int | 区域ID |
+| `priority` | int | 优先级：4=低, 6=中, 8=高 |
+| `model_process_code` | varchar(64) | **流程模板编号**（唯一键） |
+| `model_process_name` | varchar(64) | 流程模板名称 |
+| `create_time` | datetime | 创建时间 |
+| `update_time` | datetime | 更新时间 |
+| `sys_auto_generate` | int | 系统自动创建：0=否, 1=是 |
+| `exe_immediately` | int | 立即执行：0=否, 1=是 |
+| `enable` | tinyint | 是否允许第三方下发订单：0=不允许, 1=允许 |
+| `is_support_agv` | int | 是否支持多车：1=单车, 2=多车 |
+
+### 8.3 model_process_detail — 业务流程子任务
+
+**表注释**: 流程模式子任务  
+**记录数**: 536 条  
+**主键**: `id` (自增)
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | int | 主键，自增 |
+| `model_process_id` | int | 关联 `model_process.id` |
+| `template_code` | varchar(64) | 任务流程子任务编号 |
+| `task_template_id` | int | **关联 `task_template.id`**（536条全部有值） |
+| `template_name` | varchar(100) | 子任务名称 |
+| `template_type` | int | 任务类型：1=RCS, 2=机械臂, 3=传送带 |
+| `continue_condition` | int | 继续任务类型：1=无, 2=其他子任务, 3=第三方确认 |
+| `trigger_condition` | int | 触发条件类型：1=无, 2=其他任务 |
+
+### 8.4 四表完整关联链路
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    RCS 模板体系完整 ER 图                            │
+│                                                                     │
+│  model_process (业务流程模板) — 534条                                │
+│  ├── id (PK)                                                        │
+│  ├── model_process_code (UK) — 流程模板编号                          │
+│  ├── model_process_name — 流程模板名称                               │
+│  ├── area_id — 区域ID                                               │
+│  ├── priority — 优先级 (4低/6中/8高)                                 │
+│  └── enable — 启用状态                                              │
+│       │                                                             │
+│       │ model_process_detail.model_process_id → model_process.id    │
+│       ▼                                                             │
+│  model_process_detail (业务流程子任务) — 536条                       │
+│  ├── id (PK)                                                        │
+│  ├── model_process_id → model_process.id                            │
+│  ├── template_code — 子任务模板编号                                  │
+│  ├── task_template_id → task_template.id (100%覆盖)                 │
+│  ├── template_name — 子任务名称                                      │
+│  ├── template_type — 任务类型 (1=RCS)                                │
+│  ├── continue_condition — 继续条件                                   │
+│  └── trigger_condition — 触发条件                                    │
+│       │                                                             │
+│       │ model_process_detail.task_template_id → task_template.id    │
+│       ▼                                                             │
+│  task_template (任务模板) — 534条                                    │
+│  ├── id (PK)                                                        │
+│  ├── template_code (UK) — 模板编号                                   │
+│  ├── name — 模板名称                                                │
+│  ├── processor — 处理器类型 (carry/temp/fork/storage)                │
+│  ├── areaId — 区域ID                                                │
+│  └── priority — 优先级 (2指定/4高/6中/8低)                           │
+│       │                                                             │
+│       │ task_relation.template_id → task_template.id                │
+│       ▼                                                             │
+│  task_relation (模板子任务关联) — 1095条                             │
+│  ├── id (PK)                                                        │
+│  ├── template_id → task_template.id                                 │
+│  ├── type_id → task_type.id (子任务动作类型)                          │
+│  ├── need_trigger — 是否需要第三方触发                               │
+│  ├── skip / skip_id — 跳过条件                                      │
+│  ├── relate_template — 关联的模板编号                                │
+│  └── sub_template — 关联的子模板                                     │
+│       │                                                             │
+│       │ task_relation.type_id → task_type.id                        │
+│       ▼                                                             │
+│  task_type (子任务类型) — 58种                                       │
+│  ├── id (PK)                                                        │
+│  ├── type_code — 类型编码 (MOVE/LIFT/DOWN/ROLLER 等)                │
+│  ├── name — 类型名称                                                │
+│  ├── action — 动作指令 JSON                                         │
+│  └── description — 详细说明                                         │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 8.5 关键发现
+
+1. **`model_process_detail.task_template_id` 100% 覆盖**：536条子任务全部关联了 `task_template.id`，说明业务流程模板和任务模板之间是**强关联**关系。
+
+2. **`model_process` 与 `task_template` 数量接近**：534 vs 534，说明一个业务流程模板通常对应一个任务模板。
+
+3. **`task_relation` 数量多于 `task_template`**：1095 vs 534，说明一个任务模板平均有约 2 个子任务步骤。
+
+4. **关联链路**：
+   ```
+   model_process (业务流程)
+     → model_process_detail (子任务)
+       → task_template (任务模板)
+         → task_relation (子任务步骤)
+           → task_type (动作类型)
+   ```
+
+5. **与跨环境模板的关系**：
+   - `model_process` / `model_process_detail` — RCS 系统内部业务流程模板
+   - `fy_cross_model_process` / `fy_cross_model_process_detail` — 跨环境任务模板
+   - 两套体系独立，但 `fy_cross_model_process_detail.template_code` 指向 `task_template.template_code`
+
+### 8.6 常用 SQL
+
+```sql
+-- 查询业务流程模板及其完整链路
+SELECT
+  mp.id,
+  mp.model_process_code,
+  mp.model_process_name,
+  mp.area_id,
+  mp.priority,
+  mp.enable,
+  mpd.id AS detail_id,
+  mpd.template_code,
+  mpd.task_template_id,
+  mpd.template_name,
+  tt.name AS task_template_name,
+  tt.processor,
+  tt.areaId AS task_template_area,
+  COUNT(tr.id) AS relation_count
+FROM model_process mp
+LEFT JOIN model_process_detail mpd ON mpd.model_process_id = mp.id
+LEFT JOIN task_template tt ON tt.id = mpd.task_template_id
+LEFT JOIN task_relation tr ON tr.template_id = tt.id
+WHERE mp.model_process_code = 'xiaojianjieliao'
+GROUP BY mp.id, mpd.id
+ORDER BY mpd.id;
+
+-- 查询业务流程模板的子任务步骤（含动作类型）
+SELECT
+  mp.model_process_code,
+  mp.model_process_name,
+  mpd.template_code,
+  mpd.template_name,
+  tt.name AS task_template_name,
+  tr.type_id,
+  tty.type_code,
+  tty.name AS action_name,
+  tty.description
+FROM model_process mp
+JOIN model_process_detail mpd ON mpd.model_process_id = mp.id
+JOIN task_template tt ON tt.id = mpd.task_template_id
+JOIN task_relation tr ON tr.template_id = tt.id
+JOIN task_type tty ON tty.id = tr.type_id
+WHERE mp.id = 1
+ORDER BY mpd.id, tr.id;
+
+-- 统计每个业务流程模板的子任务数量
+SELECT
+  mp.id,
+  mp.model_process_code,
+  mp.model_process_name,
+  COUNT(mpd.id) AS detail_count,
+  SUM(tr_count.cnt) AS total_relation_count
+FROM model_process mp
+LEFT JOIN model_process_detail mpd ON mpd.model_process_id = mp.id
+LEFT JOIN (
+  SELECT mpd2.id AS detail_id, COUNT(tr.id) AS cnt
+  FROM model_process_detail mpd2
+  JOIN task_template tt ON tt.id = mpd2.task_template_id
+  JOIN task_relation tr ON tr.template_id = tt.id
+  GROUP BY mpd2.id
+) tr_count ON tr_count.detail_id = mpd.id
+GROUP BY mp.id
+ORDER BY mp.id
+LIMIT 20;
+```
+
+---
+
+## 9. 按模板名称查询
 
 以下查询以模板名称 `K31CCto191F_go_522` 为例，展示如何根据模板名称（`template_code` 或 `name`）查询两张表的关联数据。
 

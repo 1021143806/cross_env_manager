@@ -463,9 +463,10 @@
         return confirm('确定要删除这个模板吗？\n\n此操作将删除模板及其所有子任务，且不可恢复！');
     }
     
-    // ========== RCS 模板同步 ==========
+    // ========== RCS 四表同步 ==========
+    // 同步到 model_process / model_process_detail / task_template / task_relation
     
-    // 页面加载时自动检查 RCS 状态
+    // 页面加载时自动检查状态
     document.addEventListener('DOMContentLoaded', function() {
         var templateId = document.getElementById('templateIdHolder');
         if (templateId) {
@@ -473,7 +474,23 @@
         }
     });
     
-    // 刷新大模板的 RCS 同步状态
+    // 生成四张表的状态 HTML
+    function renderTableStatus(details) {
+        var icons = {
+            model_process: details.model_process ? '✅' : '❌',
+            model_process_detail: details.model_process_detail ? '✅' : '❌',
+            task_template: details.task_template ? '✅' : '❌',
+            task_relation: details.task_relation ? '✅' : '❌'
+        };
+        return '<div style="font-size:0.85rem;line-height:1.8">'
+            + '<span>' + icons.model_process + ' model_process</span><br>'
+            + '<span>' + icons.model_process_detail + ' model_process_detail</span><br>'
+            + '<span>' + icons.task_template + ' task_template</span><br>'
+            + '<span>' + icons.task_relation + ' task_relation</span>'
+            + '</div>';
+    }
+    
+    // 刷新四张表的同步状态
     function refreshRcsStatus(templateId) {
         var statusEl = document.getElementById('rcsSyncStatus');
         if (!statusEl) return;
@@ -484,22 +501,28 @@
             .then(function(data) {
                 if (data.success && data.data) {
                     var item = data.data;
-                    if (item.exists) {
-                        statusEl.innerHTML = '<span class="badge bg-success">✅ 已同步 (task_template id=' + item.rcs_id + ')</span>';
+                    if (item.complete) {
+                        statusEl.innerHTML = '<span class="badge bg-success">✅ 四张表完整</span>'
+                            + renderTableStatus(item.details);
                     } else {
-                        statusEl.innerHTML = '<span class="badge bg-warning text-dark">⚠️ 未同步</span>';
+                        statusEl.innerHTML = '<span class="badge bg-warning text-dark">⚠️ 部分缺失</span>'
+                            + renderTableStatus(item.details)
+                            + '<br><small class="text-muted">模板: ' + item.template_code + '</small>';
                     }
                 } else {
-                    statusEl.innerHTML = '<span class="badge bg-danger">获取失败</span>';
+                    var debugInfo = data.debug ? JSON.stringify(data.debug) : '';
+                    statusEl.innerHTML = '<span class="badge bg-danger">' + (data.message || '获取失败') + '</span>'
+                        + (debugInfo ? '<br><small class="text-danger">' + debugInfo + '</small>' : '');
+                    console.error('RCS状态获取失败:', data);
                 }
             })
             .catch(function(err) {
                 console.error('获取RCS同步状态失败:', err);
-                statusEl.innerHTML = '<span class="badge bg-danger">请求失败</span>';
+                statusEl.innerHTML = '<span class="badge bg-danger">请求失败: ' + err.message + '</span>';
             });
     }
     
-    // 同步大模板本身到 task_template
+    // 同步到四张表
     function syncRcsTemplate(templateId) {
         var btn = event.target;
         btn.disabled = true;
@@ -515,9 +538,23 @@
                     var result = data.data;
                     var msg = '';
                     if (result.synced && result.synced.length > 0) {
-                        msg = '✅ ' + result.synced[0].message;
+                        var s = result.synced[0];
+                        msg = '✅ ' + s.message;
+                        if (s.details) {
+                            msg += '\n\n操作记录:';
+                            for (var table in s.details) {
+                                msg += '\n  ' + table + ' → id=' + s.details[table];
+                            }
+                        }
                     } else if (result.skipped && result.skipped.length > 0) {
-                        msg = '⏭️ ' + result.skipped[0].message;
+                        var s = result.skipped[0];
+                        msg = '⏭️ ' + s.message;
+                        if (s.details) {
+                            msg += '\n\n当前状态:';
+                            for (var table in s.details) {
+                                msg += '\n  ' + table + ': ' + (s.details[table] ? '✅ 存在' : '❌ 缺失');
+                            }
+                        }
                     } else if (result.errors && result.errors.length > 0) {
                         msg = '❌ ' + result.errors[0].message;
                     }

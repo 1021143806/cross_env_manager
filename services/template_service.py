@@ -7,6 +7,18 @@
 import re
 from modules.database.connection import execute_query
 
+# 生产库连接配置（10.68.2.32），用于 RCS 模板同步
+# task_template / task_relation 表位于生产库
+PROD_DB_CONFIG = {
+    'host': '10.68.2.32',
+    'port': 3306,
+    'user': 'wms',
+    'password': 'CCshenda889',
+    'database': 'wms',
+    'charset': 'utf8mb4',
+    'connect_timeout': 5,
+}
+
 
 class TemplateService:
     """模板管理服务"""
@@ -347,101 +359,258 @@ class TemplateService:
         
         return {'id': new_id, 'code': new_code, 'name': new_name, 'rcs_sync': sync_result}, None
     
-    # ========== RCS 模板同步 ==========
+    # ========== RCS 四表同步 ==========
+    # 同步跨环境大模板到 model_process / model_process_detail / task_template / task_relation
+    # 以 xialiaoDA02-LH023_521 为模板复制新增
     
-    def check_rcs_template_exists(self, template_code):
-        """检查 task_template 中是否存在指定 template_code"""
-        if not template_code:
+    def _prod_query(self, query, params=None, fetch=True):
+        """使用生产库连接执行查询"""
+        return execute_query(query, params, fetch=fetch, config=PROD_DB_CONFIG)
+    
+    def _get_template_data(self, template_code):
+        """获取 xialiaoDA02-LH023_521 的完整数据作为模板"""
+        result = {}
+        
+        print(f"[RCS同步] 查询模板数据: {template_code}")
+        
+        # model_process
+        sql1 = "SELECT * FROM model_process WHERE model_process_code = %s"
+        print(f"[RCS同步] SQL: {sql1}  params: ({template_code},)")
+        r = self._prod_query(sql1, (template_code,))
+        if r:
+            result['model_process'] = r[0]
+            print(f"[RCS同步] model_process 查询成功: id={r[0]['id']}")
+        else:
+            print(f"[RCS同步] model_process 查询失败: 未找到 {template_code}")
+        
+        # model_process_detail
+        sql2 = "SELECT * FROM model_process_detail WHERE template_code = %s"
+        print(f"[RCS同步] SQL: {sql2}  params: ({template_code},)")
+        r = self._prod_query(sql2, (template_code,))
+        if r:
+            result['model_process_detail'] = r[0]
+            print(f"[RCS同步] model_process_detail 查询成功: id={r[0]['id']}")
+        else:
+            print(f"[RCS同步] model_process_detail 查询失败: 未找到 {template_code}")
+        
+        # task_template
+        sql3 = "SELECT * FROM task_template WHERE template_code = %s"
+        print(f"[RCS同步] SQL: {sql3}  params: ({template_code},)")
+        r = self._prod_query(sql3, (template_code,))
+        if r:
+            result['task_template'] = r[0]
+            print(f"[RCS同步] task_template 查询成功: id={r[0]['id']}")
+        else:
+            print(f"[RCS同步] task_template 查询失败: 未找到 {template_code}")
+        
+        # task_relation
+        sql4 = ("SELECT tr.* FROM task_relation tr "
+                "JOIN task_template tt ON tt.id = tr.template_id "
+                "WHERE tt.template_code = %s ORDER BY tr.id")
+        print(f"[RCS同步] SQL: {sql4}  params: ({template_code},)")
+        r = self._prod_query(sql4, (template_code,))
+        if r:
+            result['task_relation'] = r
+            print(f"[RCS同步] task_relation 查询成功: {len(r)}条")
+        else:
+            print(f"[RCS同步] task_relation 查询失败: 未找到 {template_code}")
+        
+        return result
+    
+    def check_four_tables_complete(self, template_code):
+        """
+        检查四张表内容是否都完整
+        返回: {complete: bool, details: {表名: bool}}
+        """
+        details = {}
+        
+        r = self._prod_query(
+            "SELECT id FROM model_process WHERE model_process_code = %s", (template_code,))
+        details['model_process'] = bool(r)
+        
+        r = self._prod_query(
+            "SELECT id FROM model_process_detail WHERE template_code = %s", (template_code,))
+        details['model_process_detail'] = bool(r)
+        
+        r = self._prod_query(
+            "SELECT id FROM task_template WHERE template_code = %s", (template_code,))
+        details['task_template'] = bool(r)
+        
+        if r:
+            r2 = self._prod_query(
+                "SELECT COUNT(*) as cnt FROM task_relation WHERE template_id = %s",
+                (r[0]['id'],))
+            details['task_relation'] = r2 and r2[0]['cnt'] > 0
+        else:
+            details['task_relation'] = False
+        
+        complete = all(details.values())
+        return {'complete': complete, 'details': details}
+    
+    def sync_four_tables(self, template_code, template_name):
+        """
+        以 xialiaoDA02-LH023_521 为模板，同步四张表
+        返回: (success, message, details)
+        """
+        # 1. 检查四张表是否已完整
+        status = self.check_four_tables_complete(template_code)
+        if status['complete']:
+            return False, f"模板 {template_code} 四张表已全部存在，跳过新增", status['details']
+        
+        # 2. 获取模板数据（以 xialiaoDA02-LH023_521 为模板）
+        tmpl = self._get_template_data('xialiaoDA02-LH023_521')
+        if not tmpl.get('model_process'):
+            return False, "模板数据 xialiaoDA02-LH023_521 不完整，无法复制", None
+        
+        mp = tmpl['model_process']
+        mpd = tmpl.get('model_process_detail', {})
+        tt = tmpl.get('task_template', {})
+        tr_list = tmpl.get('task_relation', [])
+        
+        new_details = {}
+        
+        # 3. 插入 model_process
+        if not status['details'].get('model_process'):
+            new_mp_id = self._prod_query(
+                """INSERT INTO model_process
+                (area_id, priority, model_process_code, model_process_name,
+                 sys_auto_generate, exe_immediately, enable, is_support_agv)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                (mp.get('area_id', 3), mp.get('priority', 6),
+                 template_code, template_name or template_code,
+                 mp.get('sys_auto_generate', 0), mp.get('exe_immediately', 1),
+                 mp.get('enable', 1), mp.get('is_support_agv', 2)),
+                fetch=False)
+            if new_mp_id:
+                new_details['model_process'] = new_mp_id
+        else:
+            r = self._prod_query(
+                "SELECT id FROM model_process WHERE model_process_code = %s", (template_code,))
+            if r:
+                new_details['model_process'] = r[0]['id']
+        
+        # 4. 插入 model_process_detail
+        if not status['details'].get('model_process_detail') and new_details.get('model_process'):
+            # 先插入 task_template 获取 id
+            new_tt_id = None
+            if not status['details'].get('task_template'):
+                new_tt_id = self._prod_query(
+                    """INSERT INTO task_template
+                    (template_code, name, processor, is_default, priority, areaId,
+                     capacity_control, re_execute, template_type, allow_recover,
+                     allow_charge_device, allow_merge, allow_device_cancel_task,
+                     default_cancel_task_strategy, backup_device_ratio)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (template_code, template_name or template_code,
+                     tt.get('processor', 'carry'), tt.get('is_default', '0'),
+                     tt.get('priority', 6), tt.get('areaId', 3),
+                     tt.get('capacity_control', 1), tt.get('re_execute', 1),
+                     tt.get('template_type', 1), tt.get('allow_recover', 0),
+                     tt.get('allow_charge_device', 0), tt.get('allow_merge', 0),
+                     tt.get('allow_device_cancel_task', 1),
+                     tt.get('default_cancel_task_strategy', 1),
+                     tt.get('backup_device_ratio', 120)),
+                    fetch=False)
+                if new_tt_id:
+                    new_details['task_template'] = new_tt_id
+            else:
+                r = self._prod_query(
+                    "SELECT id FROM task_template WHERE template_code = %s", (template_code,))
+                if r:
+                    new_tt_id = r[0]['id']
+                    new_details['task_template'] = new_tt_id
+            
+            if new_tt_id:
+                new_mpd_id = self._prod_query(
+                    """INSERT INTO model_process_detail
+                    (model_process_id, template_code, task_template_id, template_name,
+                     template_type, continue_condition, trigger_condition)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                    (new_details['model_process'], template_code, new_tt_id,
+                     template_name or template_code,
+                     mpd.get('template_type', 1), mpd.get('continue_condition', 1),
+                     mpd.get('trigger_condition', 1)),
+                    fetch=False)
+                if new_mpd_id:
+                    new_details['model_process_detail'] = new_mpd_id
+        
+        # 5. 插入 task_relation
+        if not status['details'].get('task_relation') and new_details.get('task_template'):
+            for tr in tr_list:
+                self._prod_query(
+                    """INSERT INTO task_relation
+                    (template_id, type_id, need_trigger, point_access, point_access_ext,
+                     notify_third, notify_end, skip)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (new_details['task_template'], tr.get('type_id', 1),
+                     tr.get('need_trigger', 0), tr.get('point_access', 1),
+                     tr.get('point_access_ext', 1), tr.get('notify_third', 2),
+                     tr.get('notify_end'), tr.get('skip', 0)),
+                    fetch=False)
+            new_details['task_relation'] = len(tr_list)
+        
+        return True, f"模板 {template_code} 四张表同步完成", new_details
+    
+    def get_four_tables_status(self, template_id):
+        """
+        获取跨环境大模板在四张表中的同步状态
+        返回: {template_code, template_name, complete, details}
+        """
+        try:
+            # fy_cross_model_process 在生产库 10.68.2.32
+            template = self._prod_query(
+                "SELECT id, model_process_code, model_process_name FROM fy_cross_model_process WHERE id = %s",
+                (template_id,))
+            if not template:
+                print(f"[RCS同步] fy_cross_model_process id={template_id} 在生产库中不存在")
+                return None
+            
+            t = template[0]
+            print(f"[RCS同步] 查询到跨环境模板: id={t['id']}, code={t['model_process_code']}")
+            status = self.check_four_tables_complete(t['model_process_code'])
+            return {
+                'template_code': t['model_process_code'],
+                'template_name': t['model_process_name'],
+                'complete': status['complete'],
+                'details': status['details']
+            }
+        except Exception as e:
+            print(f"[RCS同步] 查询生产库失败: {e}")
             return None
-        result = execute_query(
-            "SELECT id FROM task_template WHERE template_code = %s",
-            (template_code,))
-        return result[0] if result else None
-    
-    def sync_to_rcs_template(self, template_code, template_name):
-        """
-        同步单个模板到 task_template + task_relation
-        返回: (success, message, task_template_id)
-        """
-        # 1. 检查是否已存在
-        existing = self.check_rcs_template_exists(template_code)
-        if existing:
-            return False, f"模板 {template_code} 已在 task_template 中存在 (id={existing['id']})，跳过新增", existing['id']
-        
-        # 2. 插入 task_template
-        new_id = execute_query(
-            """INSERT INTO task_template
-            (template_code, name, processor, is_default, priority, areaId,
-             capacity_control, re_execute, template_type, allow_recover,
-             allow_charge_device, allow_merge, allow_device_cancel_task,
-             default_cancel_task_strategy, backup_device_ratio)
-            VALUES (%s, %s, 'carry', '0', 6, 3, 1, 1, 1, 0, 0, 0, 1, 1, 120)""",
-            (template_code, template_name or template_code), fetch=False)
-        
-        if not new_id:
-            return False, f"插入 task_template 失败: {template_code}", None
-        
-        # 3. 插入 task_relation
-        execute_query(
-            """INSERT INTO task_relation
-            (template_id, type_id, need_trigger, point_access, point_access_ext, notify_third, skip)
-            VALUES (%s, 1, 0, 1, 1, 2, 0)""",
-            (new_id,), fetch=False)
-        
-        return True, f"模板 {template_code} 已同步到 task_template (id={new_id})，请前往 10.68.2.32 客户端禁用对应业务流程模板任务", new_id
-    
-    def get_rcs_sync_status(self, template_id):
-        """
-        获取跨环境大模板在 task_template 中的同步状态
-        返回: {template_code, template_name, exists, rcs_id}
-        """
-        template = execute_query(
-            "SELECT model_process_code, model_process_name FROM fy_cross_model_process WHERE id = %s",
-            (template_id,))
-        if not template:
-            return None
-        
-        t = template[0]
-        existing = self.check_rcs_template_exists(t['model_process_code'])
-        return {
-            'template_code': t['model_process_code'],
-            'template_name': t['model_process_name'],
-            'exists': existing is not None,
-            'rcs_id': existing['id'] if existing else None
-        }
     
     def sync_template_to_rcs(self, template_id):
         """
-        同步跨环境大模板本身到 task_template
+        同步跨环境大模板到四张表
         返回: {synced: [...], skipped: [...], errors: [...]}
         """
-        status = self.get_rcs_sync_status(template_id)
+        status = self.get_four_tables_status(template_id)
         if not status:
-            return {'synced': [], 'skipped': [], 'errors': [{'message': '模板不存在'}]}
+            return {'synced': [], 'skipped': [], 'errors': [{'message': '跨环境模板不存在'}]}
         
         synced = []
         skipped = []
         errors = []
         
-        if status['exists']:
+        if status['complete']:
             skipped.append({
                 'template_code': status['template_code'],
-                'rcs_id': status['rcs_id'],
-                'message': f"模板 {status['template_code']} 已存在 (id={status['rcs_id']})，跳过新增"
+                'message': f"模板 {status['template_code']} 四张表已全部存在，跳过新增",
+                'details': status['details']
             })
         else:
-            success, message, new_id = self.sync_to_rcs_template(
+            success, message, details = self.sync_four_tables(
                 status['template_code'], status['template_name'])
             if success:
                 synced.append({
                     'template_code': status['template_code'],
-                    'rcs_id': new_id,
-                    'message': message
+                    'message': message,
+                    'details': details
                 })
             else:
                 errors.append({
                     'template_code': status['template_code'],
-                    'message': message
+                    'message': message,
+                    'details': details
                 })
         
         return {'synced': synced, 'skipped': skipped, 'errors': errors}

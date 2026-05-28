@@ -197,14 +197,20 @@ def reorder_details(template_id):
         return jsonify({'success': False, 'message': f'服务器错误: {str(e)}'}), 500
 
 
-# ========== RCS 模板同步 API ==========
+# ========== RCS 四表同步 API ==========
 
 @template_bp.route('/api/template/<int:template_id>/rcs_sync_status', methods=['GET'])
 @login_required
 def rcs_sync_status(template_id):
-    """查询跨环境大模板在 task_template 中的同步状态"""
+    """查询跨环境大模板在四张表（model_process/model_process_detail/task_template/task_relation）中的同步状态"""
     try:
-        status = _template_service.get_rcs_sync_status(template_id)
+        status = _template_service.get_four_tables_status(template_id)
+        if status is None:
+            return jsonify({
+                'success': False,
+                'message': f'跨环境模板 id={template_id} 在 fy_cross_model_process 中不存在',
+                'debug': {'template_id': template_id, 'table': 'fy_cross_model_process'}
+            }), 404
         return jsonify({'success': True, 'data': status})
     except Exception as e:
         return jsonify({'success': False, 'message': f'服务器错误: {str(e)}'}), 500
@@ -214,7 +220,7 @@ def rcs_sync_status(template_id):
 @login_required
 @admin_required
 def rcs_sync_template(template_id):
-    """同步跨环境大模板本身到 task_template"""
+    """同步跨环境大模板到四张表（以 xialiaoDA02-LH023_521 为模板复制新增）"""
     try:
         result = _template_service.sync_template_to_rcs(template_id)
         return jsonify({'success': True, 'data': result})
