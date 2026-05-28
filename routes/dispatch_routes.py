@@ -1087,6 +1087,10 @@ def handle_status_report(data):
             print(f"[ReportStatus] status={status} 新增 | 模板={template_name} device={device_num}({device_code[-8:]}) order_id={order_id}")
         _save_json(template_file, tasks)
         
+        # status=10 表示任务已完成（ICS 可能不上报 status=8），触发统计
+        if status == 10:
+            _update_daily_stats(region_key, task_type)
+        
     else:
         # 非 6/9/10 的状态（包括 8=完成 及其他状态）：执行清理逻辑
         # 从模板 JSON 中删除该设备记录
@@ -1181,8 +1185,8 @@ def handle_status_report(data):
         
         cc_change = ', currentCount ' + '; '.join(cc_change_parts) if cc_change_parts else ''
         change_summary = f'模板-{template_name} -{template_removed}{cc_change}'
-        # 更新每日统计（status=8/10 完成时）
-        if status in (8, 10):
+        # 更新每日统计（status=8 完成时）
+        if status == 8:
             _update_daily_stats(region_key, task_type)
     
     # 更新设备历史记录（记录这个区域48小时内来过哪些设备）
