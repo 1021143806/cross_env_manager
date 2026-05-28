@@ -94,11 +94,16 @@
         
         <!-- 子任务列表 -->
         <div class="card">
-            <div class="card-header bg-info text-white">
+            <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">
                     <i class="bi bi-list-task"></i> 子任务列表
                     <span class="badge bg-light text-dark ms-2">{{ details|default([])|length }} 个子任务</span>
                 </h5>
+                <div>
+                    <button type="button" class="btn btn-sm btn-light" onclick="refreshRcsStatus({{ template.id }})">
+                        <i class="bi bi-arrow-clockwise"></i> 刷新RCS状态
+                    </button>
+                </div>
             </div>
             <div class="card-body">
                 {% if details %}
@@ -113,12 +118,13 @@
                                     <th>服务器地址</th>
                                     <th>目标点</th>
                                     <th>第三方触发</th>
+                                    <th>RCS同步</th>
                                     <th>操作</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="detailTableBody">
                                 {% for detail in details %}
-                                    <tr>
+                                    <tr id="detailRow{{ detail.id }}">
                                         <td>{{ detail.id }}</td>
                                         <td>
                                             <span class="badge bg-secondary">#{{ detail.task_seq }}</span>
@@ -141,6 +147,9 @@
                                             {% else %}
                                                 <span class="badge bg-secondary">否</span>
                                             {% endif %}
+                                        </td>
+                                        <td id="rcsStatus{{ detail.id }}">
+                                            <span class="badge bg-secondary">检查中...</span>
                                         </td>
                                         <td>
                                             <button type="button" class="btn btn-sm btn-outline-warning"
@@ -395,6 +404,7 @@
 {% endfor %}
 
 {% block extra_js %}
+<input type="hidden" id="templateIdHolder" value="{{ template.id }}">
 <script>
     // 复制到剪贴板
     function copyToClipboard(text) {
@@ -442,6 +452,65 @@
     // 确认删除
     function confirmDelete() {
         return confirm('确定要删除这个模板吗？\n\n此操作将删除模板及其所有子任务，且不可恢复！');
+    }
+    
+    // ========== RCS 模板同步 ==========
+    
+    // 页面加载时自动检查 RCS 状态
+    document.addEventListener('DOMContentLoaded', function() {
+        var templateId = document.getElementById('templateIdHolder');
+        if (templateId) {
+            refreshRcsStatus(parseInt(templateId.value));
+        }
+    });
+    
+    // 刷新所有子任务的 RCS 同步状态
+    function refreshRcsStatus(templateId) {
+        fetch('/api/template/' + templateId + '/rcs_sync_status')
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                if (data.success && data.data) {
+                    data.data.forEach(function(item) {
+                        var cell = document.getElementById('rcsStatus' + item.detail_id);
+                        if (cell) {
+                            if (item.exists) {
+                                cell.innerHTML = '<span class="badge bg-success">✅ 已同步 (id=' + item.rcs_id + ')</span>';
+                            } else {
+                                cell.innerHTML = '<span class="badge bg-warning text-dark">⚠️ 未同步</span> '
+                                    + '<button class="btn btn-sm btn-outline-danger" onclick="syncSingleRcs(' + templateId + ',' + item.detail_id + ')">同步</button>';
+                            }
+                        }
+                    });
+                }
+            })
+            .catch(function(err) {
+                console.error('获取RCS同步状态失败:', err);
+            });
+    }
+    
+    // 同步单个子任务的模板到 task_template
+    function syncSingleRcs(templateId, detailId) {
+        var btn = event.target;
+        btn.disabled = true;
+        btn.innerHTML = '同步中...';
+        
+        fetch('/api/template/' + templateId + '/rcs_sync/' + detailId, {
+            method: 'POST',
+            headers: {'X-Requested-With': 'XMLHttpRequest'}
+        })
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    alert('✅ ' + data.message);
+                } else {
+                    alert(data.message || '同步失败');
+                }
+                refreshRcsStatus(templateId);
+            })
+            .catch(function(err) {
+                alert('同步请求失败: ' + err);
+                refreshRcsStatus(templateId);
+            });
     }
 </script>
 {% endblock %}

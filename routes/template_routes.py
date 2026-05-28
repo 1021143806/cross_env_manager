@@ -195,3 +195,41 @@ def reorder_details(template_id):
         return jsonify({'success': False, 'message': message}), 400
     except Exception as e:
         return jsonify({'success': False, 'message': f'服务器错误: {str(e)}'}), 500
+
+
+# ========== RCS 模板同步 API ==========
+
+@template_bp.route('/api/template/<int:template_id>/rcs_sync_status', methods=['GET'])
+@login_required
+def rcs_sync_status(template_id):
+    """查询模板所有子任务的 RCS 同步状态"""
+    try:
+        status = _template_service.get_rcs_sync_status(template_id)
+        return jsonify({'success': True, 'data': status})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'服务器错误: {str(e)}'}), 500
+
+
+@template_bp.route('/api/template/<int:template_id>/rcs_sync/<int:detail_id>', methods=['POST'])
+@login_required
+@admin_required
+def rcs_sync_single(template_id, detail_id):
+    """同步单个子任务的模板到 task_template"""
+    try:
+        from modules.database.connection import execute_query
+        details = execute_query(
+            "SELECT template_code, template_name FROM fy_cross_model_process_detail "
+            "WHERE id = %s AND model_process_id = %s",
+            (detail_id, template_id))
+        if not details:
+            return jsonify({'success': False, 'message': '子任务不存在'}), 404
+        
+        d = details[0]
+        if not d.get('template_code'):
+            return jsonify({'success': False, 'message': '子任务没有模板编号'}), 400
+        
+        success, message, new_id = _template_service.sync_to_rcs_template(
+            d['template_code'], d.get('template_name'))
+        return jsonify({'success': success, 'message': message, 'rcs_id': new_id})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'服务器错误: {str(e)}'}), 500
