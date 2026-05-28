@@ -129,10 +129,10 @@ class TemplateService:
             except (ValueError, KeyError) as e:
                 print(f"更新子任务 {detail_id_str} 出错: {e}")
         
-        # 自动同步缺失的 RCS 模板
-        sync_result = self.sync_all_missing_rcs_templates(template_id)
+        # 自动同步大模板本身到 task_template
+        sync_result = self.sync_template_to_rcs(template_id)
         if sync_result['synced']:
-            print(f"[RCS同步] 编辑模板 {template_id} 时自动同步 {len(sync_result['synced'])} 个模板到 task_template")
+            print(f"[RCS同步] 编辑模板 {template_id} 时自动同步到 task_template")
         
         return updated
     
@@ -217,9 +217,6 @@ class TemplateService:
         
         if new_id:
             detail = execute_query("SELECT * FROM fy_cross_model_process_detail WHERE id = %s", (new_id,))
-            # 自动同步新子任务的 RCS 模板
-            if detail and detail[0].get('template_code'):
-                self.sync_to_rcs_template(detail[0]['template_code'], detail[0].get('template_name'))
             return detail[0] if detail else None
         return None
     
@@ -343,10 +340,10 @@ class TemplateService:
                      safe_get(detail, 'comeback_template_code'), safe_get(detail, 'back_wait_time'),
                      detail.get('need_third_trigger', 0)), fetch=False)
         
-        # 自动同步缺失的 RCS 模板
-        sync_result = self.sync_all_missing_rcs_templates(new_id)
+        # 自动同步新复制的大模板到 task_template
+        sync_result = self.sync_template_to_rcs(new_id)
         if sync_result['synced']:
-            print(f"[RCS同步] 复制模板 {new_code} 时自动同步 {len(sync_result['synced'])} 个模板到 task_template")
+            print(f"[RCS同步] 复制模板 {new_code} 时自动同步到 task_template")
         
         return {'id': new_id, 'code': new_code, 'name': new_name, 'rcs_sync': sync_result}, None
     
@@ -395,58 +392,56 @@ class TemplateService:
     
     def get_rcs_sync_status(self, template_id):
         """
-        获取模板所有子任务的 RCS 同步状态
-        返回: [{detail_id, template_code, template_name, exists, rcs_id}, ...]
+        获取跨环境大模板在 task_template 中的同步状态
+        返回: {template_code, template_name, exists, rcs_id}
         """
-        details = execute_query(
-            "SELECT id, template_code, template_name FROM fy_cross_model_process_detail "
-            "WHERE model_process_id = %s AND template_code IS NOT NULL AND template_code != '' "
-            "ORDER BY task_seq",
+        template = execute_query(
+            "SELECT model_process_code, model_process_name FROM fy_cross_model_process WHERE id = %s",
             (template_id,))
+        if not template:
+            return None
         
-        result = []
-        for d in details:
-            existing = self.check_rcs_template_exists(d['template_code'])
-            result.append({
-                'detail_id': d['id'],
-                'template_code': d['template_code'],
-                'template_name': d['template_name'],
-                'exists': existing is not None,
-                'rcs_id': existing['id'] if existing else None
-            })
-        return result
+        t = template[0]
+        existing = self.check_rcs_template_exists(t['model_process_code'])
+        return {
+            'template_code': t['model_process_code'],
+            'template_name': t['model_process_name'],
+            'exists': existing is not None,
+            'rcs_id': existing['id'] if existing else None
+        }
     
-    def sync_all_missing_rcs_templates(self, template_id):
+    def sync_template_to_rcs(self, template_id):
         """
-        同步所有缺失的子任务模板到 task_template
+        同步跨环境大模板本身到 task_template
         返回: {synced: [...], skipped: [...], errors: [...]}
         """
-        status_list = self.get_rcs_sync_status(template_id)
+        status = self.get_rcs_sync_status(template_id)
+        if not status:
+            return {'synced': [], 'skipped': [], 'errors': [{'message': '模板不存在'}]}
         
         synced = []
         skipped = []
         errors = []
         
-        for item in status_list:
-            if item['exists']:
-                skipped.append({
-                    'template_code': item['template_code'],
-                    'rcs_id': item['rcs_id'],
-                    'message': f"模板 {item['template_code']} 已存在 (id={item['rcs_id']})，跳过新增"
+        if status['exists']:
+            skipped.append({
+                'template_code': status['template_code'],
+                'rcs_id': status['rcs_id'],
+                'message': f"模板 {status['template_code']} 已存在 (id={status['rcs_id']})，跳过新增"
+            })
+        else:
+            success, message, new_id = self.sync_to_rcs_template(
+                status['template_code'], status['template_name'])
+            if success:
+                synced.append({
+                    'template_code': status['template_code'],
+                    'rcs_id': new_id,
+                    'message': message
                 })
             else:
-                success, message, new_id = self.sync_to_rcs_template(
-                    item['template_code'], item['template_name'])
-                if success:
-                    synced.append({
-                        'template_code': item['template_code'],
-                        'rcs_id': new_id,
-                        'message': message
-                    })
-                else:
-                    errors.append({
-                        'template_code': item['template_code'],
-                        'message': message
-                    })
+                errors.append({
+                    'template_code': status['template_code'],
+                    'message': message
+                })
         
         return {'synced': synced, 'skipped': skipped, 'errors': errors}
