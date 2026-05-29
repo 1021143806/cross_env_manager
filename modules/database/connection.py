@@ -49,6 +49,8 @@ class DatabasePool:
         if not hasattr(self, '_initialized'):
             self._pool = None
             self._config = None
+            self._pool2 = None  # 第二个连接池（生产库）
+            self._config2 = None
             self._initialized = True
     
     def init_pool(self, config):
@@ -85,11 +87,43 @@ class DatabasePool:
             raise RuntimeError("连接池未初始化，请先调用 init_pool()")
         return self._pool.connection()
     
+    def init_second_pool(self, config):
+        """初始化第二个连接池（用于生产库等不同数据库）"""
+        self._config2 = config.copy()
+        pool_config = {
+            'creator': pymysql,
+            'maxconnections': config.get('maxconnections', 5),
+            'mincached': config.get('mincached', 1),
+            'maxcached': config.get('maxcached', 2),
+            'maxshared': config.get('maxshared', 0),
+            'blocking': config.get('blocking', True),
+            'maxusage': config.get('maxusage', 0),
+            'ping': config.get('ping', 1),
+            'host': config.get('host', 'localhost'),
+            'port': int(config.get('port', 3306)),
+            'user': config.get('user', 'root'),
+            'password': config.get('password', ''),
+            'database': config.get('database', config.get('name', 'agv_cross_env_test')),
+            'charset': config.get('charset', 'utf8mb4'),
+            'cursorclass': DictCursor,
+        }
+        self._pool2 = PooledDB(**pool_config)
+        print(f"[DatabasePool] 第二连接池初始化: {pool_config['host']}:{pool_config['port']}/{pool_config['database']}")
+    
+    def get_conn2(self):
+        """从第二个连接池获取连接"""
+        if self._pool2 is None:
+            raise RuntimeError("第二连接池未初始化，请先调用 init_second_pool()")
+        return self._pool2.connection()
+    
     def close_all(self):
         """关闭所有连接"""
         if self._pool:
             self._pool.close()
             print("[DatabasePool] 连接池已关闭")
+        if self._pool2:
+            self._pool2.close()
+            print("[DatabasePool] 第二连接池已关闭")
     
     @property
     def is_initialized(self):

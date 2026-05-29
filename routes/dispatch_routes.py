@@ -1087,6 +1087,10 @@ def handle_status_report(data):
             print(f"[ReportStatus] status={status} 新增 | 模板={template_name} device={device_num}({device_code[-8:]}) order_id={order_id}")
         _save_json(template_file, tasks)
         
+        # status=10 表示任务已完成（ICS 可能不上报 status=8），触发统计
+        if status == 10:
+            _update_daily_stats(region_key, task_type)
+        
     else:
         # 非 6/9/10 的状态（包括 8=完成 及其他状态）：执行清理逻辑
         # 从模板 JSON 中删除该设备记录
@@ -1181,8 +1185,8 @@ def handle_status_report(data):
         
         cc_change = ', currentCount ' + '; '.join(cc_change_parts) if cc_change_parts else ''
         change_summary = f'模板-{template_name} -{template_removed}{cc_change}'
-        # 更新每日统计（status=8/10 完成时）
-        if status in (8, 10):
+        # 更新每日统计（status=8 完成时）
+        if status == 8:
             _update_daily_stats(region_key, task_type)
     
     # 更新设备历史记录（记录这个区域48小时内来过哪些设备）
@@ -3196,8 +3200,21 @@ def _select_device_for_empty_return(region_key, region):
 
 
 def _execute_low_battery_return(region_key, region, device_code, device_num, battery):
-    """执行低电量回空车下发（指定设备，使用 template_out，不检查互斥）"""
+    """执行低电量回空车下发（指定设备，使用 template_out，不检查互斥）
+    
+    下发前实时查询 ICS 确认设备空闲，避免下发到 InTask 设备。
+    """
     import random as _random
+    
+    # 下发前实时查询 ICS 确认设备空闲
+    sh = region.get('self_heal', {})
+    api_path = sh.get('device_query_api', SELF_HEAL_DEFAULTS['device_query_api'])
+    area_id = region.get('areaId', '0')
+    if api_path and 'XX' not in api_path:
+        device_info = _query_device_status('', api_path, area_id, device_code)
+        if device_info and device_info.get('state') != 'Idle':
+            print(f"[LowBattery] 设备非空闲跳过低电量回空车: {device_num}({device_code[-8:]}), state={device_info.get('state')}")
+            return {'success': False, 'error': f'设备非空闲: {device_info.get("state")}'}
     
     # 找到空车回模板
     target_template = None
