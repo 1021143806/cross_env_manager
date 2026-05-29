@@ -3200,8 +3200,21 @@ def _select_device_for_empty_return(region_key, region):
 
 
 def _execute_low_battery_return(region_key, region, device_code, device_num, battery):
-    """执行低电量回空车下发（指定设备，使用 template_out，不检查互斥）"""
+    """执行低电量回空车下发（指定设备，使用 template_out，不检查互斥）
+    
+    下发前实时查询 ICS 确认设备空闲，避免下发到 InTask 设备。
+    """
     import random as _random
+    
+    # 下发前实时查询 ICS 确认设备空闲
+    sh = region.get('self_heal', {})
+    api_path = sh.get('device_query_api', SELF_HEAL_DEFAULTS['device_query_api'])
+    area_id = region.get('areaId', '0')
+    if api_path and 'XX' not in api_path:
+        device_info = _query_device_status('', api_path, area_id, device_code)
+        if device_info and device_info.get('state') != 'Idle':
+            print(f"[LowBattery] 设备非空闲跳过低电量回空车: {device_num}({device_code[-8:]}), state={device_info.get('state')}")
+            return {'success': False, 'error': f'设备非空闲: {device_info.get("state")}'}
     
     # 找到空车回模板
     target_template = None
