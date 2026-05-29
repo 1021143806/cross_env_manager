@@ -365,12 +365,12 @@ class TemplateService:
     
     def _prod_query(self, query, params=None, fetch=True):
         """使用生产库连接池执行查询"""
-        from modules.database.connection import _pool_instance
+        from modules.database.connection import _pool_instance, execute_query as eq
         try:
             conn = _pool_instance.get_conn2()
-        except (RuntimeError, Exception) as e:
-            print(f"[RCS同步] 生产库连接池获取失败，回退到直连: {e}")
-            return execute_query(query, params, fetch=fetch, config=PROD_DB_CONFIG)
+        except Exception as e:
+            print(f"[RCS同步] 生产库连接池不可用 ({e})，回退到直连")
+            return eq(query, params, fetch=fetch, config=PROD_DB_CONFIG)
         
         from pymysql.cursors import DictCursor
         cursor = None
@@ -385,13 +385,15 @@ class TemplateService:
             return result
         except Exception as e:
             print(f"[RCS同步] 生产库查询错误: {e}")
-            conn.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             return None
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            # DBUtils 连接池的 connection.close() 会归还连接到池，不要关闭
     
     def _get_template_data(self, template_code):
         """获取 xialiaoDA02-LH023_521 的完整数据作为模板"""
