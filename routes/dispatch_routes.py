@@ -606,20 +606,20 @@ def calculate_area_balance(region_key, region_config):
             need = expectedCount - xmax  # 正数：车过多，下发回空车
             direction = "out"
             direction_text = f"车过多，需调出{need}辆"
-        direction_icon = "bi-arrow-up"
-        direction_color = "danger"
-    elif expectedCount < xmin:
-        need = expectedCount - xmin  # 负数：车不够，下发调空车
-        direction = "in"
-        direction_text = f"车不够，需调入{abs(need)}辆"
-        direction_icon = "bi-arrow-down"
-        direction_color = "warning"
-    else:
-        need = 0
-        direction = "none"
-        direction_text = "平衡"
-        direction_icon = "bi-check-circle"
-        direction_color = "success"
+            direction_icon = "bi-arrow-up"
+            direction_color = "danger"
+        elif expectedCount < xmin:
+            need = expectedCount - xmin  # 负数：车不够，下发调空车
+            direction = "in"
+            direction_text = f"车不够，需调入{abs(need)}辆"
+            direction_icon = "bi-arrow-down"
+            direction_color = "warning"
+        else:
+            need = 0
+            direction = "none"
+            direction_text = "平衡"
+            direction_icon = "bi-check-circle"
+            direction_color = "success"
     
     # 容量管控：限制每次下发数量
     dispatch_count = min(abs(need), max_once) if need != 0 else 0
