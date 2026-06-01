@@ -677,6 +677,10 @@ def calculate_area_balance(region_key, region_config):
                         pending_after = [t for t in tasks if t.get('status') in (6, 9, 10) and not t.get('_low_battery')]
                         if not pending_after:
                             continue  # 阻塞已解除，继续检查下一个模板
+                    # 解死锁取消后，将 dispatch_count 和 need 设为 0
+                    # 避免下次计算时因本地 JSON 被清理而继续下发，形成死循环
+                    dispatch_count = 0
+                    need = 0
                     can_dispatch = False
                     mutex_reason = f"pending {template_code} task, mutex"
                     break
