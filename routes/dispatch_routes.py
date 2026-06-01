@@ -85,6 +85,25 @@ def _get_empty_task_limit(region_config):
         return region_limit
 
 
+# 解死锁冷却期记录 {region_key: expiry_timestamp}
+_deadlock_cooldowns = {}
+
+def _set_deadlock_cooldown(region_key, cooldown_seconds=120):
+    """设置解死锁冷却期，冷却期内该区域两个方向都不下发"""
+    expiry = time.time() + cooldown_seconds
+    _deadlock_cooldowns[region_key] = expiry
+    print(f"[Dispatch] 解死锁冷却期 {region_key} 设置 {cooldown_seconds}s，到期 {datetime.fromtimestamp(expiry).strftime('%H:%M:%S')}")
+
+def _is_deadlock_cooldown(region_key):
+    """检查是否在解死锁冷却期内"""
+    expiry = _deadlock_cooldowns.get(region_key)
+    if expiry and time.time() < expiry:
+        return True
+    if expiry:
+        del _deadlock_cooldowns[region_key]
+    return False
+
+
 # ========== task_type 兼容 ==========
 
 def _normalize_task_type(t):
@@ -574,11 +593,19 @@ def calculate_area_balance(region_key, region_config):
     # expectedCount = currentCount + a - b
     expectedCount = currentCount + a - b
     
-    # 计算 need
-    if expectedCount > xmax:
-        need = expectedCount - xmax  # 正数：车过多，下发回空车
-        direction = "out"
-        direction_text = f"车过多，需调出{need}辆"
+    # 解死锁冷却期检查：冷却期内两个方向都不下发
+    if _is_deadlock_cooldown(region_key):
+        need = 0
+        direction = "none"
+        direction_text = "解死锁冷却中"
+        direction_icon = "bi bi-snow2"
+        direction_color = "text-secondary"
+    else:
+        # 计算 need
+        if expectedCount > xmax:
+            need = expectedCount - xmax  # 正数：车过多，下发回空车
+            direction = "out"
+            direction_text = f"车过多，需调出{need}辆"
         direction_icon = "bi-arrow-up"
         direction_color = "danger"
     elif expectedCount < xmin:
@@ -677,8 +704,9 @@ def calculate_area_balance(region_key, region_config):
                         pending_after = [t for t in tasks if t.get('status') in (6, 9, 10) and not t.get('_low_battery')]
                         if not pending_after:
                             continue  # 阻塞已解除，继续检查下一个模板
-                    # 解死锁取消后，将 dispatch_count 和 need 设为 0
-                    # 避免下次计算时因本地 JSON 被清理而继续下发，形成死循环
+                    # 解死锁取消后，记录冷却时间，冷却期内两个方向都不下发
+                    # 避免 in/out 互相阻塞形成"取消→下发→取消"死循环
+                    _set_deadlock_cooldown(region_key, cooldown_seconds=120)
                     dispatch_count = 0
                     need = 0
                     can_dispatch = False
