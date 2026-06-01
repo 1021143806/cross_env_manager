@@ -842,9 +842,9 @@ def resend_cross_task(order_id, sub_order_id, task_seq, server_ip="10.68.2.32"):
                 sql = "UPDATE fy_cross_task SET task_status = 5 WHERE orderId = %s"
                 cursor.execute(sql, (real_order_id,))
             
-            # 8.2 更新子模板状态（用 sub_order_id 匹配）
-            sql = "UPDATE fy_cross_task_detail SET status = 5, error_desc = '重发中' WHERE sub_order_id = %s"
-            cursor.execute(sql, (order_id,))
+            # 8.2 更新子模板状态（用 sub_order_id 匹配，同时更新 sub_order_id 为 +1 后的新值）
+            sql = "UPDATE fy_cross_task_detail SET sub_order_id = %s, status = 5, error_desc = '重发中' WHERE sub_order_id = %s"
+            cursor.execute(sql, (new_sub_order_id, order_id))
             conn.commit()
             
             return {
@@ -1187,10 +1187,10 @@ def resend_cross_task_stream(order_id, sub_order_id, task_seq, server_ip="10.68.
             else:
                 detail8["sqls"].append(f"大模板状态={main_status}，无需修改")
             
-            # 8.2 更新子模板状态（用 sub_order_id 匹配）
-            sql2 = "UPDATE fy_cross_task_detail SET status = 5, error_desc = '重发中' WHERE sub_order_id = %s"
-            cursor.execute(sql2, (order_id,))
-            detail8["sqls"].append(f"UPDATE fy_cross_task_detail SET status=5 WHERE sub_order_id='{order_id}'")
+            # 8.2 更新子模板状态（用 sub_order_id 匹配，同时更新 sub_order_id 为 +1 后的新值）
+            sql2 = "UPDATE fy_cross_task_detail SET sub_order_id = %s, status = 5, error_desc = '重发中' WHERE sub_order_id = %s"
+            cursor.execute(sql2, (new_sub_order_id, order_id))
+            detail8["sqls"].append(f"UPDATE fy_cross_task_detail SET sub_order_id='{new_sub_order_id}', status=5 WHERE sub_order_id='{order_id}'")
             conn.commit()
             yield _yield_step(8, "修改数据库状态", "ok", round((_time.time() - t0) * 1000, 1), detail=detail8)
             
