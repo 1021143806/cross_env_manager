@@ -1076,22 +1076,21 @@
                 }
             }
 
-            function initPage() {
-                // 按楼栋前缀分组，组内按今日使用次数降序（同次数按字母序）
+            function renderAreaOptions() {
                 const todayUsage = getTodayUsage();
                 const groups = {};
+                areaSelect.innerHTML = '<option value="">请选择区域</option>';
                 Object.keys(config.areas).sort((a, b) => {
                     const countA = todayUsage[a] || 0;
                     const countB = todayUsage[b] || 0;
-                    if (countB !== countA) return countB - countA;  // 次数多的在前
-                    return a.localeCompare(b, 'zh-Hans-CN');       // 同次数字母序
+                    if (countB !== countA) return countB - countA;
+                    return a.localeCompare(b, 'zh-Hans-CN');
                 }).forEach(area => {
                     const match = area.match(/^(A\d+)/);
                     const group = match ? match[1] + ' 栋' : '其他';
                     if (!groups[group]) groups[group] = [];
                     groups[group].push(area);
                 });
-                // 确保"其他"组排最后
                 const groupOrder = Object.keys(groups).sort((a, b) => {
                     if (a === '其他') return 1;
                     if (b === '其他') return -1;
@@ -1109,6 +1108,10 @@
                     });
                     areaSelect.appendChild(optgroup);
                 });
+            }
+
+            function initPage() {
+                renderAreaOptions();
                 
                 areaSelect.addEventListener('change', updateTaskOptions);
                 taskSelect.addEventListener('change', updateFormFields);
@@ -1614,6 +1617,9 @@
                         recordAreaUsage(area);
                         // 记录每日任务使用次数
                         recordTaskUsageCount(area, taskName);
+                        // 刷新下拉框计数显示
+                        renderAreaOptions();
+                        updateTaskOptions();
                     }
                 } catch (e) {
                     responseBox.style.display = 'block';
