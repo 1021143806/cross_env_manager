@@ -255,3 +255,14 @@ venv/bin/python3 test/???.py
 - 2026-05-13: **解死锁机制 (v2.1.9)**：在 `calculate_area_balance` 互斥检查中增加自动解死锁——当来任务=0、回空车已下发导致 `can_dispatch=False` 时，自动调用 `_get_task_server_info` + `_cancel_empty_task` 取消阻塞的反方向空车任务，并清理本地 JSON。取消成功后重新检查是否还有阻塞，若已解除则允许下发。
 - 2026-05-14: **全局空车任务数量限制 (v2.1.10)**：新增 `GLOBAL_EMPTY_TASK_LIMIT`（默认4）和 `_get_empty_task_limit()` 函数。区域配置 `empty_task_limit`：-1=使用全局、0=不限制、>0=自定义。`calculate_area_balance` 中检查当前方向空车模板 JSON 中 status=6 任务数，超出上限则限制 `dispatch_count`。`_execute_dispatch` 中 dispatch_count=0 时跳过下发。前端 config.html 全局设置新增"全局空车任务上限"，区域配置新增"空车任务上限"。
 - 2026-05-22: **定制表编辑模块 (v1.0.0)**：新增跨服务器、跨数据库的通用表编辑功能。采用方案C（混合式）：配置驱动 + 可覆盖自定义模板。新增文件：`config/custom_tables.toml`（服务器和表配置）、`modules/custom_table/`（config_loader + table_service）、`routes/custom_table_routes.py`（蓝图，9个数据路由 + 6个配置管理路由）、`templates/custom_table/`（index.html + editor.html）。入口：首页卡片 + 导航栏。**index.html 为可视化配置管理页**（三 Tab：可视化编辑服务器和表配置 / 源文件 TOML 编辑 / 备份恢复），参考调车模块 config.html 风格。**editor.html 为三模式数据编辑器**（可视化编辑：左侧分组导航 + 右侧记录卡片表单 / 表格编辑：分组折叠 + 双击内联编辑 / 源数据：JSON 批量编辑）。支持 dirty tracking 批量保存。当前配置 2 个服务器：10.68.2.17（生产）+ 47.98.244.173（测试）。详细设计见 `plans/custom_table_editor_design.md`。
+- 2026-06-02: **任务下发模块 (addtask) 重大升级**：涉及 `app.py`、`templates/addTask/addtask.html`、`templates/components/addtask_form.html`、`templates/components/addtask_query.html` 四个文件。
+  - **区域下拉框**：按楼栋前缀 `A1~A4` 自动分组为 optgroup，按今日使用次数降序排列。新增 `getBuildingColor()` 使用黄金角哈希自动分配 HSL 色相，无需硬编码 CSS。`refreshCountDisplay()` 只更新文本不重建 DOM。
+  - **任务模板下拉框**：按空车/非空车分组，显示使用次数计数。组标签含任务总数。
+  - **每日使用统计**：`recordAreaUsage(area)` + `recordTaskUsageCount(area, taskName)` 双维度 localStorage 记录，每天自动重置。
+  - **后端代理 API** `POST /addtask/query`：Flask 统一代理 ICS 请求（`urllib + json`），浏览器不再暴露 `10.68.2.32:8315`。支持 shelfNum/orderId/deviceNum 三种入参，自动查询主任务 + 子任务详情。
+  - **右侧查询面板**：新增第三种查询模式「按设备号查询」；查询历史 localStorage（最近5条，点击一键重查）；子任务 API 空数据时重试3次（间隔1秒）。
+  - **任务详情卡片**：主任务显示 `modelProcessCode` 链接 → `/search`；子任务模板名显示为链接；OrderId/货架号/子任务ID 支持 3 层复制（Clipboard API → `execCommand` → `window.prompt`，兼容 HTTP 环境）；新增「查看完整详情」按钮 → `/query?orderId=xxx`。
+  - **响应报文**：格式化为 `<pre>` 代码块，成功/失败分色显示，带一键复制。
+  - **自动搜索**：下发成功后 1.5 秒自动搜索（`autoQueryAfterSubmit`），执行前检查用户是否切换模式或修改输入，`queryTasks(true)` 传 `force` 参数绕过防抖锁。
+  - **页脚**：动态显示 `config._version`。
+  - **表单保留**：提交后 `refreshCountDisplay()` 仅更新文本，不丢失已选区。
