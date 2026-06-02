@@ -1,0 +1,606 @@
+{% extends "base.html" %}
+
+{% block title %}设备同步 - 跨服务器设备数据同步{% endblock %}
+
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-edit.png?v=1">
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .log-output {
+        background: #1a1a2e;
+        color: #e0e0e0;
+        border-radius: 8px;
+        padding: 1rem;
+        max-height: 450px;
+        overflow-y: auto;
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+        line-height: 1.6;
+    }
+    .log-line { white-space: pre-wrap; word-break: break-all; }
+    .log-info { color: #a0c4ff; }
+    .log-success { color: #95d5b2; }
+    .log-warning { color: #ffd166; }
+    .log-error { color: #f28482; }
+    .log-skip { color: #adb5bd; }
+    .log-header { color: #06d6a0; font-weight: bold; }
+
+    .server-info-card {
+        background: var(--detail-card-bg);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-top: 1rem;
+    }
+    .server-info-card table { font-size: 0.85rem; margin-bottom: 0; }
+    .server-info-card td { padding: 0.25rem 0.5rem; }
+
+    .summary-table td, .summary-table th { font-size: 0.9rem; vertical-align: middle; }
+
+    .sync-section {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        box-shadow: var(--card-shadow);
+        overflow: hidden;
+    }
+    .sync-section-header {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        background: var(--detail-card-bg);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .sync-section-body { padding: 1.5rem; }
+    .sync-section-body .row { margin-bottom: 1rem; }
+    .sync-section-body .row:last-child { margin-bottom: 0; }
+
+    .config-option {
+        background: var(--detail-card-bg);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 0.75rem;
+        border-left: 3px solid #0d6efd;
+        transition: opacity 0.2s;
+    }
+    .config-option.disabled {
+        opacity: 0.5;
+        border-left-color: var(--border-color);
+        pointer-events: none;
+    }
+    .config-option:last-child { margin-bottom: 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2><i class="bi bi-arrow-left-right text-info"></i> 设备同步</h2>
+        <p class="text-muted mb-0">将 AGV 设备数据从源服务器同步到目标服务器 · INSERT IGNORE 不覆盖已有数据</p>
+    </div>
+    <div>
+        <a href="/" class="btn btn-outline-secondary btn-sm"><i class="bi bi-house"></i> 首页</a>
+    </div>
+</div>
+
+<!-- ==================== 1. 服务器选择 ==================== -->
+<div class="sync-section">
+    <div class="sync-section-header">
+        <i class="bi bi-database text-primary"></i> 服务器选择
+    </div>
+    <div class="sync-section-body">
+        <div class="row">
+            <div class="col-md-6">
+                <label class="form-label fw-bold"><i class="bi bi-database-fill-up text-primary"></i> 源服务器</label>
+                <div class="input-group mb-2">
+                    <select class="form-select" id="sourceIp">
+                        <option value="">-- 选择服务器 --</option>
+                        {% for s in servers %}
+                        <option value="{{ s }}">{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-outline-primary" onclick="testConnection('source')" id="btnTestSource">
+                        <i class="bi bi-plug"></i> 测试
+                    </button>
+                </div>
+                <div class="form-text small mt-0">IP 从子任务模板 task_servicec 解析</div>
+                <div class="server-info-card" id="sourceInfo" style="display:none;"></div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-bold"><i class="bi bi-database-fill-down text-success"></i> 目标服务器</label>
+                <div class="input-group mb-2">
+                    <select class="form-select" id="targetIp">
+                        <option value="">-- 选择服务器 --</option>
+                        {% for s in servers %}
+                        <option value="{{ s }}">{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-outline-success" onclick="testConnection('target')" id="btnTestTarget">
+                        <i class="bi bi-plug"></i> 测试
+                    </button>
+                </div>
+                <div class="form-text small mt-0">设备数据将写入此服务器</div>
+                <div class="server-info-card" id="targetInfo" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== 2. 同步配置 ==================== -->
+<div class="sync-section">
+    <div class="sync-section-header">
+        <i class="bi bi-gear text-warning"></i> 同步配置
+    </div>
+    <div class="sync-section-body">
+
+        <!-- 型号同步 -->
+        <div class="config-option" id="configModel">
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="enableModel" checked>
+                <label class="form-check-label fw-bold" for="enableModel">型号同步</label>
+                <span class="badge bg-secondary ms-2">agv_model → agv_model_init</span>
+            </div>
+            <div class="row">
+                <div class="col-md-8">
+                    <label class="form-label">型号名称</label>
+                    <input type="text" class="form-control form-control-sm" id="modelNames" value="RTA-C060-Q-2L-410"
+                           placeholder="多个用逗号分隔，如: RTA-C060-Q-2L-410,RTA-001">
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <span class="text-muted small">目标库 agv_model 已存在则跳过</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 设备主表同步 -->
+        <div class="config-option" id="configRobot">
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="enableRobot" checked>
+                <label class="form-check-label fw-bold" for="enableRobot">设备主表同步</label>
+                <span class="badge bg-secondary ms-2">agv_robot → agv_robot</span>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <label class="form-label">设备类型</label>
+                    <input type="text" class="form-control form-control-sm" id="deviceType" value="RTA-C060-Q-2L-410"
+                           placeholder="如: RTA-C060-Q-2L-410">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">目标表名</label>
+                    <input type="text" class="form-control form-control-sm" id="robotTable" value="agv_robot" placeholder="agv_robot">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <span class="text-muted small">18 字段(去ID) · INSERT IGNORE</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 设备扩展表同步 -->
+        <div class="config-option" id="configExt">
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="enableExt" checked>
+                <label class="form-check-label fw-bold" for="enableExt">设备扩展表同步</label>
+                <span class="badge bg-secondary ms-2">agv_robot_ext → agv_robot_ext</span>
+            </div>
+            <div class="row">
+                <div class="col-md-5">
+                    <label class="form-label">设备组名称</label>
+                    <div class="input-group input-group-sm">
+                        <select class="form-select" id="groupName">
+                            <option value="">-- 请先测试连接源服务器 --</option>
+                        </select>
+                        <button class="btn btn-outline-secondary" type="button" onclick="loadDeviceGroups()" id="btnLoadGroups" disabled>
+                            <i class="bi bi-cloud-download"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">目标区域（父区域）</label>
+                    <div class="input-group input-group-sm">
+                        <select class="form-select" id="targetArea">
+                            <option value="">-- 请先测试连接目标服务器 --</option>
+                        </select>
+                        <button class="btn btn-outline-secondary" type="button" onclick="loadTargetAreas()" id="btnLoadAreas" disabled>
+                            <i class="bi bi-cloud-download"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <span class="text-muted small">LEVEL=1 父区域、写入 DEVICE_AREA</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ==================== 3. 预览 + 执行 ==================== -->
+<div class="sync-section">
+    <div class="sync-section-header">
+        <i class="bi bi-eye text-info"></i> 执行预览
+    </div>
+    <div class="sync-section-body">
+
+        <div class="row mb-3">
+            <div class="col-md-4"><strong>源服务器:</strong> <span id="previewSource" class="text-muted">未选择</span></div>
+            <div class="col-md-4"><strong>目标服务器:</strong> <span id="previewTarget" class="text-muted">未选择</span></div>
+            <div class="col-md-4"><strong>同步类型:</strong> <span id="previewTypes" class="text-muted">未选择</span></div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-modern summary-table mb-3" id="previewTable">
+                <thead>
+                    <tr><th>步骤</th><th>操作</th><th>涉及表</th><th>说明</th></tr>
+                </thead>
+                <tbody id="previewTbody">
+                    <tr><td colspan="4" class="text-center text-muted">请先选择源/目标服务器并测试连接</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="alert alert-warning py-2 small mb-0">
+            <i class="bi bi-exclamation-triangle"></i>
+            <strong>INSERT IGNORE</strong> 模式执行，不会覆盖或删除目标库已有数据。源库仅 SELECT 不修改。
+        </div>
+
+        <div class="mt-3">
+            <button class="btn btn-danger" onclick="executeSync()" id="btnExecute" disabled>
+                <i class="bi bi-play-circle"></i> 执行同步
+            </button>
+            <button class="btn btn-outline-secondary ms-2" onclick="updatePreview()" id="btnRefreshPreview">
+                <i class="bi bi-arrow-clockwise"></i> 刷新预览
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<!-- ==================== 4. 执行日志 ==================== -->
+<div class="sync-section" id="execSection" style="display:none;">
+    <div class="sync-section-header">
+        <i class="bi bi-activity text-success"></i> 执行日志
+        <span class="badge bg-secondary ms-2" id="execStatus">等待启动</span>
+        <div class="ms-auto" style="width:150px;">
+            <div class="progress" style="height:4px;">
+                <div class="progress-bar" id="execProgressBar" style="width:0%;"></div>
+            </div>
+        </div>
+    </div>
+    <div class="sync-section-body">
+        <div class="log-output" id="syncLog">
+            <div class="text-muted">点击"执行同步"后开始...</div>
+        </div>
+        <div class="mt-3" id="resultSummary" style="display:none;">
+            <h6 class="mb-2"><i class="bi bi-bar-chart"></i> 执行结果</h6>
+            <table class="table table-modern summary-table" id="resultTable">
+                <thead><tr><th>同步类型</th><th>成功</th><th>跳过</th><th>失败</th></tr></thead>
+                <tbody id="resultTbody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+let sourceConnected = false;
+let targetConnected = false;
+
+// ==================== 连接测试 ====================
+async function testConnection(type) {
+    const ip = document.getElementById(type === 'source' ? 'sourceIp' : 'targetIp').value;
+    const btn = document.getElementById(type === 'source' ? 'btnTestSource' : 'btnTestTarget');
+    const infoDiv = document.getElementById(type === 'source' ? 'sourceInfo' : 'targetInfo');
+
+    if (!ip) { alert('请先选择服务器 IP'); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 连接中...';
+    infoDiv.style.display = 'none';
+
+    try {
+        const res = await fetch('/template/device-sync/test-connection', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ip: ip})
+        });
+        const data = await res.json();
+
+        if (data.success && data.info) {
+            const info = data.info;
+            let html = '<div class="text-success fw-bold small mb-2"><i class="bi bi-check-circle"></i> 连接成功 · MySQL ' + info.version + '</div>';
+            html += '<table class="table table-sm table-borderless"><tbody>';
+            const tables = ['agv_robot', 'agv_robot_ext', 'agv_model', 'agv_model_init', 'agv_robot_group', 'agv_robot_group_detail'];
+            const labels = {'agv_robot': '设备主表', 'agv_robot_ext': '设备扩展', 'agv_model': '设备型号', 'agv_model_init': '型号初始', 'agv_robot_group': '设备组', 'agv_robot_group_detail': '组明细'};
+            tables.forEach(t => {
+                const cnt = info[t];
+                const v = cnt === -1 ? '<span class="text-danger">无此表</span>' : cnt + ' 条';
+                html += '<tr><td class="ps-0">' + labels[t] + '</td><td class="text-end pe-0">' + v + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            infoDiv.innerHTML = html;
+            infoDiv.style.display = 'block';
+            btn.className = 'btn btn-success';
+            btn.innerHTML = '<i class="bi bi-check-circle"></i> 已连接';
+
+            if (type === 'source') {
+                sourceConnected = true;
+                document.getElementById('btnLoadGroups').disabled = false;
+            } else {
+                targetConnected = true;
+                document.getElementById('btnLoadAreas').disabled = false;
+            }
+        } else {
+            infoDiv.innerHTML = '<div class="text-danger small"><i class="bi bi-x-circle"></i> 连接失败: ' + (data.message || '未知错误') + '</div>';
+            infoDiv.style.display = 'block';
+            btn.className = 'btn btn-outline-danger';
+            btn.innerHTML = '<i class="bi bi-plug"></i> 重试';
+            if (type === 'source') sourceConnected = false;
+            else targetConnected = false;
+        }
+    } catch (e) {
+        infoDiv.innerHTML = '<div class="text-danger small"><i class="bi bi-x-circle"></i> 请求失败: ' + e.message + '</div>';
+        infoDiv.style.display = 'block';
+        btn.className = 'btn btn-outline-danger';
+        btn.innerHTML = '<i class="bi bi-plug"></i> 重试';
+    } finally {
+        btn.disabled = false;
+    }
+    updatePreview();
+}
+
+// ==================== 设备组加载 ====================
+async function loadDeviceGroups() {
+    const ip = document.getElementById('sourceIp').value;
+    if (!ip) { alert('请先选择源服务器 IP'); return; }
+    document.getElementById('btnLoadGroups').disabled = true;
+    document.getElementById('btnLoadGroups').innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    try {
+        const res = await fetch('/template/device-sync/groups', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ip: ip})
+        });
+        const data = await res.json();
+        const sel = document.getElementById('groupName');
+        sel.innerHTML = '<option value="">-- 选择设备组 --</option>';
+        if (data.success && data.groups) {
+            data.groups.forEach(g => {
+                sel.innerHTML += '<option value="' + g.name + '">' + g.name + ' (ID:' + g.id + ')</option>';
+            });
+        } else {
+            sel.innerHTML = '<option value="">-- 无设备组 --</option>';
+        }
+    } catch (e) {
+        alert('加载设备组失败: ' + e.message);
+    } finally {
+        document.getElementById('btnLoadGroups').disabled = false;
+        document.getElementById('btnLoadGroups').innerHTML = '<i class="bi bi-cloud-download"></i>';
+    }
+}
+
+// ==================== 目标区域加载 ====================
+async function loadTargetAreas() {
+    const ip = document.getElementById('targetIp').value;
+    if (!ip) { alert('请先选择目标服务器 IP'); return; }
+    document.getElementById('btnLoadAreas').disabled = true;
+    document.getElementById('btnLoadAreas').innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    try {
+        const res = await fetch('/template/device-sync/areas', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ip: ip})
+        });
+        const data = await res.json();
+        const sel = document.getElementById('targetArea');
+        sel.innerHTML = '<option value="">-- 选择父区域 --</option>';
+        if (data.success && data.areas) {
+            data.areas.forEach(a => {
+                sel.innerHTML += '<option value="' + a.id + '">' + a.id + ' - ' + a.name + '</option>';
+            });
+        } else {
+            sel.innerHTML = '<option value="">-- 无区域数据 --</option>';
+        }
+    } catch (e) {
+        alert('加载区域列表失败: ' + e.message);
+    } finally {
+        document.getElementById('btnLoadAreas').disabled = false;
+        document.getElementById('btnLoadAreas').innerHTML = '<i class="bi bi-cloud-download"></i>';
+    }
+}
+
+// ==================== 预览 ====================
+function getSelectedSyncTypes() {
+    const types = [];
+    if (document.getElementById('enableModel').checked) types.push('model');
+    if (document.getElementById('enableRobot').checked) types.push('robot');
+    if (document.getElementById('enableExt').checked) types.push('ext');
+    return types;
+}
+
+function updatePreview() {
+    const sourceIp = document.getElementById('sourceIp').value;
+    const targetIp = document.getElementById('targetIp').value;
+    const types = getSelectedSyncTypes();
+
+    document.getElementById('previewSource').textContent = sourceIp || '未选择';
+    document.getElementById('previewTarget').textContent = targetIp || '未选择';
+    const typeLabels = {'model': '型号', 'robot': '设备', 'ext': '扩展'};
+    document.getElementById('previewTypes').textContent = types.length ? types.map(t => typeLabels[t]).join(' + ') : '未选择';
+
+    // Enable execute button
+    document.getElementById('btnExecute').disabled = !(sourceConnected && targetConnected && types.length > 0);
+
+    const tbody = document.getElementById('previewTbody');
+    tbody.innerHTML = '';
+    let step = 0;
+
+    if (types.includes('model')) {
+        const names = document.getElementById('modelNames').value;
+        tbody.innerHTML +=
+            '<tr class="table-secondary"><td>' + (++step) + '</td><td>型号同步</td><td>agv_model → agv_model_init</td><td>型号: ' + (names || '-') + '</td></tr>';
+    }
+    if (types.includes('robot')) {
+        const dtype = document.getElementById('deviceType').value;
+        tbody.innerHTML +=
+            '<tr class="table-secondary"><td>' + (++step) + '</td><td>设备主表同步</td><td>agv_robot</td><td>类型: ' + dtype + '</td></tr>';
+    }
+    if (types.includes('ext')) {
+        const group = document.getElementById('groupName').value || '(未选)';
+        const area = document.getElementById('targetArea').value;
+        tbody.innerHTML +=
+            '<tr class="table-secondary"><td>' + (++step) + '</td><td>设备扩展表同步</td><td>agv_robot_ext</td><td>组: ' + group + ' → 区域: ' + area + '</td></tr>';
+    }
+    if (!step) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">请至少启用一种同步类型</td></tr>';
+    }
+}
+
+// Listen for config changes
+document.querySelectorAll('#enableModel, #enableRobot, #enableExt').forEach(el => {
+    el.addEventListener('change', function() {
+        const id = this.id;
+        const section = id === 'enableModel' ? 'configModel' : id === 'enableRobot' ? 'configRobot' : 'configExt';
+        document.getElementById(section).classList.toggle('disabled', !this.checked);
+        updatePreview();
+    });
+});
+document.querySelectorAll('#modelNames, #deviceType, #robotTable, #groupName, #targetArea').forEach(el => {
+    el.addEventListener('change', updatePreview);
+    el.addEventListener('input', updatePreview);
+});
+
+// ==================== 执行同步（SSE 流） ====================
+async function executeSync() {
+    if (!confirm('确认执行设备同步？\n\n此操作将写入目标服务器数据库，请确保参数正确。')) return;
+
+    const execSection = document.getElementById('execSection');
+    execSection.style.display = 'block';
+    execSection.scrollIntoView({behavior: 'smooth', block: 'start'});
+
+    const logEl = document.getElementById('syncLog');
+    logEl.innerHTML = '';
+    document.getElementById('execStatus').textContent = '执行中...';
+    document.getElementById('execStatus').className = 'badge bg-warning ms-2';
+    document.getElementById('resultSummary').style.display = 'none';
+
+    const params = {
+        source_ip: document.getElementById('sourceIp').value,
+        target_ip: document.getElementById('targetIp').value,
+        sync_types: getSelectedSyncTypes(),
+        params: {
+            model_names: document.getElementById('modelNames').value,
+            device_type: document.getElementById('deviceType').value,
+            table_name: document.getElementById('robotTable').value || 'agv_robot',
+            group_name: document.getElementById('groupName').value,
+            target_area: parseInt(document.getElementById('targetArea').value) || 0,
+        }
+    };
+
+    try {
+        const response = await fetch('/template/device-sync/execute', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(params)
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.message || 'HTTP ' + response.status);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let summaryResult = null;
+
+        while (true) {
+            const {done, value} = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, {stream: true});
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop();
+            for (const part of parts) {
+                const result = processSSEEvent(part.trim(), logEl);
+                if (result && result.type === 'done') summaryResult = result.data;
+            }
+        }
+        if (buffer.trim()) {
+            const result = processSSEEvent(buffer.trim(), logEl);
+            if (result && result.type === 'done') summaryResult = result.data;
+        }
+
+        if (summaryResult) {
+            showResultSummary(summaryResult);
+        }
+    } catch (err) {
+        appendLog(logEl, {msg: '❌ 执行失败: ' + err.message, level: 'error'});
+        document.getElementById('execStatus').textContent = '执行失败';
+        document.getElementById('execStatus').className = 'badge bg-danger ms-2';
+    }
+}
+
+function processSSEEvent(raw, logEl) {
+    if (!raw) return null;
+    const lines = raw.split('\n');
+    let eventType = 'message', dataStr = '';
+    for (const line of lines) {
+        if (line.startsWith('event: ')) eventType = line.substring(7).trim();
+        else if (line.startsWith('data: ')) dataStr += line.substring(6);
+    }
+    try {
+        const data = JSON.parse(dataStr);
+        if (eventType === 'log') {
+            appendLog(logEl, data);
+        } else if (eventType === 'progress') {
+            document.getElementById('execProgressBar').style.width = (data.percent || 0) + '%';
+        } else if (eventType === 'done') {
+            document.getElementById('execProgressBar').style.width = '100%';
+            document.getElementById('execStatus').textContent = data.success ? '完成' : '失败';
+            document.getElementById('execStatus').className = data.success ? 'badge bg-success ms-2' : 'badge bg-danger ms-2';
+        }
+        return {type: eventType, data};
+    } catch { return null; }
+}
+
+function appendLog(logEl, data) {
+    const level = data.level || 'info';
+    const line = document.createElement('div');
+    line.className = 'log-line log-' + (level === 'header' ? 'header' : level);
+    line.textContent = (data.ts ? data.ts + ' ' : '') + (data.msg || '');
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+}
+
+function showResultSummary(summaryData) {
+    if (!summaryData || !summaryData.summary) return;
+    document.getElementById('resultSummary').style.display = 'block';
+    const tbody = document.getElementById('resultTbody');
+    tbody.innerHTML = '';
+    const labels = {'model': '型号同步', 'robot': '设备主表同步', 'ext': '设备扩展表同步'};
+    let totalS = 0, totalK = 0, totalF = 0;
+    for (const [key, label] of Object.entries(labels)) {
+        const s = summaryData.summary[key];
+        if (s && (s.success + s.skip + s.fail) > 0) {
+            totalS += s.success || 0; totalK += s.skip || 0; totalF += s.fail || 0;
+            tbody.innerHTML += '<tr><td>' + label + '</td><td class="text-success">' + (s.success || 0) + '</td><td class="text-muted">' + (s.skip || 0) + '</td><td class="text-danger">' + (s.fail || 0) + '</td></tr>';
+        }
+    }
+    if (totalS + totalK + totalF > 0) {
+        tbody.innerHTML += '<tr class="table-secondary"><th>合计</th><th class="text-success">' + totalS + '</th><th class="text-muted">' + totalK + '</th><th class="text-danger">' + totalF + '</th></tr>';
+    }
+}
+
+// ==================== 初始化 ====================
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('enableModel').dispatchEvent(new Event('change'));
+    updatePreview();
+});
+</script>
+{% endblock %}
+{% endblock %}

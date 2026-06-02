@@ -15,3 +15,4 @@
 | 添加子任务 | POST /api/template/<id>/details/add | 添加新子任务 |
 | 删除子任务 | DELETE /api/template/<id>/details/<id>/delete | 删除子任务 |
 | 子任务排序 | POST /api/template/<id>/details/reorder | 拖拽调整子任务顺序 |
+| 设备同步 | GET /template/device-sync | 跨服务器同步AGV设备数据（型号/设备主表/扩展表） |
