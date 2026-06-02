@@ -7,6 +7,7 @@
         <div class="query-toggle">
             <div class="toggle-option active" data-type="shelf">按货架查询</div>
             <div class="toggle-option" data-type="order">按OrderId查询</div>
+            <div class="toggle-option" data-type="device">按设备号查询</div>
         </div>
 
         <div class="mb-3" id="shelf-query-group">
@@ -19,10 +20,16 @@
             <input type="text" id="order-query-input" class="form-control" placeholder="请输入OrderId">
         </div>
 
+        <div class="mb-3" id="device-query-group" style="display: none;">
+            <label class="form-label fw-semibold">设备号</label>
+            <input type="text" id="device-query-input" class="form-control" placeholder="请输入设备号">
+        </div>
+
         <button class="btn btn-info text-white w-100 mb-4" id="query-btn">
             <i class="bi bi-search me-2"></i>查询任务
         </button>
 
+        <div id="query-history-container" class="mb-2"></div>
         <div id="task-details">
             <div class="empty-state" id="empty-state">
                 <i class="bi bi-inbox fs-1 opacity-50"></i>

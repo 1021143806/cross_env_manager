@@ -294,9 +294,28 @@
             border: 1px solid var(--border-color);
             max-height: 200px;
             overflow-y: auto;
-            font-family: monospace;
             font-size: 0.9rem;
+        }
+
+        .response-json {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.85rem;
             white-space: pre-wrap;
+            word-break: break-all;
+            margin: 0;
+        }
+
+        .copy-icon {
+            cursor: pointer;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+        .copy-icon:hover { opacity: 1; }
+
+        /* 区域下拉框分色（由JS自动生成HSL色值，通过inline style渲染） */
+        .area-select optgroup option { color: var(--text-color); }
+        .area-select option.with-building-border { 
+            border-left: 3px solid transparent; padding-left: 4px; 
         }
 
         .modal-content {
@@ -599,7 +618,7 @@
         <!-- 页脚 -->
         <footer class="mt-5 pt-4 text-center animate__animated animate__fadeInUp">
             <div class="glass-effect rounded-4 p-4">
-                <p class="mb-2">AGV 跨环境任务下发系统 &copy; 2026 | 版本 2.0</p>
+                <p class="mb-2">AGV 跨环境任务下发系统 &copy; 2026 | 配置版本 <span id="config-version" class="fw-bold">-</span></p>
                 <p class="small opacity-75 mb-0">基于《跨环境配置及实施说明书》开发 · 现代化UI · 暗黑模式支持</p>
                 <div class="mt-3">
                     <span class="badge bg-primary me-2">Bootstrap 5.3</span>
@@ -883,11 +902,14 @@
             const queryToggleOptions = document.querySelectorAll('.toggle-option');
             const shelfQueryGroup = document.getElementById('shelf-query-group');
             const orderQueryGroup = document.getElementById('order-query-group');
+            const deviceQueryGroup = document.getElementById('device-query-group');
             const shelfQueryInput = document.getElementById('shelf-query-input');
             const orderQueryInput = document.getElementById('order-query-input');
+            const deviceQueryInput = document.getElementById('device-query-input');
             const queryBtn = document.getElementById('query-btn');
             const taskDetails = document.getElementById('task-details');
             const emptyState = document.getElementById('empty-state');
+            const queryHistoryContainer = document.getElementById('query-history-container');
             const noResponsePlaceholder = document.getElementById('no-response-placeholder');
 
             // Bootstrap modals
@@ -906,6 +928,157 @@
             // ==================== 最近使用任务功能 ====================
             const RECENT_TASKS_KEY = 'recent_tasks';
             const MAX_RECENT = 5;
+
+            // ==================== 每日区域使用统计 ====================
+            const AREA_USAGE_KEY = 'area_usage';
+
+            function getAreaUsage() {
+                try {
+                    const data = localStorage.getItem(AREA_USAGE_KEY);
+                    return data ? JSON.parse(data) : {};
+                } catch { return {}; }
+            }
+
+            function recordAreaUsage(areaName) {
+                const usage = getAreaUsage();
+                const today = new Date().toISOString().slice(0, 10);
+                if (!usage[today]) usage[today] = {};
+                usage[today][areaName] = (usage[today][areaName] || 0) + 1;
+                try {
+                    localStorage.setItem(AREA_USAGE_KEY, JSON.stringify(usage));
+                } catch (e) {
+                    console.warn('保存区域使用统计失败:', e);
+                }
+            }
+
+            function getTodayUsage() {
+                const usage = getAreaUsage();
+                const today = new Date().toISOString().slice(0, 10);
+                return usage[today] || {};
+            }
+
+            // ==================== 每日任务使用统计 ====================
+            const TASK_USAGE_KEY = 'task_usage';
+
+            function getTaskUsage() {
+                try {
+                    const data = localStorage.getItem(TASK_USAGE_KEY);
+                    return data ? JSON.parse(data) : {};
+                } catch { return {}; }
+            }
+
+            function recordTaskUsageCount(areaName, taskName) {
+                const usage = getTaskUsage();
+                const today = new Date().toISOString().slice(0, 10);
+                if (!usage[today]) usage[today] = {};
+                const key = `${areaName}::${taskName}`;
+                usage[today][key] = (usage[today][key] || 0) + 1;
+                try {
+                    localStorage.setItem(TASK_USAGE_KEY, JSON.stringify(usage));
+                } catch (e) {
+                    console.warn('保存任务使用统计失败:', e);
+                }
+            }
+
+            function getTodayTaskUsage() {
+                const usage = getTaskUsage();
+                const today = new Date().toISOString().slice(0, 10);
+                return usage[today] || {};
+            }
+
+            // ==================== 通用工具函数 ====================
+            function escapeHtml(str) {
+                const div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            }
+
+            function copyText(text, msg) {
+                // 尝试 Clipboard API（HTTPS 或 localhost 环境）
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        showAlert(msg || '已复制', 'success');
+                    }).catch(() => fallbackCopy(text, msg));
+                } else {
+                    fallbackCopy(text, msg);
+                }
+            }
+
+            function fallbackCopy(text, msg) {
+                // 尝试劫持 copy 事件 + execCommand
+                const handler = (e) => {
+                    e.clipboardData.setData('text/plain', text);
+                    e.preventDefault();
+                };
+                document.addEventListener('copy', handler);
+                try {
+                    if (document.execCommand('copy')) {
+                        showAlert(msg || '已复制', 'success');
+                        document.removeEventListener('copy', handler);
+                        return;
+                    }
+                } catch (e) { /* fallback below */ }
+                document.removeEventListener('copy', handler);
+                // 终极 fallback：弹出提示框，用户按 Ctrl+C 手动复制
+                try {
+                    window.prompt(`按 Ctrl+C 复制${msg ? '（' + msg + '）' : ''}，然后点击取消关闭:`, text);
+                } catch (e) {
+                    showAlert('复制失败，请手动复制文本', 'warning');
+                }
+            }
+
+            function getBuildingColor(prefix) {
+                if (!prefix || prefix === '其他') return '#6c757d';
+                let hash = 0;
+                for (let i = 0; i < prefix.length; i++) {
+                    hash = ((hash << 5) - hash) + prefix.charCodeAt(i);
+                    hash |= 0;
+                }
+                // 黄金角散布，确保相邻楼栋色相差异大
+                const hue = ((Math.abs(hash) * 137.508) % 360);
+                return `hsl(${hue}, 60%, 50%)`;
+            }
+
+            function refreshCountDisplay() {
+                // 刷新区域下拉框计数文本（不重建DOM，保留已选项）
+                const todayUsage = getTodayUsage();
+                areaSelect.querySelectorAll('optgroup option').forEach(opt => {
+                    const count = todayUsage[opt.value] || 0;
+                    opt.textContent = count > 0 ? `${opt.value}（今日${count}次）` : opt.value;
+                });
+                // 刷新任务下拉框计数文本
+                const area = areaSelect.value;
+                if (area && config.areas[area]) {
+                    const todayTaskUsage = getTodayTaskUsage();
+                    taskSelect.querySelectorAll('optgroup option').forEach(opt => {
+                        const count = todayTaskUsage[`${area}::${opt.value}`] || 0;
+                        opt.textContent = count > 0 ? `${opt.value}（今日${count}次）` : opt.value;
+                    });
+                }
+            }
+
+            // ==================== 查询历史 ====================
+            const QUERY_HISTORY_KEY = 'query_history';
+            const MAX_QUERY_HISTORY = 5;
+
+            function getQueryHistory() {
+                try {
+                    const data = localStorage.getItem(QUERY_HISTORY_KEY);
+                    return data ? JSON.parse(data) : [];
+                } catch { return []; }
+            }
+
+            function saveQueryHistory(entry) {
+                const history = getQueryHistory();
+                const key = entry.type + '::' + entry.value;
+                const idx = history.findIndex(h => h.type + '::' + h.value === key);
+                if (idx > -1) history.splice(idx, 1);
+                history.unshift(entry);
+                if (history.length > MAX_QUERY_HISTORY) history.length = MAX_QUERY_HISTORY;
+                try {
+                    localStorage.setItem(QUERY_HISTORY_KEY, JSON.stringify(history));
+                } catch (e) { console.warn('保存查询历史失败:', e); }
+            }
 
             function getRecentTasks() {
                 try {
@@ -1019,13 +1192,52 @@
                 }
             }
 
+            function renderAreaOptions() {
+                const todayUsage = getTodayUsage();
+                const groups = {};
+                areaSelect.innerHTML = '<option value="">请选择区域</option>';
+                Object.keys(config.areas).sort((a, b) => {
+                    const countA = todayUsage[a] || 0;
+                    const countB = todayUsage[b] || 0;
+                    if (countB !== countA) return countB - countA;
+                    return a.localeCompare(b, 'zh-Hans-CN');
+                }).forEach(area => {
+                    const match = area.match(/^(A\d+)/);
+                    const group = match ? match[1] + ' 栋' : '其他';
+                    if (!groups[group]) groups[group] = [];
+                    groups[group].push(area);
+                });
+                const groupOrder = Object.keys(groups).sort((a, b) => {
+                    if (a === '其他') return 1;
+                    if (b === '其他') return -1;
+                    return a.localeCompare(b, 'zh-Hans-CN', { numeric: true });
+                });
+                groupOrder.forEach(groupName => {
+                    const bldPrefix = groupName.replace(' 栋', '');
+                    const bldColor = getBuildingColor(bldPrefix);
+                    const optgroup = document.createElement('optgroup');
+                    optgroup.label = groupName;
+                    if (bldColor) optgroup.style.color = bldColor;
+                    groups[groupName].forEach(area => {
+                        const count = todayUsage[area] || 0;
+                        const option = document.createElement('option');
+                        option.value = area;
+                        option.className = 'with-building-border';
+                        if (bldColor) option.style.borderLeftColor = bldColor;
+                        option.textContent = count > 0 ? `${area}（今日${count}次）` : area;
+                        optgroup.appendChild(option);
+                    });
+                    areaSelect.appendChild(optgroup);
+                });
+            }
+
             function initPage() {
-                for (const area in config.areas) {
-                    const option = document.createElement('option');
-                    option.value = area;
-                    option.textContent = area;
-                    areaSelect.appendChild(option);
-                }
+                renderAreaOptions();
+                // 显示配置版本号
+                const verEl = document.getElementById('config-version');
+                if (verEl) verEl.textContent = 'v' + (config._version || config._client_version || '?');
+                // 显示查询历史
+                renderQueryHistory();
                 
                 areaSelect.addEventListener('change', updateTaskOptions);
                 taskSelect.addEventListener('change', updateFormFields);
@@ -1039,6 +1251,22 @@
                 
                 queryToggleOptions.forEach(opt => opt.addEventListener('click', toggleQueryType));
                 queryBtn.addEventListener('click', queryTasks);
+                
+                // 复制图标事件委托 (处理动态生成的任务查询结果中的复制)
+                taskDetails.addEventListener('click', (e) => {
+                    const icon = e.target.closest('.copy-icon');
+                    if (icon && icon.dataset.copy) {
+                        copyText(icon.dataset.copy, icon.dataset.msg || '已复制');
+                    }
+                });
+                // 响应信息复制按钮
+                responseBox.addEventListener('click', (e) => {
+                    const btn = e.target.closest('#copy-response-btn');
+                    if (btn) {
+                        const jsonEl = document.getElementById('response-json');
+                        if (jsonEl) copyText(jsonEl.textContent, '响应已复制');
+                    }
+                });
                 
                 taskPathSelect.addEventListener('change', () => {
                     if (taskPathSelect.value && taskPathSelect.value !== '请选择任务路径') {
@@ -1302,36 +1530,45 @@
                 taskSelect.innerHTML = '<option value="">请选择任务模板</option>';
                 if (area && config.areas[area]) {
                     const tasks = config.areas[area].tasks;
-                    
+                    const todayTaskUsage = getTodayTaskUsage();
+                    const getCount = (name) => todayTaskUsage[`${area}::${name}`] || 0;
+
+                    // 空车任务（requires_shelf=false）和非空车任务（requires_shelf=true）分离并各自按使用次数排序
+                    const emptyTasks = Object.keys(tasks).filter(n => !tasks[n].requires_shelf);
+                    const loadedTasks = Object.keys(tasks).filter(n => tasks[n].requires_shelf);
+                    const sortByUsage = (a, b) => {
+                        const ca = getCount(a), cb = getCount(b);
+                        if (cb !== ca) return cb - ca;
+                        return a.localeCompare(b, 'zh-Hans-CN');
+                    };
+                    emptyTasks.sort(sortByUsage);
+                    loadedTasks.sort(sortByUsage);
+
                     // 创建空车任务分组
-                    const emptyGroup = document.createElement('optgroup');
-                    emptyGroup.label = '🚚 空车任务';
-                    
-                    // 创建非空车任务分组
-                    const loadedGroup = document.createElement('optgroup');
-                    loadedGroup.label = '📦 非空车任务';
-                    
-                    // 分离任务
-                    for (const taskName in tasks) {
-                        const task = tasks[taskName];
-                        const option = document.createElement('option');
-                        option.value = taskName;
-                        option.textContent = taskName;
-                        
-                        if (task.requires_shelf) {
-                            loadedGroup.appendChild(option);
-                        } else {
+                    if (emptyTasks.length > 0) {
+                        const emptyGroup = document.createElement('optgroup');
+                        emptyGroup.label = `🚚 空车任务 (${emptyTasks.length})`;
+                        emptyTasks.forEach(taskName => {
+                            const count = getCount(taskName);
+                            const option = document.createElement('option');
+                            option.value = taskName;
+                            option.textContent = count > 0 ? `${taskName}（今日${count}次）` : taskName;
                             emptyGroup.appendChild(option);
-                        }
-                    }
-                    
-                    // 添加分组到下拉框（含任务数量统计）
-                    if (emptyGroup.children.length > 0) {
-                        emptyGroup.label = `🚚 空车任务 (${emptyGroup.children.length})`;
+                        });
                         taskSelect.appendChild(emptyGroup);
                     }
-                    if (loadedGroup.children.length > 0) {
-                        loadedGroup.label = `📦 非空车任务 (${loadedGroup.children.length})`;
+
+                    // 创建非空车任务分组
+                    if (loadedTasks.length > 0) {
+                        const loadedGroup = document.createElement('optgroup');
+                        loadedGroup.label = `📦 非空车任务 (${loadedTasks.length})`;
+                        loadedTasks.forEach(taskName => {
+                            const count = getCount(taskName);
+                            const option = document.createElement('option');
+                            option.value = taskName;
+                            option.textContent = count > 0 ? `${taskName}（今日${count}次）` : taskName;
+                            loadedGroup.appendChild(option);
+                        });
                         taskSelect.appendChild(loadedGroup);
                     }
                 }
@@ -1505,23 +1742,38 @@
                     const res = await fetch(task.base_url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(requestData)});
                     const data = await res.json();
                     responseBox.style.display = 'block';
-                    responseBox.textContent = JSON.stringify(data, null, 2);
+                    responseBox.innerHTML = `<div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-semibold text-success"><i class="bi bi-check-circle me-1"></i>响应数据</span>
+                        <button class="btn btn-sm btn-outline-secondary py-0" id="copy-response-btn" title="复制响应数据"><i class="bi bi-clipboard me-1"></i>复制</button>
+                    </div>
+                    <pre id="response-json" class="response-json mb-0">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
                     noResponsePlaceholder.style.display = 'none';
                     if (data.code === 1000) {
                         successModal.show();
                         if (task.requires_shelf) shelfHistory[shelf] = Date.now();
                         orderQueryInput.value = orderId;
+                        // 统一切换到 OrderId 查询（关闭其他模式）
+                        document.querySelectorAll('.toggle-option').forEach(o => o.classList.remove('active'));
                         document.querySelector('[data-type="order"]').classList.add('active');
-                        document.querySelector('[data-type="shelf"]').classList.remove('active');
-                        shelfQueryGroup.style.display='none'; orderQueryGroup.style.display='block';
-                        queryTasks();
+                        shelfQueryGroup.style.display='none'; orderQueryGroup.style.display='block'; deviceQueryGroup.style.display='none';
+                        // 等待1.5秒让ICS处理完成后自动搜索
+                        autoQueryAfterSubmit(orderId);
                         if (task.requires_task_path && task.capacity>0) setTimeout(()=>loadPathCapacity(task.code, task.capacity), 500);
                         // 记录最近使用任务
                         recordTaskUsage(taskName, area);
+                        // 记录每日区域使用次数
+                        recordAreaUsage(area);
+                        // 记录每日任务使用次数
+                        recordTaskUsageCount(area, taskName);
+                        // 刷新下拉框计数文本（不重建DOM，保留已选项）
+                        refreshCountDisplay();
                     }
                 } catch (e) {
                     responseBox.style.display = 'block';
-                    responseBox.textContent = `请求失败: ${e.message}`;
+                    responseBox.innerHTML = `<div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-semibold text-danger"><i class="bi bi-exclamation-triangle me-1"></i>请求失败</span>
+                    </div>
+                    <pre class="response-json mb-0 text-danger">${escapeHtml(e.message)}</pre>`;
                     noResponsePlaceholder.style.display = 'none';
                 } finally {
                     submitBtn.disabled = false;
@@ -1535,53 +1787,58 @@
                 e.target.classList.add('active');
                 shelfQueryGroup.style.display = type==='shelf'?'block':'none';
                 orderQueryGroup.style.display = type==='order'?'block':'none';
+                deviceQueryGroup.style.display = type==='device'?'block':'none';
             }
 
-            async function queryTasks() {
-                if (Date.now() - queryLastClickTime < 2000) return;
+            let _pendingAutoSearch = null;
+
+            function autoQueryAfterSubmit(orderId) {
+                if (_pendingAutoSearch) clearTimeout(_pendingAutoSearch);
+                _pendingAutoSearch = setTimeout(() => {
+                    _pendingAutoSearch = null;
+                    // 执行前再检查：用户没有切换模式或修改输入
+                    const currentVal = orderQueryInput.value.trim();
+                    const isOrderActive = document.querySelector('[data-type="order"]')?.classList.contains('active');
+                    if (!isOrderActive || currentVal !== orderId) return;
+                    queryTasks(true);
+                }, 1500);
+            }
+
+            async function queryTasks(force) {
+                if (Date.now() - queryLastClickTime < 2000 && !force) return;
                 queryLastClickTime = Date.now();
-                const isShelf = document.querySelector('[data-type="shelf"]').classList.contains('active');
-                const shelf = shelfQueryInput.value.trim(), orderId = orderQueryInput.value.trim();
-                if (isShelf && !shelf) return alert('请输入货架号');
-                if (!isShelf && !orderId) return alert('请输入OrderId');
+                const activeType = document.querySelector('.toggle-option.active')?.dataset.type || 'shelf';
+                const shelf = shelfQueryInput.value.trim(), orderId = orderQueryInput.value.trim(), deviceNum = deviceQueryInput.value.trim();
+                if (activeType === 'shelf' && !shelf) return alert('请输入货架号');
+                if (activeType === 'order' && !orderId) return alert('请输入OrderId');
+                if (activeType === 'device' && !deviceNum) return alert('请输入设备号');
                 queryBtn.disabled = true;
                 queryBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>查询中...';
                 try {
-                    let mainTask = null;
-                    if (isShelf) {
-                        for (const st of [6,9,4,-1]) {
-                            const res = await fetch('http://10.68.2.32:8315/crossTask/query', {
-                                method:'POST', headers:{'Content-Type':'application/json'},
-                                body: JSON.stringify({taskStatus: st.toString(), shelfNum: shelf, pageSize:20, pageNo:1})
-                            });
-                            const d = await res.json();
-                            if (d.code===1000 && d.data.list?.length) { mainTask = d.data.list[0]; break; }
-                        }
-                    } else {
-                        const res = await fetch('http://10.68.2.32:8315/crossTask/query', {
-                            method:'POST', headers:{'Content-Type':'application/json'},
-                            body: JSON.stringify({orderId, pageSize:20, pageNo:1})
-                        });
-                        const d = await res.json();
-                        if (d.code===1000 && d.data.list?.length) mainTask = d.data.list[0];
+                    const body = {};
+                    if (activeType === 'shelf') body.shelfNum = shelf;
+                    else if (activeType === 'order') body.orderId = orderId;
+                    else body.deviceNum = deviceNum;
+                    
+                    const res = await fetch('/addtask/query', {
+                        method:'POST', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify(body)
+                    });
+                    const data = await res.json();
+                    
+                    if (!data.success || !data.mainTask) { 
+                        emptyState.style.display='block'; 
+                        taskDetails.innerHTML = ''; 
+                        renderQueryHistory();
+                        return; 
                     }
-                    if (!mainTask) { emptyState.style.display='block'; taskDetails.innerHTML=''; return; }
-                    try {
-                        const detailRes = await fetch('http://10.68.2.32:8315/crossTask/detail', {
-                            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id: mainTask.id})
-                        });
-                        const detailData = await detailRes.json();
-                        if (detailData.code===1000 && detailData.data?.length) {
-                            displayTaskDetails(mainTask, detailData.data);
-                        } else {
-                            // 如果没有子任务详情，只显示主任务
-                            displayTaskDetails(mainTask, []);
-                        }
-                    } catch (e) {
-                        // 如果详情查询失败，只显示主任务
-                        displayTaskDetails(mainTask, []);
-                    }
-                } catch (e) { alert('查询失败'); } finally {
+                    // 保存查询历史
+                    saveQueryHistory({ type: activeType, value: activeType === 'shelf' ? shelf : activeType === 'order' ? orderId : deviceNum });
+                    renderQueryHistory();
+                    displayTaskDetails(data.mainTask, data.subs || [], data.detail_error);
+                } catch (e) { 
+                    alert('查询失败: ' + e.message); 
+                } finally {
                     queryBtn.disabled = false;
                     queryBtn.innerHTML = '<i class="bi bi-search me-2"></i>查询任务';
                 }
@@ -1592,16 +1849,47 @@
                 return map[st] || `状态${st}`;
             }
 
-            function displayTaskDetails(main, subs) {
+            function renderQueryHistory() {
+                if (!queryHistoryContainer) return;
+                const history = getQueryHistory();
+                if (!history.length) { queryHistoryContainer.innerHTML = ''; return; }
+                queryHistoryContainer.innerHTML = `<div class="d-flex flex-wrap gap-1 align-items-center"><span class="small text-muted me-1"><i class="bi bi-clock-history me-1"></i>最近查询:</span>` +
+                    history.map(h => {
+                        const label = h.type === 'shelf' ? `📦 ${h.value}` : h.type === 'device' ? `🔧 ${h.value}` : `📋 ${h.value}`;
+                        return `<span class="badge bg-secondary" style="cursor:pointer" onclick="quickQuery('${h.type}','${h.value.replace(/'/g, "\\'")}')"><i class="bi bi-arrow-repeat me-1"></i>${label}</span>`;
+                    }).join('') + `</div>`;
+            }
+
+            window.quickQuery = function(type, value) {
+                if (type === 'shelf') {
+                    document.querySelector('[data-type="shelf"]').click();
+                    shelfQueryInput.value = value;
+                } else if (type === 'order') {
+                    document.querySelector('[data-type="order"]').click();
+                    orderQueryInput.value = value;
+                } else if (type === 'device') {
+                    document.querySelector('[data-type="device"]').click();
+                    deviceQueryInput.value = value;
+                }
+                queryTasks();
+            };
+
+            function displayTaskDetails(main, subs, detailError) {
                 emptyState.style.display = 'none';
-                let html = `<div class="task-item"><div class="d-flex justify-content-between align-items-center mb-2"><h5 class="mb-0">主任务</h5><span class="task-status status-${main.taskStatus}">${getStatusText(main.taskStatus)}</span></div>
-                    <div class="small"><span class="fw-semibold">OrderId:</span> ${main.orderId}</div>
+                let html = '';
+                const encodedOrderId = encodeURIComponent(main.orderId);
+                html += `<div class="task-item"><div class="d-flex justify-content-between align-items-center mb-2"><h5 class="mb-0">主任务</h5><span class="task-status status-${main.taskStatus}">${getStatusText(main.taskStatus)}</span></div>
+                    <div class="small"><span class="fw-semibold">OrderId:</span> ${main.orderId} <i class="bi bi-clipboard copy-icon ms-1" data-copy="${(main.orderId||'').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" data-msg="OrderId 已复制" title="复制OrderId"></i></div>
                     <div class="small"><span class="fw-semibold">任务名称:</span> ${main.modelProcessName}</div>
-                    <div class="small"><span class="fw-semibold">货架号:</span> ${main.shelfNum||'无'}</div>
+                    <div class="small"><span class="fw-semibold">任务模板:</span> <a href="/search?search_term=${encodeURIComponent(main.modelProcessCode||'')}" target="_blank" class="text-decoration-none" title="查看模板详情">${main.modelProcessCode} <i class="bi bi-box-arrow-up-right" style="font-size:0.7rem;"></i></a></div>
+                    <div class="small"><span class="fw-semibold">货架号:</span> ${main.shelfNum||'无'} ${main.shelfNum ? `<i class="bi bi-clipboard copy-icon ms-1" data-copy="${main.shelfNum.replace(/"/g, '&quot;').replace(/</g, '&lt;')}" data-msg="货架号已复制" title="复制货架号"></i>` : ''}</div>
                     <div class="small"><span class="fw-semibold">设备编号:</span> ${main.deviceNum||'无'}</div>
                     <div class="small"><span class="fw-semibold">任务状态:</span> ${getStatusText(main.taskStatus)} (${main.taskStatus})</div>
                     <div class="small"><span class="fw-semibold">创建时间:</span> ${new Date(main.createTime).toLocaleString()}</div>
-                    <div class="mt-3">
+                    <div class="mt-3 d-flex flex-wrap gap-2">
+                        <a href="/query?orderId=${encodedOrderId}" target="_blank" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-box-arrow-up-right me-1"></i>查看完整详情
+                        </a>
                         <button class="btn btn-sm btn-outline-info" onclick="showTaskJsonModal(${JSON.stringify(main).replace(/"/g, '&quot;').replace(/'/g, "&#39;")}, ${JSON.stringify(subs).replace(/"/g, '&quot;').replace(/'/g, "&#39;")})">
                             <i class="bi bi-code-slash me-1"></i>查看JSON数据
                         </button>
@@ -1614,14 +1902,14 @@
                         const canPriority = [4,9].includes(t.status);
                         html += `<div class="task-item ${idx===0?'border-primary':''}"><div class="d-flex justify-content-between"><strong>子任务 ${t.taskSeq}</strong><span class="task-status status-${t.status}">${getStatusText(t.status)}</span></div>
                             <div class="small mt-2"><span class="fw-semibold">模板:</span> ${t.templateName}</div>
-                            <div class="small"><span class="fw-semibold">子任务ID:</span> ${t.subOrderId}</div>
+                            <div class="small"><span class="fw-semibold">子任务ID:</span> ${t.subOrderId} <i class="bi bi-clipboard copy-icon ms-1" data-copy="${(t.subOrderId||'').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" data-msg="子任务ID已复制" title="复制子任务ID"></i></div>
                             <div class="small"><span class="fw-semibold">服务地址:</span> ${t.serviceUrl}</div>
                             <div class="small"><span class="fw-semibold">任务路径:</span> ${t.taskPath||'无'}</div>
                             ${idx===0 ? `<button class="btn btn-sm ${canPriority?'btn-warning':'btn-secondary'} mt-2" onclick="updateTaskPriority('${t.subOrderId}','${t.serviceUrl}',${t.status})" ${!canPriority?'disabled':''}><i class="bi bi-star-fill me-1"></i>优先执行</button>`:''}
                         </div>`;
                     });
                 } else {
-                    html += `<div class="mt-3 text-muted small"><i class="bi bi-info-circle me-1"></i>暂无子任务详情</div>`;
+                    html += `<div class="mt-3 text-muted small"><i class="bi bi-info-circle me-1"></i>暂无子任务详情${detailError ? ` <span class="text-warning">(${escapeHtml(detailError)})</span>` : ''}</div>`;
                 }
                 taskDetails.innerHTML = html;
             }

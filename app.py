@@ -2348,6 +2348,82 @@ def save_addtask_config():
     except Exception as e:
         return jsonify({'error': f'保存配置失败: {str(e)}'}), 500
 
+@app.route('/addtask/query', methods=['POST'])
+@login_required
+def addtask_query_task():
+    """代理查询ICS任务（供addtask右侧面板复用）"""
+    import urllib.request as _urllib
+    import json as _json
+    import time as _time
+    
+    data = request.json or {}
+    order_id = data.get('orderId', '').strip()
+    shelf_num = data.get('shelfNum', '').strip()
+    device_num = data.get('deviceNum', '').strip()
+    server_ip = data.get('serverIp', '10.68.2.32')
+    base_url = f"http://{server_ip}:8315"
+    
+    def _call_ics(path, body, timeout=12):
+        url = f"{base_url}{path}"
+        try:
+            req = _urllib.Request(url, data=_json.dumps(body).encode('utf-8'),
+                headers={'Content-Type': 'application/json'})
+            resp = _urllib.urlopen(req, timeout=timeout)
+            raw = resp.read().decode('utf-8')
+            return _json.loads(raw)
+        except Exception as e:
+            return None
+    
+    main_task = None
+    
+    if order_id:
+        res = _call_ics('/crossTask/query', {'orderId': order_id, 'pageSize': 1, 'pageNo': 1})
+        if res and res.get('code') == 1000 and res.get('data', {}).get('list'):
+            main_task = res['data']['list'][0]
+    elif shelf_num:
+        for st in ['6', '9', '4', '-1']:
+            res = _call_ics('/crossTask/query', {'taskStatus': st, 'shelfNum': shelf_num, 'pageSize': 1, 'pageNo': 1})
+            if res and res.get('code') == 1000 and res.get('data', {}).get('list'):
+                main_task = res['data']['list'][0]
+                break
+    elif device_num:
+        for st in ['6', '9', '4', '-1']:
+            res = _call_ics('/crossTask/query', {'taskStatus': st, 'deviceNum': device_num, 'pageSize': 1, 'pageNo': 1})
+            if res and res.get('code') == 1000 and res.get('data', {}).get('list'):
+                main_task = res['data']['list'][0]
+                break
+    
+    if not main_task:
+        return jsonify({'success': False, 'message': '未找到任务'}), 404
+    
+    subs = []
+    detail_error = None
+    try:
+        # 子任务查询：空数据时重试最多3次，间隔1秒
+        for retry in range(3):
+            detail_res = _call_ics('/crossTask/detail', {'id': main_task['id']})
+            if detail_res and detail_res.get('code') == 1000:
+                sub_data = detail_res.get('data')
+                if sub_data and len(sub_data) > 0:
+                    subs = sub_data
+                    detail_error = None
+                    break
+                else:
+                    detail_error = 'detail API 返回空数据'
+            elif detail_res:
+                detail_error = f"detail API 返回 code={detail_res.get('code')}"
+            else:
+                detail_error = 'detail API 请求失败（超时或网络错误）'
+            if retry < 2:
+                _time.sleep(1)
+    except Exception as e:
+        detail_error = str(e)
+    
+    if detail_error:
+        app.logger.warning(f"[addtask query] orderId={order_id or '-'} shelf={shelf_num or '-'} device={device_num or '-'} {detail_error}")
+    
+    return jsonify({'success': True, 'mainTask': main_task, 'subs': subs, 'detail_error': detail_error})
+
 @app.route('/addtask/config/backups')
 @login_required
 @admin_required
