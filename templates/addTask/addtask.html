@@ -907,6 +907,63 @@
             const RECENT_TASKS_KEY = 'recent_tasks';
             const MAX_RECENT = 5;
 
+            // ==================== 每日区域使用统计 ====================
+            const AREA_USAGE_KEY = 'area_usage';
+
+            function getAreaUsage() {
+                try {
+                    const data = localStorage.getItem(AREA_USAGE_KEY);
+                    return data ? JSON.parse(data) : {};
+                } catch { return {}; }
+            }
+
+            function recordAreaUsage(areaName) {
+                const usage = getAreaUsage();
+                const today = new Date().toISOString().slice(0, 10);
+                if (!usage[today]) usage[today] = {};
+                usage[today][areaName] = (usage[today][areaName] || 0) + 1;
+                try {
+                    localStorage.setItem(AREA_USAGE_KEY, JSON.stringify(usage));
+                } catch (e) {
+                    console.warn('保存区域使用统计失败:', e);
+                }
+            }
+
+            function getTodayUsage() {
+                const usage = getAreaUsage();
+                const today = new Date().toISOString().slice(0, 10);
+                return usage[today] || {};
+            }
+
+            // ==================== 每日任务使用统计 ====================
+            const TASK_USAGE_KEY = 'task_usage';
+
+            function getTaskUsage() {
+                try {
+                    const data = localStorage.getItem(TASK_USAGE_KEY);
+                    return data ? JSON.parse(data) : {};
+                } catch { return {}; }
+            }
+
+            function recordTaskUsageCount(areaName, taskName) {
+                const usage = getTaskUsage();
+                const today = new Date().toISOString().slice(0, 10);
+                if (!usage[today]) usage[today] = {};
+                const key = `${areaName}::${taskName}`;
+                usage[today][key] = (usage[today][key] || 0) + 1;
+                try {
+                    localStorage.setItem(TASK_USAGE_KEY, JSON.stringify(usage));
+                } catch (e) {
+                    console.warn('保存任务使用统计失败:', e);
+                }
+            }
+
+            function getTodayTaskUsage() {
+                const usage = getTaskUsage();
+                const today = new Date().toISOString().slice(0, 10);
+                return usage[today] || {};
+            }
+
             function getRecentTasks() {
                 try {
                     const data = localStorage.getItem(RECENT_TASKS_KEY);
@@ -1020,12 +1077,38 @@
             }
 
             function initPage() {
-                for (const area in config.areas) {
-                    const option = document.createElement('option');
-                    option.value = area;
-                    option.textContent = area;
-                    areaSelect.appendChild(option);
-                }
+                // 按楼栋前缀分组，组内按今日使用次数降序（同次数按字母序）
+                const todayUsage = getTodayUsage();
+                const groups = {};
+                Object.keys(config.areas).sort((a, b) => {
+                    const countA = todayUsage[a] || 0;
+                    const countB = todayUsage[b] || 0;
+                    if (countB !== countA) return countB - countA;  // 次数多的在前
+                    return a.localeCompare(b, 'zh-Hans-CN');       // 同次数字母序
+                }).forEach(area => {
+                    const match = area.match(/^(A\d+)/);
+                    const group = match ? match[1] + ' 栋' : '其他';
+                    if (!groups[group]) groups[group] = [];
+                    groups[group].push(area);
+                });
+                // 确保"其他"组排最后
+                const groupOrder = Object.keys(groups).sort((a, b) => {
+                    if (a === '其他') return 1;
+                    if (b === '其他') return -1;
+                    return a.localeCompare(b, 'zh-Hans-CN', { numeric: true });
+                });
+                groupOrder.forEach(groupName => {
+                    const optgroup = document.createElement('optgroup');
+                    optgroup.label = groupName;
+                    groups[groupName].forEach(area => {
+                        const count = todayUsage[area] || 0;
+                        const option = document.createElement('option');
+                        option.value = area;
+                        option.textContent = count > 0 ? `${area}（今日${count}次）` : area;
+                        optgroup.appendChild(option);
+                    });
+                    areaSelect.appendChild(optgroup);
+                });
                 
                 areaSelect.addEventListener('change', updateTaskOptions);
                 taskSelect.addEventListener('change', updateFormFields);
@@ -1302,36 +1385,45 @@
                 taskSelect.innerHTML = '<option value="">请选择任务模板</option>';
                 if (area && config.areas[area]) {
                     const tasks = config.areas[area].tasks;
-                    
+                    const todayTaskUsage = getTodayTaskUsage();
+                    const getCount = (name) => todayTaskUsage[`${area}::${name}`] || 0;
+
+                    // 空车任务（requires_shelf=false）和非空车任务（requires_shelf=true）分离并各自按使用次数排序
+                    const emptyTasks = Object.keys(tasks).filter(n => !tasks[n].requires_shelf);
+                    const loadedTasks = Object.keys(tasks).filter(n => tasks[n].requires_shelf);
+                    const sortByUsage = (a, b) => {
+                        const ca = getCount(a), cb = getCount(b);
+                        if (cb !== ca) return cb - ca;
+                        return a.localeCompare(b, 'zh-Hans-CN');
+                    };
+                    emptyTasks.sort(sortByUsage);
+                    loadedTasks.sort(sortByUsage);
+
                     // 创建空车任务分组
-                    const emptyGroup = document.createElement('optgroup');
-                    emptyGroup.label = '🚚 空车任务';
-                    
-                    // 创建非空车任务分组
-                    const loadedGroup = document.createElement('optgroup');
-                    loadedGroup.label = '📦 非空车任务';
-                    
-                    // 分离任务
-                    for (const taskName in tasks) {
-                        const task = tasks[taskName];
-                        const option = document.createElement('option');
-                        option.value = taskName;
-                        option.textContent = taskName;
-                        
-                        if (task.requires_shelf) {
-                            loadedGroup.appendChild(option);
-                        } else {
+                    if (emptyTasks.length > 0) {
+                        const emptyGroup = document.createElement('optgroup');
+                        emptyGroup.label = `🚚 空车任务 (${emptyTasks.length})`;
+                        emptyTasks.forEach(taskName => {
+                            const count = getCount(taskName);
+                            const option = document.createElement('option');
+                            option.value = taskName;
+                            option.textContent = count > 0 ? `${taskName}（今日${count}次）` : taskName;
                             emptyGroup.appendChild(option);
-                        }
-                    }
-                    
-                    // 添加分组到下拉框（含任务数量统计）
-                    if (emptyGroup.children.length > 0) {
-                        emptyGroup.label = `🚚 空车任务 (${emptyGroup.children.length})`;
+                        });
                         taskSelect.appendChild(emptyGroup);
                     }
-                    if (loadedGroup.children.length > 0) {
-                        loadedGroup.label = `📦 非空车任务 (${loadedGroup.children.length})`;
+
+                    // 创建非空车任务分组
+                    if (loadedTasks.length > 0) {
+                        const loadedGroup = document.createElement('optgroup');
+                        loadedGroup.label = `📦 非空车任务 (${loadedTasks.length})`;
+                        loadedTasks.forEach(taskName => {
+                            const count = getCount(taskName);
+                            const option = document.createElement('option');
+                            option.value = taskName;
+                            option.textContent = count > 0 ? `${taskName}（今日${count}次）` : taskName;
+                            loadedGroup.appendChild(option);
+                        });
                         taskSelect.appendChild(loadedGroup);
                     }
                 }
@@ -1518,6 +1610,10 @@
                         if (task.requires_task_path && task.capacity>0) setTimeout(()=>loadPathCapacity(task.code, task.capacity), 500);
                         // 记录最近使用任务
                         recordTaskUsage(taskName, area);
+                        // 记录每日区域使用次数
+                        recordAreaUsage(area);
+                        // 记录每日任务使用次数
+                        recordTaskUsageCount(area, taskName);
                     }
                 } catch (e) {
                     responseBox.style.display = 'block';
