@@ -4,16 +4,18 @@
 模板管理路由蓝图 - 核心 CRUD 操作
 """
 
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session
+from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session, Response, stream_with_context
 from functools import wraps
-import sys, os
+import sys, os, json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from services.template_service import TemplateService
+from services.device_sync_service import DeviceSyncService
 from middleware.cache import cache
 
 template_bp = Blueprint('template', __name__)
 _template_service = TemplateService()
+_device_sync_service = DeviceSyncService()
 
 
 def login_required(f):
@@ -226,3 +228,97 @@ def rcs_sync_template(template_id):
         return jsonify({'success': True, 'data': result})
     except Exception as e:
         return jsonify({'success': False, 'message': f'服务器错误: {str(e)}'}), 500
+
+
+# ========== 设备同步 ==========
+
+@template_bp.route('/template/device-sync')
+@login_required
+@admin_required
+def device_sync_page():
+    """设备同步向导页面"""
+    servers = _device_sync_service.get_available_servers()
+    return render_template('template/device_sync.html', servers=servers)
+
+
+@template_bp.route('/template/device-sync/servers')
+@login_required
+@admin_required
+def device_sync_servers():
+    """获取可用服务器 IP 列表"""
+    servers = _device_sync_service.get_available_servers()
+    return jsonify({'success': True, 'servers': servers})
+
+
+@template_bp.route('/template/device-sync/test-connection', methods=['POST'])
+@login_required
+@admin_required
+def device_sync_test_connection():
+    """测试到指定 IP 的数据库连接"""
+    data = request.get_json() or {}
+    ip = data.get('ip', '').strip()
+    if not ip:
+        return jsonify({'success': False, 'message': '请输入服务器 IP'}), 400
+    ok, info, error = _device_sync_service.test_connection(ip)
+    if ok:
+        return jsonify({'success': True, 'info': info})
+    else:
+        return jsonify({'success': False, 'message': error}), 500
+
+
+@template_bp.route('/template/device-sync/groups', methods=['POST'])
+@login_required
+@admin_required
+def device_sync_groups():
+    """从指定服务器获取设备组列表"""
+    data = request.get_json() or {}
+    ip = data.get('ip', '').strip()
+    if not ip:
+        return jsonify({'success': False, 'message': '请输入服务器 IP'}), 400
+    groups = _device_sync_service.get_device_groups(ip)
+    return jsonify({'success': True, 'groups': groups})
+
+
+@template_bp.route('/template/device-sync/areas', methods=['POST'])
+@login_required
+@admin_required
+def device_sync_areas():
+    """从指定服务器获取 bms_area LEVEL=1 区域列表"""
+    data = request.get_json() or {}
+    ip = data.get('ip', '').strip()
+    if not ip:
+        return jsonify({'success': False, 'message': '请输入服务器 IP'}), 400
+    areas = _device_sync_service.get_level1_areas(ip)
+    return jsonify({'success': True, 'areas': areas})
+
+
+@template_bp.route('/template/device-sync/execute', methods=['POST'])
+@login_required
+@admin_required
+def device_sync_execute():
+    """执行设备同步，SSE 流式返回实时日志"""
+    data = request.get_json() or {}
+    source_ip = data.get('source_ip', '').strip()
+    target_ip = data.get('target_ip', '').strip()
+    sync_types = data.get('sync_types', [])
+    params = data.get('params', {})
+
+    if not source_ip or not target_ip:
+        return jsonify({'success': False, 'message': '请指定源和目标服务器 IP'}), 400
+    if source_ip == target_ip:
+        return jsonify({'success': False, 'message': '源和目标服务器不能相同'}), 400
+    if not sync_types:
+        return jsonify({'success': False, 'message': '请至少选择一种同步类型'}), 400
+
+    def generate():
+        yield from _device_sync_service.execute_sync_stream(source_ip, target_ip, sync_types, params)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive',
+        }
+    )
