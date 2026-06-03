@@ -256,6 +256,24 @@
                 
                 <hr>
                 
+                <!-- 交接点配置检查 -->
+                <div class="mt-3">
+                    <h6>交接点配置</h6>
+                    <div id="joinQrStatus" class="mb-2">
+                        <span class="badge bg-secondary">检查中...</span>
+                    </div>
+                    <div class="d-flex gap-1">
+                        <a href="/pair/list" class="btn btn-sm btn-outline-warning">
+                            <i class="bi bi-signpost"></i> 管理交接点
+                        </a>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="refreshJoinQrStatus({{ template.id }})">
+                            <i class="bi bi-arrow-clockwise"></i> 刷新
+                        </button>
+                    </div>
+                </div>
+                
+                <hr>
+                
                 <div class="mt-3">
                     <h6>快速操作</h6>
                     <div class="d-flex flex-wrap gap-1">
@@ -471,6 +489,7 @@
         var templateId = document.getElementById('templateIdHolder');
         if (templateId) {
             refreshRcsStatus(parseInt(templateId.value));
+            refreshJoinQrStatus(parseInt(templateId.value));
         }
     });
     
@@ -571,6 +590,47 @@
             .finally(function() {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="bi bi-cloud-upload"></i> 同步到 task_template';
+            });
+    }
+    
+    // ========== 交接点配置检查 ==========
+    
+    function refreshJoinQrStatus(templateId) {
+        var statusEl = document.getElementById('joinQrStatus');
+        if (!statusEl) return;
+        statusEl.innerHTML = '<span class="badge bg-secondary">检查中...</span>';
+        
+        fetch('/api/template/' + templateId + '/join_qr_check')
+            .then(r => r.json())
+            .then(function(data) {
+                if (data.success && data.data) {
+                    var d = data.data;
+                    var html = '';
+                    if (d.all_configured) {
+                        html += '<span class="badge bg-success">✅ 全部已配置</span> ';
+                    } else if (d.configured_servers > 0) {
+                        html += '<span class="badge bg-warning text-dark">⚠️ 部分缺失 (' + d.configured_servers + '/' + d.total_servers + ')</span> ';
+                    } else {
+                        html += '<span class="badge bg-danger">❌ 未配置</span> ';
+                    }
+                    html += '<small class="text-muted">区域: ' + d.area_name + '</small>';
+                    
+                    if (d.servers && d.servers.length > 0) {
+                        html += '<div style="font-size:0.8rem;margin-top:4px;line-height:1.6">';
+                        d.servers.forEach(function(s) {
+                            var icon = s.configured ? '✅' : '❌';
+                            html += icon + ' ' + s.server + ' (区域' + d.area_id + '): ' + s.count + ' 条<br>';
+                        });
+                        html += '</div>';
+                        html += '<a href="/pair/list?area=' + d.area_id + '" class="small" target="_blank">查看全部</a>';
+                    }
+                    statusEl.innerHTML = html;
+                } else {
+                    statusEl.innerHTML = '<span class="badge bg-secondary">' + (data.message || '无数据') + '</span>';
+                }
+            })
+            .catch(function(err) {
+                statusEl.innerHTML = '<span class="badge bg-danger">检查失败: ' + err.message + '</span>';
             });
     }
 </script>

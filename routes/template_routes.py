@@ -322,3 +322,20 @@ def device_sync_execute():
             'Connection': 'keep-alive',
         }
     )
+
+
+# ========== 交接点检查 ==========
+
+@template_bp.route('/api/template/<int:template_id>/join_qr_check')
+@login_required
+def join_qr_check(template_id):
+    """检查模板涉及的服务器是否已配置对应区域的交接点"""
+    try:
+        from services.join_qr_service import JoinQrService
+        svc = JoinQrService()
+        data, error = svc.check_template_join_qr(template_id)
+        if error:
+            return jsonify({'success': False, 'message': error}), 404
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
