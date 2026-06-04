@@ -39,12 +39,9 @@
         <div class="mb-3">
             <label class="form-label fw-semibold">指定设备 <span class="text-muted fw-normal small">（可选）</span></label>
             <div class="position-relative" id="device-combobox">
-                <div class="input-group">
-                    <input type="text" id="device-input" class="form-control" placeholder="输入筛选或选择设备..." autocomplete="off">
-                    <button class="btn btn-outline-secondary" type="button" id="device-clear-btn" title="清除所选" style="display:none;"><i class="bi bi-x-lg"></i></button>
-                    <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="device-dropdown-btn" data-bs-toggle="dropdown" data-bs-parent="#device-combobox" data-bs-auto-close="outside" aria-expanded="false"></button>
-                </div>
-                <ul class="dropdown-menu w-100 shadow" id="device-dropdown-menu" style="max-height:240px;overflow-y:auto;"></ul>
+                <input type="text" id="device-input" class="form-select pe-4" placeholder="输入筛选或选择设备..." autocomplete="off" style="cursor:default;">
+                <button class="btn-close position-absolute top-50 end-0 translate-middle-y me-1" type="button" id="device-clear-btn" title="清除所选" style="display:none;margin-right:1.5rem;"></button>
+                <ul class="dropdown-menu w-100 shadow" id="device-dropdown-menu" style="max-height:240px;overflow-y:auto;position:absolute;top:100%;left:0;z-index:1000;"></ul>
             </div>
             <div class="form-text small">输入自动过滤设备列表，选择后自动填入序列号。</div>
         </div>

@@ -914,7 +914,6 @@
             const deviceInput = document.getElementById('device-input');
             const deviceDropdownMenu = document.getElementById('device-dropdown-menu');
             const deviceClearBtn = document.getElementById('device-clear-btn');
-            const deviceDropdownBtn = document.getElementById('device-dropdown-btn');
             let currentDeviceSuggestions = [];  // agv_robot_ext: [{deviceCode, deviceNum}]
 
             // Bootstrap modals
@@ -1722,6 +1721,15 @@
                 if (currentDeviceSuggestions.length > 0) _updateDropdownVisibility(true);
             });
 
+            // 失焦时关闭下拉（延迟让下拉项点击事件先触发）
+            deviceInput.addEventListener('blur', () => {
+                setTimeout(() => {
+                    if (!deviceDropdownMenu.contains(document.activeElement)) {
+                        _updateDropdownVisibility(false);
+                    }
+                }, 150);
+            });
+
             // 清除按钮
             deviceClearBtn.addEventListener('click', () => {
                 deviceInput.value = '';
@@ -1733,13 +1741,7 @@
                 if (!deviceDropdownMenu) return;
                 const isShown = deviceDropdownMenu.classList.contains('show');
                 if (show === isShown) return;
-                // 纯手动 class 切换，不经过 Bootstrap API（避免自动聚焦导致输入框失焦）
                 deviceDropdownMenu.classList.toggle('show', show);
-                deviceDropdownMenu.style.display = show ? 'block' : '';
-                if (deviceDropdownBtn) {
-                    deviceDropdownBtn.classList.toggle('show', show);
-                    deviceDropdownBtn.setAttribute('aria-expanded', show ? 'true' : 'false');
-                }
             }
 
             async function loadPathCapacity(modelProcessCode, capacity) {
