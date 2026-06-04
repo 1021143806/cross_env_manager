@@ -42,9 +42,9 @@
                 <div class="input-group">
                     <input type="text" id="device-input" class="form-control" placeholder="输入筛选或选择设备..." autocomplete="off">
                     <button class="btn btn-outline-secondary" type="button" id="device-clear-btn" title="清除所选" style="display:none;"><i class="bi bi-x-lg"></i></button>
-                    <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="device-dropdown-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"></button>
-                    <ul class="dropdown-menu" id="device-dropdown-menu" style="max-height:240px;overflow-y:auto;min-width:100%;"></ul>
+                    <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="device-dropdown-btn" data-bs-toggle="dropdown" data-bs-parent="#device-combobox" data-bs-auto-close="outside" aria-expanded="false"></button>
                 </div>
+                <ul class="dropdown-menu w-100 shadow" id="device-dropdown-menu" style="max-height:240px;overflow-y:auto;"></ul>
             </div>
             <div class="form-text small">输入自动过滤设备列表，选择后自动填入序列号。</div>
         </div>
