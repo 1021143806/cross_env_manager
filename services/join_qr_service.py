@@ -21,6 +21,9 @@ from modules.database.connection import execute_query
 class JoinQrService:
     """交接点配置服务"""
 
+    # 基准服务器：所有非此 IP 的配对都会在此额外创建一份副本用作基准展示
+    REFERENCE_SERVER = '10.68.2.32'
+
     # ======================== 配对列表 ========================
 
     def get_paired_list(self, server=None, area=None, search=None):
@@ -113,6 +116,9 @@ class JoinQrService:
         """
         新增一对交接点配置，自动判断 type
         跨服务器 → type=0，同服务器 → type=1
+        
+        当两侧服务器都不是基准服务器 (REFERENCE_SERVER) 时，
+        自动在基准服务器上也创建一对记录，保证基准表的数据完整。
         """
         same_server = (server_a == server_b)
         qr_type = 1 if same_server else 0
@@ -121,8 +127,15 @@ class JoinQrService:
             "INSERT INTO join_qr_node_info (area_id, type, qr_content, environment_ip, enable) "
             "VALUES (%s, %s, %s, %s, 1)"
         )
+        # 1. 插入用户指定的配对
         execute_query(sql, (area_a, qr_type, qr_content, server_a), fetch=False)
         execute_query(sql, (area_b, qr_type, qr_content, server_b), fetch=False)
+
+        # 2. 如果两侧都不是基准服务器，在基准服务器上创建副本
+        ref = self.REFERENCE_SERVER
+        if server_a != ref and server_b != ref:
+            execute_query(sql, (area_a, qr_type, qr_content, ref), fetch=False)
+            execute_query(sql, (area_b, qr_type, qr_content, ref), fetch=False)
 
         return True
 

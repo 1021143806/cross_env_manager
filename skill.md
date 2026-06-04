@@ -238,7 +238,7 @@ venv/bin/python3 test/???.py
 - **交互**: 饼图悬停显示状态名/数量/百分比，点击图例切换显示/隐藏，异常率红色高亮
 
 ### ds说
-- 2026-04-28: **Phase 1 架构优化完成**。引入 DBUtils 连接池（modules/database/connection.py 重构），新增 dao/ 层（BaseDAO + TemplateDAO + DetailDAO），新增 middleware/ 层（统一异常处理 AppError/NotFoundError/AuthError/ValidationError），app.py 启动时自动初始化连接池并注册异常处理器。新增依赖 DBUtils==3.1.2。
+- 2025-04-28: **Phase 1 架构优化完成**。引入 DBUtils 连接池（modules/database/connection.py 重构），新增 dao/ 层（BaseDAO + TemplateDAO + DetailDAO），新增 middleware/ 层（统一异常处理 AppError/NotFoundError/AuthError/ValidationError），app.py 启动时自动初始化连接池并注册异常处理器。新增依赖 DBUtils==3.1.2。
 - 2026-04-28: **Phase 2 架构优化完成**。创建 routes/ 蓝图层，将 app.py 中50+路由按功能拆分为8个蓝图文件。蓝图在 app.py 启动时自动注册，57条路由全部验证通过。
 - 2026-04-28: **Phase 3 架构优化完成**。创建 services/ 业务逻辑层：AuthService（认证）、StatsService（统计）、TemplateService（模板CRUD+搜索+复制）、ConfigService（配置管理+备份）。修改 auth_routes/stats_routes/config_routes/template_routes 四个蓝图调用 Service 层，路由只负责请求解析和响应渲染。
 - 2026-04-28: **Phase 4 缓存层完成**。引入 Flask-Caching 内存缓存（middleware/cache.py），对 stats_service 的3个高频查询方法（overview/distribution/templates_by_server）添加 @cache.cached 装饰器（TTL=5分钟）。写操作（编辑/复制/删除模板）时自动清除缓存。新增依赖 Flask-Caching==2.3.1 + cachelib==0.13.0，已同步更新 requirements.txt 和 vendor_packages3.9。详细方案见 plans/cross_env_manager_architecture_optimization.md。
@@ -265,4 +265,6 @@ venv/bin/python3 test/???.py
   - **响应报文**：格式化为 `<pre>` 代码块，成功/失败分色显示，带一键复制。
   - **自动搜索**：下发成功后 1.5 秒自动搜索（`autoQueryAfterSubmit`），执行前检查用户是否切换模式或修改输入，`queryTasks(true)` 传 `force` 参数绕过防抖锁。
   - **页脚**：动态显示 `config._version`。
-  - **表单保留**：提交后 `refreshCountDisplay()` 仅更新文本，不丢失已选区。
+   - **表单保留**：提交后 `refreshCountDisplay()` 仅更新文本，不丢失已选区。
+- 2026-06-02: **设备同步功能 (Device Sync)** 完成。基于原 `/python快捷处理sql脚本/` 三个脚本整合进 Web UI。Service 层 `services/device_sync_service.py` 封装三大同步逻辑（型号/设备主表/设备扩展表），连接管理通过 pymysql 直连多 IP（共享 `config/env.toml` 凭据）。路由挂 `template_bp`（5个API端点），SSE 流式推送实时日志。页面 `templates/template/device_sync.html` 卡片式布局：服务器选择+测试连接 → 同步配置(三开关) → 预览+执行 → SSE 实时日志流。入口：首页「设备同步」按钮→`/template/device-sync`。关键 SQL：SELECT agv_model/agv_robot/agv_robot_ext → INSERT IGNORE 到目标库。服务器 IP 从 `fy_cross_model_process_detail.task_servicec` 解析，目标区域从 `bms_area WHERE LEVEL=1` 获取。
+- 2026-06-03: **交接点配置管理 (Join QR Node)** 完成。管理 `join_qr_node_info` 表配对配置，以 `qr_content` 为配对单位（一个地码值对应对侧2条记录）。Service 层 `services/join_qr_service.py` 实现配对列表（按 qr_content 分组自动判断 type=0跨服务器/1同服务器）、配对新增（双栏表单→2条 INSERT + 基准服务器副本）、配对编辑（先删后加）、模板交接点检查。路由 `routes/join_qr_routes.py`（6页面+2API）。页面 `templates/join_qr_nodes/list.html`（筛选+配对展示）+ `edit.html`（双栏表单自动 type）。基准服务器 `10.68.2.32`：当新增配对的服务器不含 2.32 时自动创建基准副本。模板详情操作面板新增「交接点配置」自动检查：GET `/api/template/<id>/join_qr_check` 逐个检查每个子任务服务器的 `join_qr_node_info` 配置状态。入口：首页「交接点」→`/pair/list`。关键 SQL：INSERT INTO join_qr_node_info (area_id,type,qr_content,environment_ip,enable) VALUES；DELETE WHERE qr_content=%s；SELECT COUNT(*) WHERE environment_ip=%s AND area_id=%s。
