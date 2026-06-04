@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}{% if pair %}编辑交接点配对{% else %}新增交接点配对{% endif %}{% endblock %}
+
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-edit.png?v=1">
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .pair-box {
+        background: var(--detail-card-bg);
+        border-radius: 12px;
+        padding: 1.25rem;
+        border-left: 3px solid #0d6efd;
+    }
+    .pair-box.target {
+        border-left-color: #198754;
+    }
+    .type-hint {
+        background: var(--card-bg);
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        margin-top: 1rem;
+        border: 1px dashed var(--border-color);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2>
+            <i class="bi {% if pair %}bi-pencil{% else %}bi-plus-circle{% endif %} text-info"></i>
+            {% if pair %}编辑交接点配对{% else %}新增交接点配对{% endif %}
+        </h2>
+        <p class="text-muted mb-0">一个地码值对应 2 条记录（两侧各一条），系统自动判断跨/同服务器类型</p>
+    </div>
+    <div>
+        <a href="/pair/list" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> 返回列表
+        </a>
+    </div>
+</div>
+
+<form method="post" class="needs-validation" novalidate>
+    <!-- 地码值 -->
+    <div class="card mb-3">
+        <div class="card-header"><i class="bi bi-qr-code"></i> 地码值</div>
+        <div class="card-body">
+            <input type="text" class="form-control" name="qr_content"
+                   value="{{ pair.qr_content if pair else '' }}"
+                   placeholder="如: 88330370, 55301540" required>
+            <div class="form-text">同一地码值将创建两条配对记录</div>
+        </div>
+    </div>
+
+    <!-- 双栏配置 -->
+    <div class="row mb-3">
+        <!-- 记录A -->
+        <div class="col-md-6">
+            <div class="pair-box">
+                <h6 class="mb-3"><i class="bi bi-1-circle text-primary"></i> 记录 A · 侧一</h6>
+                <div class="mb-3">
+                    <label class="form-label">服务器 IP</label>
+                    <select class="form-select" name="server_a" id="serverA" required onchange="updateHint()">
+                        <option value="">-- 选择服务器 --</option>
+                        {% for s in servers %}
+                        <option value="{{ s }}" {% if pair and pair.server_a == s %}selected{% endif %}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">此侧 QAR 记录所在的服务器</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">区域</label>
+                    <select class="form-select" name="area_a" onchange="updateHint()">
+                        {% for a in areas %}
+                        <option value="{{ a.id }}" {% if pair and pair.area_a|string == a.id|string %}selected{% endif %}>{{ a.id }} - {{ a.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">父区域，来自 bms_area (LEVEL=1)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 记录B -->
+        <div class="col-md-6">
+            <div class="pair-box target">
+                <h6 class="mb-3"><i class="bi bi-2-circle text-success"></i> 记录 B · 侧二</h6>
+                <div class="mb-3">
+                    <label class="form-label">服务器 IP</label>
+                    <select class="form-select" name="server_b" id="serverB" required onchange="updateHint()">
+                        <option value="">-- 选择服务器 --</option>
+                        {% for s in servers %}
+                        <option value="{{ s }}" {% if pair and pair.server_b == s %}selected{% endif %}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">此侧 QAR 记录所在的服务器</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">区域</label>
+                    <select class="form-select" name="area_b" onchange="updateHint()">
+                        {% for a in areas %}
+                        <option value="{{ a.id }}" {% if pair and pair.area_b|string == a.id|string %}selected{% endif %}>{{ a.id }} - {{ a.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">父区域，来自 bms_area (LEVEL=1)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 类型提示 -->
+    <div class="type-hint" id="typeHint">
+        <i class="bi bi-info-circle"></i>
+        <span id="typeHintText">请选择两侧的服务器和区域</span>
+    </div>
+
+    <!-- 按钮 -->
+    <div class="mt-4 d-flex justify-content-between">
+        <a href="/pair/list" class="btn btn-outline-secondary">取消</a>
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-circle"></i>
+            {% if pair %}保存修改{% else %}创建配对{% endif %}
+        </button>
+    </div>
+</form>
+
+{% block extra_js %}
+<script>
+function updateHint() {
+    const serverA = document.getElementById('serverA').value;
+    const serverB = document.getElementById('serverB').value;
+    const hint = document.getElementById('typeHint');
+    const text = document.getElementById('typeHintText');
+
+    if (!serverA || !serverB) {
+        text.textContent = '请选择两侧的服务器和区域';
+        hint.style.borderColor = 'var(--border-color)';
+        return;
+    }
+
+    if (serverA === serverB) {
+        text.innerHTML = '<strong>同服务器 (type=1)</strong> — 服务器 ' + serverA + ' 内跨区域交接';
+        hint.style.borderColor = '#6c757d';
+    } else {
+        text.innerHTML = '<strong>跨服务器 (type=0)</strong> — 从 ' + serverA + ' 到 ' + serverB;
+        hint.style.borderColor = '#0d6efd';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    updateHint();
+});
+</script>
+{% endblock %}
+{% endblock %}

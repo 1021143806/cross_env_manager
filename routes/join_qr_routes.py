@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Join QR Node 路由蓝图
+交接点配置路由蓝图 - join_qr_node_info 配对管理
 """
 
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session
 from functools import wraps
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from modules.database.connection import execute_query
+from services.join_qr_service import JoinQrService
 
 join_qr_bp = Blueprint('join_qr', __name__)
+_service = JoinQrService()
 
+
+# ======================== 装饰器 ========================
 
 def login_required(f):
     @wraps(f)
@@ -36,79 +39,151 @@ def admin_required(f):
     return decorated_function
 
 
-@join_qr_bp.route('/join_qr_nodes')
+# ======================== 配对列表 ========================
+
+@join_qr_bp.route('/pair/list')
 @login_required
-def list_nodes():
-    nodes = execute_query("SELECT * FROM join_qr_node ORDER BY id DESC")
-    return render_template('join_qr_nodes/list.html', nodes=nodes or [])
+def pair_list():
+    """交接点配对列表页"""
+    server = request.args.get('server', '').strip()
+    area = request.args.get('area', '').strip()
+    search = request.args.get('search', '').strip()
+
+    pairs = _service.get_paired_list(server=server or None, area=area or None, search=search or None)
+    servers_list = _service.get_servers()
+    areas_list = _service.get_areas()
+
+    return render_template('join_qr_nodes/list.html',
+                         pairs=pairs,
+                         servers=servers_list,
+                         areas=areas_list,
+                         filter_server=server,
+                         filter_area=area,
+                         filter_search=search)
 
 
-@join_qr_bp.route('/join_qr_nodes/search')
-@login_required
-def search_nodes():
-    q = request.args.get('q', '').strip()
-    if q:
-        nodes = execute_query("SELECT * FROM join_qr_node WHERE qr_code LIKE %s OR area_id LIKE %s ORDER BY id DESC", (f'%{q}%', f'%{q}%'))
-    else:
-        nodes = execute_query("SELECT * FROM join_qr_node ORDER BY id DESC")
-    return render_template('join_qr_nodes/list.html', nodes=nodes or [], search=q)
+# ======================== 新增配对 ========================
 
-
-@join_qr_bp.route('/join_qr_nodes/<int:node_id>')
-@login_required
-def view_node(node_id):
-    node = execute_query("SELECT * FROM join_qr_node WHERE id = %s", (node_id,))
-    if not node:
-        flash('节点不存在', 'error')
-        return redirect(url_for('join_qr.list_nodes'))
-    return render_template('join_qr_nodes/detail.html', node=node[0])
-
-
-@join_qr_bp.route('/join_qr_nodes/<int:node_id>/edit', methods=['GET', 'POST'])
+@join_qr_bp.route('/pair/add', methods=['GET', 'POST'])
 @login_required
 @admin_required
-def edit_node(node_id):
-    if request.method == 'GET':
-        node = execute_query("SELECT * FROM join_qr_node WHERE id = %s", (node_id,))
-        if not node:
-            flash('节点不存在', 'error')
-            return redirect(url_for('join_qr.list_nodes'))
-        return render_template('join_qr_nodes/edit.html', node=node[0])
-    else:
-        data = request.form
-        execute_query("""UPDATE join_qr_node SET qr_code=%s, area_id=%s, x=%s, y=%s, map_id=%s
-            WHERE id=%s""", (data.get('qr_code'), data.get('area_id'), data.get('x'), data.get('y'), data.get('map_id'), node_id), fetch=False)
-        flash('节点更新成功', 'success')
-        return redirect(url_for('join_qr.view_node', node_id=node_id))
+def pair_add():
+    """新增交接点配对"""
+    servers_list = _service.get_servers()
+    areas_list = _service.get_areas()
+
+    if request.method == 'POST':
+        qr_content = request.form.get('qr_content', '').strip()
+        server_a = request.form.get('server_a', '').strip()
+        area_a = request.form.get('area_a', '').strip()
+        server_b = request.form.get('server_b', '').strip()
+        area_b = request.form.get('area_b', '').strip()
+
+        if not qr_content:
+            flash('地码值不能为空', 'error')
+            return render_template('join_qr_nodes/edit.html', servers=servers_list, areas=areas_list, pair=None)
+
+        if not server_a or not area_a or not server_b or not area_b:
+            flash('请填写完整的配对信息', 'error')
+            return render_template('join_qr_nodes/edit.html', servers=servers_list, areas=areas_list, pair=None)
+
+        try:
+            _service.add_pair(qr_content, server_a, int(area_a), server_b, int(area_b))
+            flash(f'交接点 "{qr_content}" 配对添加成功', 'success')
+            return redirect(url_for('join_qr.pair_list'))
+        except Exception as e:
+            flash(f'添加失败: {e}', 'error')
+            return render_template('join_qr_nodes/edit.html', servers=servers_list, areas=areas_list, pair=None)
+
+    return render_template('join_qr_nodes/edit.html', servers=servers_list, areas=areas_list, pair=None)
 
 
-@join_qr_bp.route('/join_qr_nodes/add', methods=['GET', 'POST'])
+# ======================== 编辑配对 ========================
+
+@join_qr_bp.route('/pair/<qr_content>/edit', methods=['GET', 'POST'])
 @login_required
 @admin_required
-def add_node():
-    if request.method == 'GET':
-        return render_template('join_qr_nodes/edit.html', node=None)
-    else:
-        data = request.form
-        execute_query("""INSERT INTO join_qr_node (qr_code, area_id, x, y, map_id)
-            VALUES (%s, %s, %s, %s, %s)""",
-            (data.get('qr_code'), data.get('area_id'), data.get('x'), data.get('y'), data.get('map_id')), fetch=False)
-        flash('节点添加成功', 'success')
-        return redirect(url_for('join_qr.list_nodes'))
+def pair_edit(qr_content):
+    """编辑已有的交接点配对"""
+    servers_list = _service.get_servers()
+    areas_list = _service.get_areas()
+    records = _service.get_pair_by_qr(qr_content)
+
+    if not records:
+        flash(f'地码值 "{qr_content}" 不存在', 'error')
+        return redirect(url_for('join_qr.pair_list'))
+
+    # 构建 form 数据
+    pair_data = {
+        'qr_content': qr_content,
+        'records': records,
+        'server_a': records[0].get('environment_ip', '') if len(records) > 0 else '',
+        'area_a': records[0].get('area_id', '') if len(records) > 0 else '',
+        'server_b': records[1].get('environment_ip', '') if len(records) > 1 else '',
+        'area_b': records[1].get('area_id', '') if len(records) > 1 else '',
+    }
+
+    if request.method == 'POST':
+        new_qr = request.form.get('qr_content', '').strip()
+        server_a = request.form.get('server_a', '').strip()
+        area_a = request.form.get('area_a', '').strip()
+        server_b = request.form.get('server_b', '').strip()
+        area_b = request.form.get('area_b', '').strip()
+
+        if not new_qr:
+            flash('地码值不能为空', 'error')
+            return render_template('join_qr_nodes/edit.html', servers=servers_list, areas=areas_list, pair=pair_data)
+
+        try:
+            _service.update_pair(qr_content, new_qr, server_a, int(area_a), server_b, int(area_b))
+            flash(f'交接点 "{new_qr}" 更新成功', 'success')
+            return redirect(url_for('join_qr.pair_list'))
+        except Exception as e:
+            flash(f'更新失败: {e}', 'error')
+            return render_template('join_qr_nodes/edit.html', servers=servers_list, areas=areas_list, pair=pair_data)
+
+    return render_template('join_qr_nodes/edit.html', servers=servers_list, areas=areas_list, pair=pair_data)
 
 
-@join_qr_bp.route('/api/join_qr_nodes/<int:node_id>/delete', methods=['DELETE'])
+# ======================== 删除配对 ========================
+
+@join_qr_bp.route('/pair/<qr_content>/delete', methods=['POST'])
 @login_required
 @admin_required
-def delete_node(node_id):
-    result = execute_query("DELETE FROM join_qr_node WHERE id = %s", (node_id,), fetch=False)
-    if result:
-        return jsonify({'success': True, 'message': '节点删除成功'})
-    return jsonify({'success': False, 'message': '节点删除失败'}), 500
+def pair_delete(qr_content):
+    """删除交接点配对"""
+    try:
+        _service.delete_pair(qr_content)
+        flash(f'交接点 "{qr_content}" 已删除', 'success')
+    except Exception as e:
+        flash(f'删除失败: {e}', 'error')
+    return redirect(url_for('join_qr.pair_list'))
 
 
-@join_qr_bp.route('/api/join_qr_nodes/stats')
+# ======================== API ========================
+
+@join_qr_bp.route('/api/pairs/delete', methods=['POST'])
 @login_required
-def node_stats():
-    result = execute_query("SELECT COUNT(*) as total, COUNT(DISTINCT area_id) as areas FROM join_qr_node")
-    return jsonify({'success': True, 'data': result[0] if result else {}})
+@admin_required
+def api_pair_delete():
+    """API 删除配对"""
+    data = request.get_json() or {}
+    qr_content = data.get('qr_content', '').strip()
+    if not qr_content:
+        return jsonify({'success': False, 'message': '请指定地码值'}), 400
+    try:
+        _service.delete_pair(qr_content)
+        return jsonify({'success': True, 'message': f'已删除'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@join_qr_bp.route('/api/pairs/list')
+@login_required
+def api_pair_list():
+    """API 获取配对列表"""
+    server = request.args.get('server', '').strip() or None
+    area = request.args.get('area', '').strip() or None
+    search = request.args.get('search', '').strip() or None
+    pairs = _service.get_paired_list(server=server, area=area, search=search)
+    return jsonify({'success': True, 'pairs': pairs, 'count': len(pairs)})

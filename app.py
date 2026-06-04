@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # 应用版本号
-APP_VERSION = '2.3.7'
+APP_VERSION = '2.3.8'
 
 # Python 3.9兼容性修改：使用pymysql替代mysql.connector
 import pymysql
@@ -2423,6 +2423,24 @@ def addtask_query_task():
         app.logger.warning(f"[addtask query] orderId={order_id or '-'} shelf={shelf_num or '-'} device={device_num or '-'} {detail_error}")
     
     return jsonify({'success': True, 'mainTask': main_task, 'subs': subs, 'detail_error': detail_error})
+
+@app.route('/addtask/device/suggest')
+@login_required
+def addtask_device_suggest():
+    """查询 agv_robot_ext 表获取所有设备（DEVICE_NUMBER ↔ DEVICE_CODE 完整映射）"""
+    sql = """SELECT DEVICE_CODE, DEVICE_NUMBER 
+             FROM agv_robot_ext 
+             WHERE ENABLE = 1 AND DEVICE_CODE != '' AND DEVICE_NUMBER != ''
+             ORDER BY DEVICE_NUMBER"""
+    rows = execute_query(sql)
+    devices = []
+    if rows:
+        for r in rows:
+            dc = r.get('DEVICE_CODE', '') or ''
+            dn = r.get('DEVICE_NUMBER', '') or ''
+            if dc and dn:
+                devices.append({'deviceCode': dc, 'deviceNum': dn})
+    return jsonify({'success': True, 'devices': devices})
 
 @app.route('/addtask/config/backups')
 @login_required

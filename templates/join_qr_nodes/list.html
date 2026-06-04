@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block title %}交接点配置 - 配对管理{% endblock %}
+
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-edit.png?v=1">
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .pair-badge-paired { background-color: #198754; }
+    .pair-badge-single { background-color: #fd7e14; }
+    .pair-badge-cross { background-color: #0d6efd; }
+    .pair-badge-same { background-color: #6c757d; }
+    .record-card {
+        background: var(--detail-card-bg);
+        border-radius: 6px;
+        padding: 0.5rem 0.75rem;
+        margin: 0.25rem 0;
+        font-size: 0.85rem;
+    }
+    .table-modern tbody tr:hover { background-color: var(--detail-card-bg); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2><i class="bi bi-signpost text-info"></i> 交接点配置</h2>
+        <p class="text-muted mb-0">管理跨环境交接点配对配置 · join_qr_node_info</p>
+    </div>
+    <div>
+        <a href="/pair/add" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-circle"></i> 新增配对
+        </a>
+        <a href="/" class="btn btn-outline-secondary btn-sm ms-1">
+            <i class="bi bi-house"></i>
+        </a>
+    </div>
+</div>
+
+<!-- 筛选 -->
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small mb-1">搜索</label>
+                <input type="text" class="form-control form-control-sm" name="search" value="{{ filter_search }}" placeholder="地码值或IP...">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-1">服务器</label>
+                <select class="form-select form-select-sm" name="server">
+                    <option value="">全部</option>
+                    {% for s in servers %}
+                    <option value="{{ s }}" {% if filter_server == s %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-1">区域</label>
+                <select class="form-select form-select-sm" name="area">
+                    <option value="">全部</option>
+                    {% for a in areas %}
+                    <option value="{{ a.id }}" {% if filter_area == a.id|string %}selected{% endif %}>{{ a.id }} - {{ a.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-outline-primary btn-sm w-100">
+                    <i class="bi bi-filter"></i> 筛选
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 列表 -->
+{% if pairs %}
+<div class="table-responsive">
+    <table class="table table-modern">
+        <thead>
+            <tr>
+                <th style="width:120px;">地码值</th>
+                <th>服务器</th>
+                <th>区域</th>
+                <th style="width:70px;">类型</th>
+                <th style="width:70px;">状态</th>
+                <th style="width:140px;">操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for pair in pairs %}
+            <tr>
+                <td><code>{{ pair.qr_content }}</code></td>
+                <td>
+                    {% for ip in pair.servers %}
+                    <span class="badge bg-secondary me-1">{{ ip }}</span>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for aid in pair.areas %}
+                    <span class="badge bg-dark me-1">区域 {{ aid }}</span>
+                    {% endfor %}
+                </td>
+                <td>
+                    <span class="badge {% if pair.type_label == '跨服务器' %}pair-badge-cross{% else %}pair-badge-same{% endif %}">
+                        {{ pair.type_label }}
+                    </span>
+                </td>
+                <td>
+                    {% if pair.is_paired %}
+                    <span class="badge pair-badge-paired">已配对</span>
+                    {% else %}
+                    <span class="badge pair-badge-single">未配对</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <a href="/pair/{{ pair.qr_content }}/edit" class="btn btn-outline-primary" title="编辑">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <button class="btn btn-outline-danger" onclick="deletePair('{{ pair.qr_content }}')" title="删除">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+
+            <!-- 展开显示每条记录 -->
+            <tr style="display:none;" class="detail-row">
+                <td colspan="6" class="p-2">
+                    {% for rec in pair.records %}
+                    <div class="record-card d-flex justify-content-between align-items-center">
+                        <span>
+                            <span class="badge bg-secondary">ID:{{ rec.id }}</span>
+                            area_id={{ rec.area_id }} | IP={{ rec.environment_ip }} |
+                            type={{ rec.type }} | enable={{ rec.enable }}
+                            {% if rec.join_area %}| join_area={{ rec.join_area }}{% endif %}
+                        </span>
+                        <small class="text-muted">{{ rec.last_using_time|default('') }}</small>
+                    </div>
+                    {% endfor %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="text-muted mt-2 small">共 {{ pairs|length }} 组配对</div>
+
+{% else %}
+<div class="alert alert-info text-center py-5">
+    <i class="bi bi-inbox display-4 d-block mb-3"></i>
+    <h5>暂无配置</h5>
+    <p class="mb-3">点击"新增配对"添加交接点配置</p>
+</div>
+{% endif %}
+
+{% block extra_js %}
+<script>
+async function deletePair(qrContent) {
+    if (!confirm('确定要删除地码值 "' + qrContent + '" 的所有记录吗？\n此操作不可恢复。')) return;
+
+    try {
+        const res = await fetch('/pair/api/pairs/delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({qr_content: qrContent})
+        });
+        const data = await res.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('删除失败: ' + (data.message || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+}
+</script>
+{% endblock %}
+{% endblock %}

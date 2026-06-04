@@ -912,6 +912,189 @@ server {
 - 直接访问: `/task_query`
 - 集成导航: 在主页查询功能区域可见
 
+## 设备同步 (Device Sync)
+
+将 AGV 设备数据（型号/设备主表/设备扩展表）从源服务器同步到目标服务器。入口：首页「设备同步」按钮 → `/template/device-sync`
+
+### 同步类型
+
+| 类型 | 源表 | 目标表 | 写入方式 | 关键字段 |
+|------|------|--------|----------|----------|
+| 型号同步 | agv_model | agv_model_init | INSERT IGNORE | 17字段(去ID): SERIES_MODEL_NAME, PARENT_ID, SERIES_MODEL_TYPE, RUN_PARAM, CONFIG_PARAM, CREATE_DATE, BASE_CONFIG, CHARGE_CONFIG, DEFAULT_ACTION, ATTACH_PARAM, MODEL_TYPE, LOGO, LOAD_URL, CANCEL_TEMPLATE, RECOVER_TEMPLATE, CROSS_RELATE_TEMPLATE, DEVICE_OUT_TYPE |
+| 设备主表同步 | agv_robot | agv_robot | INSERT IGNORE | 18字段(去ID): DEVICE_CODE, DEVICE_IP, DEVICE_PORT, USRENAME, PASSWORD, DEVICETYPE, CAPACITIES, DETAILTYPE, MAC, UPDATE_DATE, CREATE_DATE, config, CONFIG_PARM, VERSION_SN, PROTOCOL, MACS_VERSION, MILEAGE, DIRECT_CONNECTION |
+| 设备扩展表同步 | agv_robot_ext | agv_robot_ext | INSERT IGNORE (修改DEVICE_AREA) | 7字段(去ID): DEVICE_CODE, DEVICE_AREA, DEVICE_NUMBER, CREATE_DATE, BIND_QRNODE, DEVICE_STATUS, ENABLE |
+
+### SQL 操作流程
+
+**型号同步：**
+```sql
+-- 1. 查询源库
+SELECT * FROM agv_model WHERE SERIES_MODEL_NAME = %s;
+
+-- 2. 检查目标库
+SELECT 1 FROM agv_model WHERE SERIES_MODEL_NAME = %s;
+
+-- 3. 写入目标库（目标库已有则跳过）
+INSERT IGNORE INTO agv_model_init (SERIES_MODEL_NAME, PARENT_ID, ...) VALUES (%s, %s, ...);
+```
+
+**设备主表同步：**
+```sql
+-- 1. 查询源库设备
+SELECT * FROM agv_robot WHERE DEVICETYPE = %s;
+
+-- 2. 逐条 INSERT IGNORE 到目标库
+INSERT IGNORE INTO agv_robot (DEVICE_CODE, DEVICE_IP, DEVICE_PORT, ...) VALUES (%s, %s, %s, ...);
+```
+
+**设备扩展表同步：**
+```sql
+-- 1. 查询设备组
+SELECT id FROM agv_robot_group WHERE group_name = %s;
+
+-- 2. 查询组内设备
+SELECT device_code, device_number FROM agv_robot_group_detail WHERE group_id = %s;
+
+-- 3. 查询扩展信息
+SELECT * FROM agv_robot_ext WHERE DEVICE_CODE IN (...);
+
+-- 4. 写入目标库（修改 DEVICE_AREA）
+INSERT IGNORE INTO agv_robot_ext (DEVICE_CODE, DEVICE_AREA, ...) VALUES (%s, %s, ...);
+```
+
+### 服务器 IP 来源
+```sql
+-- 从子任务模板解析所有可用服务器 IP
+SELECT DISTINCT task_servicec FROM fy_cross_model_process_detail
+WHERE task_servicec IS NOT NULL AND task_servicec != '';
+-- 从 URL 如 http://10.68.2.27:7000 提取 IP: 10.68.2.27
+```
+
+### 区域来源（目标区域下拉）
+```sql
+-- 获取 LEVEL=1 父区域列表
+SELECT ID, NAME FROM bms_area WHERE LEVEL = 1 ORDER BY ID;
+```
+
+### 架构设计
+- **Service**: `services/device_sync_service.py` — 连接管理、SSE 流式执行
+- **路由**: `routes/template_routes.py` — 5 个 API 端点
+- **SQL 执行**: 通过 pymysql 直连（多 IP 场景，非连接池），INSERT IGNORE 防重复
+- **实时日志**: SSE (Server-Sent Events) 流式推送每条 SQL 执行结果
+- **权限**: `@admin_required`，仅管理员可执行写入操作
+
+### 安全机制
+- 源库仅执行 SELECT（连接超时 5s）
+- 所有写入使用 INSERT IGNORE，不覆盖已有数据
+- 自增 ID 字段去除，由目标库自动生成
+- 连接 test 超时 5 秒自动失败
+
+---
+
+## 交接点配置管理 (Join QR Node)
+
+管理跨环境交接点配对配置（`join_qr_node_info` 表），以地码值(qr_content)为配对单位。入口：首页「交接点」按钮 → `/pair/list`
+
+### 表结构
+
+```sql
+-- join_qr_node_info 表
+CREATE TABLE join_qr_node_info (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    area_id INT,            -- 区域ID (bms_area 父区域 LEVEL=1)
+    type INT DEFAULT 0,     -- 0=跨服务器, 1=同服务器内跨区域
+    qr_content VARCHAR(255),-- 地码值 (如 88330370)
+    environment_ip VARCHAR(255), -- 服务器IP
+    enable INT DEFAULT 1,   -- 是否启用
+    join_area VARCHAR(255), -- 对接区域
+    other_config VARCHAR(255),
+    last_using_time DATETIME
+);
+```
+
+### 数据规律
+
+同一 `qr_content` 至少对应 2 条记录（两侧各一）：
+- **type=1 (同服务器)**: 同一地码值 + 同一IP + 不同 area_id → 服务器内跨区域交接
+- **type=0 (跨服务器)**: 同一地码值 + 不同IP → 跨服务器交接
+
+示例：
+```sql
+-- 同服务器交接 (2.32 区域1 ↔ 区域3)
+area_id=1, type=1, qr_content='55301540', environment_ip='10.68.2.32'
+area_id=3, type=1, qr_content='55301540', environment_ip='10.68.2.32'
+
+-- 跨服务器交接 (2.27区域1 ↔ 2.32区域3)
+area_id=1, type=0, qr_content='55301760', environment_ip='10.68.2.27'
+area_id=3, type=0, qr_content='55301760', environment_ip='10.68.2.32'
+```
+
+### SQL 操作
+
+**配对列表查询：**
+```sql
+-- 按 qr_content 分组展示配对
+SELECT * FROM join_qr_node_info
+WHERE qr_content IS NOT NULL AND qr_content != ''
+  {AND environment_ip = %s}    -- 筛选服务器
+  {AND area_id = %s}           -- 筛选区域
+  {AND qr_content LIKE %s}     -- 搜索
+ORDER BY qr_content DESC, id;
+
+-- Python 层按 qr_content 分组，判断 type_label (同/跨服务器)
+```
+
+**新增配对：**
+```sql
+-- 自动判断 type (同IP→1, 不同IP→0)
+-- 1. 插入用户指定的两条记录
+INSERT INTO join_qr_node_info (area_id, type, qr_content, environment_ip, enable)
+VALUES (%s, %s, %s, %s, 1);
+
+-- 2. 若两侧都不含基准服务器 10.68.2.32，则额外创建基准副本
+--    确保基准表数据完整用于展示
+INSERT INTO join_qr_node_info (area_id, type, qr_content, environment_ip, enable)
+VALUES (%s, %s, %s, '10.68.2.32', 1);
+```
+
+**编辑配对：**
+```sql
+-- 先删后加
+DELETE FROM join_qr_node_info WHERE qr_content = %s;
+-- 然后执行新增配对逻辑（含基准副本判断）
+```
+
+**删除配对：**
+```sql
+DELETE FROM join_qr_node_info WHERE qr_content = %s;
+```
+
+**模板交接点检查：**
+```sql
+-- 1. 获取模板区域
+SELECT area_id FROM fy_cross_model_process WHERE id = %s;
+
+-- 2. 获取子任务涉及的所有服务器
+SELECT DISTINCT task_servicec FROM fy_cross_model_process_detail
+WHERE model_process_id = %s AND task_servicec IS NOT NULL AND task_servicec != '';
+
+-- 3. 逐个检查每个服务器是否已配置该区域的交接点
+SELECT COUNT(*) as cnt FROM join_qr_node_info
+WHERE environment_ip = %s AND area_id = %s;
+```
+
+### 基准服务器机制
+
+当新增配对的服务器不含 `10.68.2.32` 时，自动在 2.32 上创建一对基准副本。确保基准表可作为全局查询的数据源。`update_pair` 先删旧后加新，自动跟随新服务器决策基准副本。
+
+### 架构设计
+- **Service**: `services/join_qr_service.py` — 配对 CRUD + 模板检查
+- **路由**: `routes/join_qr_routes.py` — 6 个页面路由 + 2 个 API
+- **页面**: `templates/join_qr_nodes/list.html`（配对列表+筛选）、`edit.html`（双栏表单+自动 type 判断）
+- **监听**: `templates/template/detail.html` 操作面板自动检查交接点配置状态
+
+---
+
 ## 架构特点总结
 
 ### 1. 分层架构设计
