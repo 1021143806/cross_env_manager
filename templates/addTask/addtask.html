@@ -911,6 +911,11 @@
             const emptyState = document.getElementById('empty-state');
             const queryHistoryContainer = document.getElementById('query-history-container');
             const noResponsePlaceholder = document.getElementById('no-response-placeholder');
+            const deviceInput = document.getElementById('device-input');
+            const deviceDropdownMenu = document.getElementById('device-dropdown-menu');
+            const deviceClearBtn = document.getElementById('device-clear-btn');
+            const deviceDropdownBtn = document.getElementById('device-dropdown-btn');
+            let currentDeviceSuggestions = [];  // agv_robot_ext: [{deviceCode, deviceNum}]
 
             // Bootstrap modals
             const successModal = new bootstrap.Modal(document.getElementById('success-modal'));
@@ -982,6 +987,27 @@
 
             function getTodayTaskUsage() {
                 const usage = getTaskUsage();
+                const today = new Date().toISOString().slice(0, 10);
+                return usage[today] || {};
+            }
+
+            // ==================== 每日设备使用统计 ====================
+            const DEVICE_USAGE_KEY = 'device_usage';
+
+            function getDeviceUsage() {
+                try { const d = localStorage.getItem(DEVICE_USAGE_KEY); return d ? JSON.parse(d) : {}; } catch { return {}; }
+            }
+
+            function recordDeviceUsage(deviceCode) {
+                const usage = getDeviceUsage();
+                const today = new Date().toISOString().slice(0, 10);
+                if (!usage[today]) usage[today] = {};
+                usage[today][deviceCode] = (usage[today][deviceCode] || 0) + 1;
+                try { localStorage.setItem(DEVICE_USAGE_KEY, JSON.stringify(usage)); } catch {}
+            }
+
+            function getTodayDeviceUsage() {
+                const usage = getDeviceUsage();
                 const today = new Date().toISOString().slice(0, 10);
                 return usage[today] || {};
             }
@@ -1238,9 +1264,13 @@
                 if (verEl) verEl.textContent = 'v' + (config._version || config._client_version || '?');
                 // 显示查询历史
                 renderQueryHistory();
+                // 预加载设备列表
+                loadDeviceSuggestions();
                 
                 areaSelect.addEventListener('change', updateTaskOptions);
+                areaSelect.addEventListener('change', () => { if (deviceInput) deviceInput.value = ''; });
                 taskSelect.addEventListener('change', updateFormFields);
+                taskSelect.addEventListener('change', () => { if (deviceInput) deviceInput.value = ''; });
                 submitBtn.addEventListener('click', submitTask);
                 debugToggle.addEventListener('click', () => {
                     debugInfo.style.display = debugInfo.style.display === 'block' ? 'none' : 'block';
@@ -1619,6 +1649,97 @@
                     taskPathGroup.style.display = 'none';
                     submitBtn.disabled = false;
                 }
+                // 切换任务时加载设备建议
+                if (area && taskName && config.areas[area]?.tasks[taskName]) {
+                    const task = config.areas[area].tasks[taskName];
+                    loadDeviceSuggestions();
+                }
+            }
+
+            async function loadDeviceSuggestions() {
+                if (!deviceInput || !deviceDropdownMenu) return;
+                try {
+                    const res = await fetch('/addtask/device/suggest');
+                    const data = await res.json();
+                    currentDeviceSuggestions = data.devices || [];
+                    _renderDeviceDropdown();
+                } catch { currentDeviceSuggestions = []; _renderDeviceDropdown(); }
+            }
+
+            function _renderDeviceDropdown(filter) {
+                if (!deviceDropdownMenu) return;
+                let list = currentDeviceSuggestions;
+                const q = (filter || '').trim().toLowerCase();
+                if (q) {
+                    list = list.filter(d =>
+                        d.deviceNum.toLowerCase().includes(q) ||
+                        d.deviceCode.toLowerCase().includes(q)
+                    );
+                } else {
+                    list = list.slice(0, 50); // 未筛选时显示前50条
+                }
+                if (list.length === 0) {
+                    deviceDropdownMenu.innerHTML = `<li><span class="dropdown-item-text text-muted small">${q ? '无匹配设备' : '无设备数据'}</span></li>`;
+                } else {
+                    const usage = getTodayDeviceUsage();
+                    // 按今日使用次数降序，同次数字母序
+                    list.sort((a, b) => {
+                        const ca = usage[a.deviceCode] || 0;
+                        const cb = usage[b.deviceCode] || 0;
+                        if (cb !== ca) return cb - ca;
+                        return a.deviceNum.localeCompare(b.deviceNum, 'zh-Hans-CN');
+                    });
+                    deviceDropdownMenu.innerHTML = list.map(d => {
+                        const cnt = usage[d.deviceCode] || 0;
+                        const suffix = cnt > 0 ? ` <small class="text-primary">(今日${cnt}次)</small>` : '';
+                        return `<li><a class="dropdown-item" href="#" data-devicecode="${d.deviceCode}" data-devicenum="${d.deviceNum}">
+                            <strong>${d.deviceNum}</strong> <small class="text-muted">— ${d.deviceCode}</small>${suffix}
+                        </a></li>`;
+                    }).join('');
+                }
+            }
+
+            // 点击下拉项目：填入设备编号
+            deviceDropdownMenu.addEventListener('click', (e) => {
+                const item = e.target.closest('.dropdown-item');
+                if (item) {
+                    deviceInput.value = item.dataset.devicenum;
+                    deviceClearBtn.style.display = 'inline-block';
+                    _updateDropdownVisibility(false);
+                }
+            });
+
+            // 输入框获得焦点：打开下拉（如果有数据）
+            deviceInput.addEventListener('focus', () => {
+                if (currentDeviceSuggestions.length > 0) _updateDropdownVisibility(true);
+            });
+
+            // 输入时：过滤列表 + 打开下拉 + 显示/隐藏清除按钮
+            deviceInput.addEventListener('input', () => {
+                const v = deviceInput.value;
+                deviceClearBtn.style.display = v ? 'inline-block' : 'none';
+                _renderDeviceDropdown(v);
+                if (currentDeviceSuggestions.length > 0) _updateDropdownVisibility(true);
+            });
+
+            // 清除按钮
+            deviceClearBtn.addEventListener('click', () => {
+                deviceInput.value = '';
+                deviceClearBtn.style.display = 'none';
+                _renderDeviceDropdown();
+            });
+
+            function _updateDropdownVisibility(show) {
+                if (!deviceDropdownMenu) return;
+                const isShown = deviceDropdownMenu.classList.contains('show');
+                if (show === isShown) return;
+                // 纯手动 class 切换，不经过 Bootstrap API（避免自动聚焦导致输入框失焦）
+                deviceDropdownMenu.classList.toggle('show', show);
+                deviceDropdownMenu.style.display = show ? 'block' : '';
+                if (deviceDropdownBtn) {
+                    deviceDropdownBtn.classList.toggle('show', show);
+                    deviceDropdownBtn.setAttribute('aria-expanded', show ? 'true' : 'false');
+                }
             }
 
             async function loadPathCapacity(modelProcessCode, capacity) {
@@ -1736,6 +1857,22 @@
                     modelProcessCode: task.code, priority: 6, orderId, fromSystem: "CEM",
                     taskOrderDetail: { taskPath: task.requires_task_path ? taskPathSelect.value : "", shelfNumber: task.requires_shelf ? shelf : "" }
                 }];
+                // 处理指定设备
+                const deviceVal = deviceInput ? deviceInput.value.trim() : '';
+                if (deviceVal) {
+                    // 从 agv_robot_ext 数据中解析 deviceNum → deviceCode
+                    const match = currentDeviceSuggestions.find(d => d.deviceNum === deviceVal || d.deviceCode === deviceVal);
+                    if (match) {
+                        requestData[0].taskOrderDetail.deviceCode = match.deviceCode;
+                    } else if (deviceVal.length > 10) {
+                        requestData[0].taskOrderDetail.deviceCode = deviceVal;
+                    } else {
+                        showAlert(`设备 "${deviceVal}" 未找到，请从下拉列表选择或输入完整设备序列号`, 'warning');
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = '<i class="bi bi-send me-2"></i>下发任务';
+                        return;
+                    }
+                }
                 debugInfo.textContent = JSON.stringify(requestData, null, 2);
                 
                 try {
@@ -1765,6 +1902,9 @@
                         recordAreaUsage(area);
                         // 记录每日任务使用次数
                         recordTaskUsageCount(area, taskName);
+                        // 记录每日设备使用次数
+                        const sentDeviceCode = requestData[0].taskOrderDetail.deviceCode;
+                        if (sentDeviceCode) recordDeviceUsage(sentDeviceCode);
                         // 刷新下拉框计数文本（不重建DOM，保留已选项）
                         refreshCountDisplay();
                     }

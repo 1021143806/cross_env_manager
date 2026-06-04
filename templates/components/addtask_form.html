@@ -36,6 +36,19 @@
             <div class="error-message" id="task-path-error" style="display: none;">请选择任务路径</div>
         </div>
 
+        <div class="mb-3">
+            <label class="form-label fw-semibold">指定设备 <span class="text-muted fw-normal small">（可选）</span></label>
+            <div class="position-relative" id="device-combobox">
+                <div class="input-group">
+                    <input type="text" id="device-input" class="form-control" placeholder="输入筛选或选择设备..." autocomplete="off">
+                    <button class="btn btn-outline-secondary" type="button" id="device-clear-btn" title="清除所选" style="display:none;"><i class="bi bi-x-lg"></i></button>
+                    <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="device-dropdown-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"></button>
+                    <ul class="dropdown-menu" id="device-dropdown-menu" style="max-height:240px;overflow-y:auto;min-width:100%;"></ul>
+                </div>
+            </div>
+            <div class="form-text small">输入自动过滤设备列表，选择后自动填入序列号。</div>
+        </div>
+
         <button class="btn btn-primary btn-lg w-100 mb-3" id="submit-btn">
             <i class="bi bi-send me-2"></i>下发任务
         </button>
