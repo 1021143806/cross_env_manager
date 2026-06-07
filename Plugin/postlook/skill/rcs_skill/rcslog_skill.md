@@ -72,3 +72,13 @@ sudo supervisorctl restart postlook
 - TAL_log 和 DPL_log 是子目录，scan-dirs 扫不到（只扫 log/logs），需手动添加
 - 添加白名单后热更新立即生效，无需重启
 - 不同服务器的实例编号可能不同，需通过 scan-dirs 确认实际目录名
+
+### 地图管理模块（FMS）
+- 服务：FMS（车队管理）
+- 日志：`/main/app/fms/logs`
+- 地图存储：`/main/web/www/textureMap/{areaId}/{type}/Map/{version}/`（文件名含 region 参数）
+- 地图下载 URL：`http://<server_ip>:8888/textureMap/{areaId}/origin/{version}.zip`
+- 关键类：`cn.com.dahua.fms.util.MapUtil`（地图文件解压/生成）、`cn.com.dahua.fms.service.impl.MapServiceImpl`（地图入库）、`cn.com.dahua.fms.controller.FileUploadController`（上传入口）
+- 排查关键字：`textureMap`、`generateOneFile`、`generateMapFile`、`processMap2Db`
+- 说明：地图上传后由 FMS 解压处理并同步到数据库（BMS），nginx 在 8888 端口提供 HTTP 下载服务。AGV 的 `IssueMaps()` 命令下载的 zip 包即来自此模块。
+- 已知问题：rtpsa-1 分配库 `restTask.cpp:80` 中 `map_node_map can't find content` 表示算法侧地图节点表为空，需检查分配库地图加载逻辑。
