@@ -45,8 +45,9 @@ detect_os() {
     log_info "OS_ID:    $OS_ID (v$OS_VERSION)"
 
     # 规范化 OS_ID
-    case "$OS_ID" in
-        openEuler|openeuler) OS_ID="openEuler" ;;
+    OS_ID_LOWER=$(echo "$OS_ID" | tr '[:upper:]' '[:lower:]')
+    case "$OS_ID_LOWER" in
+        openeuler|iraypleos) OS_ID="openEuler" ;;
         centos|rhel|fedora)  OS_ID="centos" ;;
         ubuntu|debian)       OS_ID="debian" ;;
     esac
