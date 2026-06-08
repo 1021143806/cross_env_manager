@@ -48,20 +48,32 @@ ensure_syslog_access() {
 
     # 先尝试加入 adm 组（部分系统 adm 组有读日志权限）
     if getent group adm &>/dev/null; then
-        sudo usermod -aG adm "$run_user" 2>/dev/null && \
-            log_ok "已添加 $run_user 到 adm 组"
+        if groups "$run_user" 2>/dev/null | grep -qw "adm"; then
+            log_info "用户 '$run_user' 已在 adm 组中，跳过"
+        else
+            sudo usermod -aG adm "$run_user" 2>/dev/null && \
+                log_ok "已添加 $run_user 到 adm 组" || \
+                log_warn "添加 $run_user 到 adm 组失败（非致命）"
+        fi
     fi
 
     # 使用 setfacl 直接授予读权限（立即生效，不受 umask 影响）
+    # 注意：bash set -e 下 ((count++)) 在 count=0 时会返回非零退出码，
+    # 所以用 $((count+1)) 赋值方式规避
     local fixed_count=0
     for f in "${syslog_files[@]}"; do
         if sudo setfacl -m u:"$run_user":r "$f" 2>/dev/null; then
-            ((fixed_count++))
+            fixed_count=$((fixed_count + 1))
+            log_info "  setfacl OK: $f"
+        else
+            log_warn "  setfacl 失败: $f（可能已有权限）"
         fi
     done
 
     if [ "$fixed_count" -gt 0 ]; then
         log_ok "已为 $fixed_count 个系统日志文件添加 '$run_user' 读权限"
+    else
+        log_info "无需新增 setfacl 权限（可能已通过 group 授权）"
     fi
 
     # 验证
@@ -90,6 +102,10 @@ configure_supervisor() {
     LOG_PATH="$LOG_DIR"
     VENV_PATH="$PROJECT_DIR/${VENV_DIR:-venv}"
 
+    log_info "Supervisor 配置路径: $SUPERVISOR_CONF"
+    log_info "日志目录: $LOG_PATH"
+    log_info "虚拟环境: $VENV_PATH"
+
     # 确保运行用户能读取系统日志
     ensure_syslog_access "$SUPERVISOR_USER"
 
@@ -102,6 +118,7 @@ configure_supervisor() {
     if [ "${RELOAD_MODE:-false}" = "true" ]; then
         UVICORN_CMD="$UVICORN_CMD --reload"
     fi
+    log_info "启动命令: $UVICORN_CMD"
 
     # 备份已有配置（防止误覆盖其他服务）
     if [ -f "$SUPERVISOR_CONF" ]; then
@@ -111,7 +128,19 @@ configure_supervisor() {
         log_warn "已备份旧 Supervisor 配置: $BACKUP_FILE"
     fi
 
-    cat > "$SUPERVISOR_CONF" << SUPERVISOR_EOF
+    # 写入 Supervisor 配置（检查目录是否可写）
+    local conf_dir_ok=true
+    if [ ! -d "$SUPERVISOR_CONF_DIR" ]; then
+        log_warn "Supervisor 配置目录不存在: $SUPERVISOR_CONF_DIR，尝试创建..."
+        mkdir -p "$SUPERVISOR_CONF_DIR" 2>/dev/null || conf_dir_ok=false
+    fi
+    if [ ! -w "$SUPERVISOR_CONF_DIR" ]; then
+        log_warn "Supervisor 配置目录不可写: $SUPERVISOR_CONF_DIR（需要用 sudo 执行部署）"
+        conf_dir_ok=false
+    fi
+
+    if [ "$conf_dir_ok" = "true" ]; then
+        cat > "$SUPERVISOR_CONF" << SUPERVISOR_EOF
 [program:${PROJECT_NAME}]
 command=$UVICORN_CMD
 directory=$PROJECT_DIR
@@ -129,8 +158,31 @@ stderr_logfile_maxbytes=5MB
 stderr_logfile_backups=0
 environment=PYTHONPATH="$PROJECT_DIR"
 SUPERVISOR_EOF
-
-    log_ok "Supervisor 配置已生成: $SUPERVISOR_CONF"
+        log_ok "Supervisor 配置已生成: $SUPERVISOR_CONF"
+    else
+        log_warn "跳过写入 Supervisor 配置（目录不可写），提供配置内容如下:"
+        log_warn "请手动执行: sudo tee $SUPERVISOR_CONF << 'EOF'"
+        cat << SUPERVISOR_EOF
+[program:${PROJECT_NAME}]
+command=$UVICORN_CMD
+directory=$PROJECT_DIR
+user=$SUPERVISOR_USER
+autostart=true
+autorestart=true
+startsecs=10
+startretries=3
+redirect_stderr=true
+stdout_logfile=$LOG_PATH/${PROJECT_NAME}.log
+stdout_logfile_maxbytes=5MB
+stdout_logfile_backups=0
+stderr_logfile=$LOG_PATH/${PROJECT_NAME}_error.log
+stderr_logfile_maxbytes=5MB
+stderr_logfile_backups=0
+environment=PYTHONPATH="$PROJECT_DIR"
+SUPERVISOR_EOF
+        log_warn "EOF"
+        log_warn "然后执行: sudo supervisorctl reread && sudo supervisorctl update && sudo supervisorctl start $PROJECT_NAME"
+    fi
 }
 
 start_service() {
@@ -138,22 +190,35 @@ start_service() {
 
     VENV_PATH="$PROJECT_DIR/${VENV_DIR:-venv}"
 
-    if [ "${SUPERVISOR_AVAILABLE:-false}" = "true" ]; then
-        supervisorctl reread 2>/dev/null || log_warn "配置重读失败"
-        supervisorctl update 2>/dev/null || log_warn "配置更新失败"
+    if [ ! -f "$SUPERVISOR_CONF" ]; then
+        log_warn "Supervisor 配置文件不存在: $SUPERVISOR_CONF，跳过服务启动"
+        log_warn "请手动创建配置文件后执行: sudo supervisorctl reread && sudo supervisorctl update"
+        return 0
+    fi
 
-        log_info "重启服务..."
-        supervisorctl restart "$PROJECT_NAME" 2>/dev/null || {
-            log_warn "重启失败，尝试直接启动..."
-            supervisorctl start "$PROJECT_NAME" 2>/dev/null
+    if [ "${SUPERVISOR_AVAILABLE:-false}" = "true" ]; then
+        log_info "执行 supervisorctl reread..."
+        supervisorctl reread 2>&1 | head -5 || log_warn "配置重读失败（非致命）"
+
+        log_info "执行 supervisorctl update..."
+        supervisorctl update 2>&1 | head -5 || log_warn "配置更新失败（非致命）"
+
+        log_info "启动服务: $PROJECT_NAME"
+        supervisorctl start "$PROJECT_NAME" 2>&1 || {
+            log_warn "启动失败，尝试重启..."
+            supervisorctl restart "$PROJECT_NAME" 2>&1
         }
 
         sleep "${START_WAIT:-3}"
 
-        if supervisorctl status "$PROJECT_NAME" 2>/dev/null | grep -q "RUNNING"; then
+        local sv_status
+        sv_status=$(supervisorctl status "$PROJECT_NAME" 2>/dev/null)
+        if echo "$sv_status" | grep -q "RUNNING"; then
             log_ok "服务已在 Supervisor 中运行"
+            echo "$sv_status"
         else
-            log_warn "服务未通过 Supervisor 运行，尝试直接启动..."
+            log_warn "服务状态异常: $sv_status"
+            log_warn "尝试直接启动..."
             _direct_start
         fi
     else
