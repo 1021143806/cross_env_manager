@@ -24,6 +24,8 @@ DEFAULT_LINES: int = 50
 DEFAULT_RECENT_FILES: int = 10
 MAX_RECENT_FILES: int = 50
 DEFAULT_THEME: str = "dark"
+MAX_DOWNLOAD_SIZE: int = 200 * 1024 * 1024  # 200MB bytes
+DEFAULT_DOWNLOAD_SIZE: int = 200  # 200MB for display
 
 
 def _load_toml() -> dict:
@@ -46,6 +48,7 @@ def reload_config():
     """热更新：重新加载配置并更新全局变量"""
     global SERVER_HOST, SERVER_PORT, ROOT_DIRS
     global MAX_LINES, DEFAULT_LINES, DEFAULT_RECENT_FILES, DEFAULT_THEME
+    global MAX_DOWNLOAD_SIZE, DEFAULT_DOWNLOAD_SIZE
 
     with _lock:
         cfg = _load_toml()
@@ -71,6 +74,11 @@ def reload_config():
         MAX_LINES = int(logs.get("max_lines", 100))
         DEFAULT_LINES = int(logs.get("default_lines", 50))
         DEFAULT_RECENT_FILES = int(logs.get("default_recent_files", 10))
+
+        # 下载大小限制（单位 MB）
+        download_size = int(logs.get("max_download_size", 200))
+        MAX_DOWNLOAD_SIZE = min(download_size, 1024) * 1024 * 1024  # 上限 1GB
+        DEFAULT_DOWNLOAD_SIZE = download_size
 
         # ui
         ui = cfg.get("ui", {})

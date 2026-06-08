@@ -7,6 +7,51 @@ import os
 from pathlib import Path
 from typing import List, Dict, Optional
 
+# ---- 下载安全管控 ----
+
+# 允许下载的日志类文件扩展名白名单
+ALLOWED_DOWNLOAD_EXTENSIONS = frozenset({
+    '.log', '.out', '.txt', '.dat',
+    '.gz', '.bz2', '.zip', '.tar', '.xz', '.zst',
+    '.0', '.1', '.2', '.3', '.4', '.5', '.6', '.7', '.8', '.9',
+    '.current',
+    # 调试/诊断文件
+    '.hprof',      # Java Heap Dump
+    '.core',       # Core Dump (Linux)
+    '.dmp',        # Crash Dump / Minidump
+})
+
+
+def is_allowed_download(file_path: Path) -> bool:
+    """
+    检查文件是否允许被下载。
+    白名单制：仅允许日志类扩展名或无扩展名的文件（messages/secure 等）。
+    禁止下载脚本、配置、证书、可执行文件等非日志文件。
+    """
+    if file_path.is_symlink():
+        return False
+
+    name = file_path.name
+
+    # 无扩展名的文件允许（系统日志如 messages, secure, wtmp, sa08）
+    if '.' not in name:
+        return True
+
+    name_lower = name.lower()
+
+    # 匹配扩展名白名单（含 .tar.gz 等复合扩展名）
+    for ext in ALLOWED_DOWNLOAD_EXTENSIONS:
+        if name_lower.endswith(ext):
+            return True
+
+    # 特殊模式：core.PID 格式的 Core Dump（core.12345）
+    if name_lower.startswith('core.') and name_lower.count('.') == 1:
+        suffix = name_lower.split('.')[-1]
+        if suffix.isdigit():
+            return True
+
+    return False
+
 
 def resolve_folder(folder: str, root_dirs: List[str]) -> Path:
     """

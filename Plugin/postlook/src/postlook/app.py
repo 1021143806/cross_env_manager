@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from .routes import router
 
 # 版本号（唯一来源）
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 app = FastAPI(
     title="postlook",

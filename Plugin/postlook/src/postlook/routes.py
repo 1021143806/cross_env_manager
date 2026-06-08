@@ -2,12 +2,14 @@
 postlook · API 路由
 """
 
+import os
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 from . import config as app_config
-from .scanner import scan_logs
+from .scanner import scan_logs, resolve_folder, is_allowed_download
 
 router = APIRouter()
 
@@ -101,6 +103,7 @@ async def get_config():
         "max_lines": app_config.MAX_LINES,
         "default_lines": app_config.DEFAULT_LINES,
         "default_recent_files": app_config.DEFAULT_RECENT_FILES,
+        "max_download_size_mb": app_config.DEFAULT_DOWNLOAD_SIZE,
     }
 
 
@@ -238,6 +241,49 @@ async def self_logs(lines: int = 100, keyword: str = None):
     }
 
 
+@router.get("/api/download")
+async def download_file(path: str = Query(..., description="要下载的文件绝对路径（必须在白名单内）")):
+    """
+    下载日志文件。
+    仅允许下载日志类文件（.log/.out/.txt/.gz 等），
+    禁止下载脚本、配置、证书、可执行文件等非日志文件。
+    """
+    try:
+        resolved = resolve_folder(path, app_config.ROOT_DIRS)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail=f"文件不存在: {path}")
+    if not resolved.is_file():
+        raise HTTPException(status_code=400, detail=f"路径不是文件: {path}")
+
+    # 安全：扩展名白名单校验
+    if not is_allowed_download(resolved):
+        raise HTTPException(
+            status_code=403,
+            detail=f"文件类型不允许下载 (仅允许日志类文件): {resolved.name}"
+        )
+
+    # 安全：文件大小上限
+    file_size = resolved.stat().st_size
+    max_size = app_config.MAX_DOWNLOAD_SIZE
+    if file_size > max_size:
+        size_mb = file_size / (1024 * 1024)
+        limit_mb = max_size / (1024 * 1024)
+        raise HTTPException(
+            status_code=413,
+            detail=f"文件过大 ({size_mb:.1f}MB)，超过下载上限 {limit_mb:.0f}MB"
+        )
+
+    # 流式返回文件
+    return FileResponse(
+        path=resolved,
+        filename=resolved.name,
+        media_type="application/octet-stream",
+    )
+
+
 @router.get("/api/help")
 async def api_help():
     """返回模块接口文档和使用说明"""
@@ -302,6 +348,15 @@ async def api_help():
             },
             {
                 "method": "GET",
+                "path": "/api/download",
+                "description": "下载日志文件（白名单路径 + 扩展名白名单双重管控）",
+                "parameters": {
+                    "path": "string (必填) - 文件绝对路径"
+                },
+                "example": "curl -O http://localhost:5011/api/download?path=/main/app/gateway/logs/GATEWAY.log"
+            },
+            {
+                "method": "GET",
                 "path": "/api/health",
                 "description": "健康检查"
             },
@@ -322,7 +377,8 @@ async def api_help():
             "keyword_search": 'curl -X POST http://localhost:5011/api/logs -H "Content-Type: application/json" -d \'{"folder": "/var/log", "keyword": "error", "line_start": 1, "line_end": 500}\'',
             "view_config": "curl http://localhost:5011/api/config",
             "list_files": "curl http://localhost:5011/api/files",
-            "self_logs": "curl http://localhost:5011/api/logs/self?lines=50"
+            "self_logs": "curl http://localhost:5011/api/logs/self?lines=50",
+            "download_file": "curl -O 'http://localhost:5011/api/download?path=/var/log/messages'"
         },
         "config": {
             "root_dirs": app_config.ROOT_DIRS,
