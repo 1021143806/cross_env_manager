@@ -3,7 +3,7 @@
 ## 项目概述
 **postlook** — 轻量、安全的日志 HTTP 查询服务。通过 POST 请求在指定文件夹内按文件名、关键字、行号范围等条件查询日志，支持 Web UI、配置热更新、路径白名单安全机制。
 
-当前版本：v0.1.0
+当前版本：v0.2.0
 
 ## 技术栈
 | 层级 | 选型 | 说明 |
@@ -49,7 +49,9 @@ Plugin/postlook/
 │       └── openEuler/          # openEuler 专用（空壳占位）
 ├── skill/                      # Skill 文件
 │   ├── skill.md                # 本文件
+│   ├── api_skill.md            # API 实战操作指南
 │   ├── fywds_skill.md          # FYWDS 服务日志分析
+│   ├── troubleshoot_skill.md   # 远程排查方法论
 │   └── rcs_skill/
 │       └── rcslog_skill.md     # RCS 日志目录白名单
 ├── test/                       # 测试
@@ -58,16 +60,18 @@ Plugin/postlook/
 │   └── api/                    # API 文档
 ├── logs/                       # 日志（.gitignore）
 ├── plans/                      # 计划（.gitignore）
+├── report/                     # 排查报告（.gitignore）
 ├── backup/                     # 备份（.gitignore）
 └── dev/                        # 调试脚本（.gitignore）
 ```
 
-## API 接口（全部 8 个端点）
+## API 接口（全部 9 个端点）
 
 | 方法 | 路径 | 说明 | 响应模型 |
 |------|------|------|----------|
 | POST | `/api/logs` | 查询日志内容 | `LogQueryResponse` |
 | GET | `/api/logs/self` | 查看 postlook 自身日志 | 自定义 JSON |
+| GET | `/api/download` | 下载日志文件（安全管控） | 文件流 `application/octet-stream` |
 | GET | `/api/config` | 获取当前 TOML 配置及解析值 | `{content, root_dirs, ...}` |
 | POST | `/api/config` | 保存 TOML 配置（热更新） | `{status, message}` |
 | GET | `/api/scan-dirs` | 扫描路径下 log/logs 目录 | `{base, exists, dirs[]}` |
@@ -92,6 +96,8 @@ Plugin/postlook/
 - **环境变量覆盖**：`POSTLOOK_ROOT` 可覆盖白名单（逗号分隔）
 - **符号链接拒绝**：`scanner.py#find_files` 跳过 `is_symlink()`
 - **路径逃逸防御**：`resolve_folder()` 检查 resolved 路径是否在任一白名单目录下
+- **下载扩展名白名单**：仅允许 `.log/.out/.txt/.gz/.dmp/.hprof/.core` 等日志类文件下载
+- **下载大小上限**：默认 200MB，可配置 `max_download_size`，硬上限 1GB
 - **XSS 防护**：前端 `escapeHtml()` 转义特殊字符后才插入 DOM
 
 ## 核心模块
@@ -176,7 +182,7 @@ sudo bash deploy/deploy.sh
 |------|--------|------|
 | `PROJECT_NAME` | `postlook` | 服务名称 |
 | `APP_PORT` | `5011` | 监听端口 |
-| `SUPERVISOR_USER` | `ymsk` | 运行用户 |
+| `SUPERVISOR_USER` | `ymsk` | 运行用户（部署脚本会通过 `setfacl` 自动赋予系统日志读权限） |
 | `SUPERVISOR_CONF_DIR` | `/main/server/supervisor` | Supervisor 配置目录 |
 | `LOG_DIR` | `/main/log/app` | 日志输出目录 |
 | `VENV_DIR` | `venv` | 虚拟环境目录 |
@@ -195,9 +201,11 @@ sudo bash deploy/deploy.sh
 1. **版本号唯一来源**: `app.py` 中 `__version__`，其他模块通过 `from .app import __version__` 引用
 2. **配置热更新**: `save_config_toml()` 写文件后立即调用 `reload_config()` 更新全局变量，不需重启
 3. **路径安全多层级**: 绝对路径校验 + 相对路径尝试 + resolved 路径白名单检查 + 符号链接跳过
-4. **多平台部署**: 自动检测 OS (openEuler/CentOS/Ubuntu) → 按平台选 Python 安装策略 → ABI 感知离线包选择 (cp39/cp311)
-5. **前端 SPA 无依赖**: 纯原生 JS，不依赖 React/Vue/jQuery，无构建步骤
-6. **关键字搜索上限**: 500 行，防大日志 OOM
+4. **下载扩展名白名单**: `is_allowed_download()` 仅允许日志类扩展名 + 无扩展名系统日志 + core.PID 特殊格式
+5. **系统日志权限**: 部署脚本通过 `setfacl` 赋予运行用户读 `/var/log/messages` 等系统日志权限，避免改为 root 运行
+6. **多平台部署**: 自动检测 OS (openEuler/CentOS/Ubuntu) → 按平台选 Python 安装策略 → ABI 感知离线包选择 (cp39/cp311)
+7. **前端 SPA 无依赖**: 纯原生 JS，不依赖 React/Vue/jQuery，无构建步骤
+8. **关键字搜索上限**: 500 行，防大日志 OOM
 
 ## ds 说
 - vendor_packages 需要 git 跟踪（离线部署必需），已从 .gitignore 中移除
@@ -207,9 +215,13 @@ sudo bash deploy/deploy.sh
 - config/env.toml 在 .gitignore 中（含敏感路径），deploy.sh 首次自动从模板初始化
 - CentOS 7 glibc 2.17 可能与预编译包不兼容，需回退源码编译
 - deploy.sh 重构为 lib/ 模块化架构，新增平台只需在 platform/ 下加 setup.sh
+- **v0.2.0 新增**: `/api/download` 端点 + 下载扩展名白名单 + `ensure_syslog_access` 自动授权系统日志读权限
+- 下载白名单支持 `.log/.out/.txt/.gz/.zip/.hprof/.core/.dmp` 及无扩展名系统日志
+- `core.PID` 格式的 Core Dump 也允许下载（纯数字后缀）
 - 前端静态文件修改后需强制刷新浏览器（Ctrl+Shift+R 清除缓存）
 - 服务状态面板的文件浏览器，点击文件名自动切换到日志查询面板并填入路径
 - 配置管理面板的"扫描日志目录"功能，勾选后可一键添加到 TOML 配置的白名单数组
 - /api/scan-dirs 只扫 log/logs 两种目录名（不区分大小写），TAL_log/DPL_log 等需要手动添加
 - app.js 中的 queryLoading 防抖机制防止短时间重复提交
 - 所有接口返回的 line 均为原始行号（1-based）
+- 报告文件放入 `report/` 目录，已 gitignore

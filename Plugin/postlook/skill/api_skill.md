@@ -268,6 +268,7 @@ curl -o messages 'http://localhost:5011/api/download?path=/var/log/messages'
 | 扩展名白名单 | 仅允许日志类扩展名 | 403 |
 | 符号链接 | 禁止下载符号链接指向的文件 | 403（扫描阶段跳过） |
 | 文件大小上限 | 默认 200MB，可配置，硬上限 1GB | 413 |
+| 系统日志访问 | 部署脚本自动 `setfacl` 赋予运行用户读 `/var/log/messages` | 需以 root 部署或手动授权 |
 
 ### 允许下载的文件类型
 
@@ -276,7 +277,8 @@ curl -o messages 'http://localhost:5011/api/download?path=/var/log/messages'
 | 标准日志 | `.log` `.out` `.txt` `.dat` | GATEWAY.log, app.out |
 | 压缩日志 | `.gz` `.bz2` `.zip` `.tar` `.xz` | syslog.1.gz, logs.zip |
 | 日志滚动 | `.0` `.1` ... `.9` `.current` | GATEWAY.log.1, nacos_gc.log.0.current |
-| 调试诊断 | `.hprof` `.core` `.dmp` | heapdump.hprof, core.1234, crash.dmp |
+| 调试诊断 | `.hprof` `.core` `.dmp` | heapdump.hprof, crash.dmp |
+| Core Dump(PID) | `core.` + 纯数字 | core.12345, core.98765 |
 | 无扩展名 | (无) | messages, secure, cron, wtmp, sa08 |
 
 ### 禁止下载的文件类型
