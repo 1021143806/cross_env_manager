@@ -30,12 +30,23 @@ Plugin/postlook/
 ├── config/                     # 配置文件
 │   ├── env.toml                # 运行配置（.gitignore）
 │   └── template/env.toml       # 配置模板
-├── deploy/                     # 部署相关
-│   ├── deploy.sh               # 一键离线部署脚本
+├── deploy/                     # 多平台离线部署
+│   ├── deploy.sh               # 一键部署入口（自动检测 OS + Python ABI）
 │   ├── deploy.conf             # 部署配置参数
-│   ├── vendor_packages/        # 离线 pip 依赖包
-│   ├── centos7_rpms/           # CentOS 7 编译 RPM + 预编译包
-│   └── README.md               # 部署文档
+│   ├── README.md               # 部署文档
+│   ├── lib/                    # 公共函数库
+│   │   ├── common.sh           # 日志输出 / 错误处理
+│   │   ├── detect.sh           # OS / Python / ABI 检测
+│   │   ├── python.sh           # Python 环境准备 + venv
+│   │   ├── deps.sh             # 离线依赖安装（ABI 感知选包）
+│   │   └── supervisor.sh       # Supervisor 配置生成 + 服务启动
+│   ├── vendor_packages/        # 离线 pip 依赖包（按 ABI 分层）
+│   │   ├── common/             # 纯 Python 包（py3-none-any，共享）
+│   │   ├── cp39/               # Python 3.9 ABI（pydantic_core 等）
+│   │   └── cp311/              # Python 3.11 ABI
+│   └── platform/               # 平台专属资源
+│       ├── centos7/rpms/       # CentOS 7 devel RPM + Python 源码
+│       └── openEuler/          # openEuler 专用（空壳占位）
 ├── skill/                      # Skill 文件
 │   ├── skill.md                # 本文件
 │   ├── fywds_skill.md          # FYWDS 服务日志分析
@@ -137,6 +148,15 @@ router                 → APIRouter(), 不含 prefix
 
 ## 部署架构
 
+### 多平台支持
+`deploy.sh` 自动检测操作系统和 Python 版本，按平台走不同安装策略：
+
+| 平台 | Python 策略 | 说明 |
+|------|------------|------|
+| openEuler 24.03 | 系统 Python 3.11，直接创建 venv | 无需额外操作 |
+| CentOS 7 | 预编译包解压 → 源码编译回退 | 系统 Python 2.7 |
+| Ubuntu/Debian | 系统 Python（需 >= 3.9） | `apt install python3-venv` |
+
 ### 一键部署
 ```bash
 cd Plugin/postlook
@@ -144,11 +164,12 @@ sudo bash deploy/deploy.sh
 ```
 
 ### 部署流程
-1. 自动检测/安装 Python 3.9（系统 → 预编译 → 源码编译）
-2. 初始化 `config/env.toml`（从模板）
-3. 离线安装 pip 依赖（vendor_packages/）
-4. 生成 Supervisor 配置文件
-5. 启动服务 → `supervisorctl`
+1. `lib/detect.sh`: 检测 OS_ID / Python 版本 / Python ABI (cp39/cp311)
+2. `lib/python.sh`: 确保 Python 3.9+ → 系统用 / 调用 `platform/<os>/setup.sh`
+3. 创建 venv 虚拟环境
+4. `lib/deps.sh`: 按 ABI 选择 `vendor_packages/common/` + `vendor_packages/<abi>/` 离线安装
+5. 初始化 `config/env.toml`（从模板）
+6. `lib/supervisor.sh`: 生成 Supervisor 配置 → `supervisorctl update` → 启动服务
 
 ### deploy.conf 参数
 | 参数 | 默认值 | 说明 |
@@ -160,6 +181,7 @@ sudo bash deploy/deploy.sh
 | `LOG_DIR` | `/main/log/app` | 日志输出目录 |
 | `VENV_DIR` | `venv` | 虚拟环境目录 |
 | `VENDOR_DIR` | `deploy/vendor_packages` | 离线包目录 |
+| `PYTHON3_PATH` | (空) | 手动指定 Python 路径（留空自动检测） |
 
 ### 端口
 - **默认端口**: 5011
@@ -173,14 +195,18 @@ sudo bash deploy/deploy.sh
 1. **版本号唯一来源**: `app.py` 中 `__version__`，其他模块通过 `from .app import __version__` 引用
 2. **配置热更新**: `save_config_toml()` 写文件后立即调用 `reload_config()` 更新全局变量，不需重启
 3. **路径安全多层级**: 绝对路径校验 + 相对路径尝试 + resolved 路径白名单检查 + 符号链接跳过
-4. **CentOS 7 兼容**: 自动检测 python3 → 预编译包解压 → 源码编译回退（Python-3.9.20）
+4. **多平台部署**: 自动检测 OS (openEuler/CentOS/Ubuntu) → 按平台选 Python 安装策略 → ABI 感知离线包选择 (cp39/cp311)
 5. **前端 SPA 无依赖**: 纯原生 JS，不依赖 React/Vue/jQuery，无构建步骤
 6. **关键字搜索上限**: 500 行，防大日志 OOM
 
 ## ds 说
 - vendor_packages 需要 git 跟踪（离线部署必需），已从 .gitignore 中移除
+- vendor_packages 按 Python ABI 分层: `common/`（纯Python共享）、`cp39/`、`cp311/`
+- 唯一 ABI 专用包为 `pydantic_core`，其他均为 `py3-none-any.whl`
+- 新增 Python 版本时，需用 `pip download pydantic_core --python-version X.Y --platform manylinux2014_x86_64 --only-binary=:all:` 下载对应 ABI 包
 - config/env.toml 在 .gitignore 中（含敏感路径），deploy.sh 首次自动从模板初始化
 - CentOS 7 glibc 2.17 可能与预编译包不兼容，需回退源码编译
+- deploy.sh 重构为 lib/ 模块化架构，新增平台只需在 platform/ 下加 setup.sh
 - 前端静态文件修改后需强制刷新浏览器（Ctrl+Shift+R 清除缓存）
 - 服务状态面板的文件浏览器，点击文件名自动切换到日志查询面板并填入路径
 - 配置管理面板的"扫描日志目录"功能，勾选后可一键添加到 TOML 配置的白名单数组

@@ -72,11 +72,18 @@ postlook/
 │   ├── old/                  # 备份及老配置文件
 │   └── template/             # 配置文件模板
 │       └── env.toml
-├── deploy/                    # 部署相关
-│   ├── deploy.sh             # 一键离线部署脚本
-│   ├── deploy.conf           # 部署配置
-│   ├── vendor_packages/      # 离线依赖包（进.gitignore）
-│   └── README.md             # 部署文档
+├── deploy/                    # 多平台离线部署
+│   ├── deploy.sh             # 一键部署入口（自动检测 OS + Python）
+│   ├── deploy.conf           # 部署配置参数
+│   ├── README.md             # 部署文档
+│   ├── lib/                  # 公共函数库（common/detect/python/deps/supervisor）
+│   ├── vendor_packages/      # 离线依赖包（按 Python ABI 分层）
+│   │   ├── common/           # 纯 Python 包（py3-none-any）
+│   │   ├── cp39/             # Python 3.9 ABI 专用
+│   │   └── cp311/            # Python 3.11 ABI 专用
+│   └── platform/             # 平台专属资源
+│       ├── centos7/          # CentOS 7: 预编译/源码编译 Python 3.9
+│       └── openEuler/        # openEuler: 系统自带 Python 3.11
 ├── src/postlook/              # 源代码
 │   ├── app.py                # FastAPI 应用入口
 │   ├── routes.py             # API 路由
