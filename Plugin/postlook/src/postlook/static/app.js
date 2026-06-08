@@ -38,8 +38,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         // 切换左侧子功能栏
         sidePanels.forEach(sp => {
-            sp.style.display = (sp.id === 'sidebar-' + panelId) ? '' : 'none';
+            sp.classList.toggle('active', sp.id === 'sidebar-' + panelId);
         });
+        // 记住当前 tab
+        localStorage.setItem('postlook-panel', panelId);
         if (panelId === 'status') {
             checkServiceStatus();
         }
@@ -47,6 +49,10 @@ document.addEventListener('DOMContentLoaded', () => {
             initTopology();
         }
     }
+
+    // 恢复上次的 tab
+    var savedPanel = localStorage.getItem('postlook-panel') || 'logs';
+    switchPanel(savedPanel);
 
     navLinks.forEach(link => {
         link.addEventListener('click', (e) => {
@@ -481,6 +487,30 @@ document.addEventListener('DOMContentLoaded', () => {
         return {nodes:nodes,edges:edges,services:svcs,categories:cats};
     })();
 
+    // 径向布局：服务器居中，类别环绕，服务分支
+    function calcRadialLayout() {
+        var pos = {};
+        var cats = Object.keys(TOPO_DATA.categories);
+        for (var i = 0; i < cats.length; i++) {
+            var cat = TOPO_DATA.categories[cats[i]];
+            var a = (2 * Math.PI * i) / cats.length - Math.PI / 2;
+            var cx = Math.cos(a) * 260, cy = Math.sin(a) * 260;
+            pos[cat.id] = { x: cx, y: cy };
+
+            var svcs = TOPO_DATA.services.filter(function(s) { return s.cat === cats[i]; });
+            var svcLen = svcs.length;
+            // 弧长根据子节点数动态调整：最少0.4弧度，最多3.5弧度
+            var arc = Math.min(3.5, Math.max(0.4, svcLen * 0.13));
+            var dist = 110 + Math.max(0, svcLen - 8) * 8;
+            for (var j = 0; j < svcLen; j++) {
+                var sa = svcLen <= 1 ? a : a - arc / 2 + (arc * j / (svcLen - 1));
+                pos[svcs[j].id] = { x: cx + Math.cos(sa) * dist, y: cy + Math.sin(sa) * dist };
+            }
+        }
+        pos['server'] = { x: 0, y: 0 };
+        return pos;
+    }
+
     function initTopology() {
         if (topoInited) { if (cy) { cy.resize(); cy.fit(undefined, 30); } return; }
         topoInited = true;
@@ -503,7 +533,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 { selector: '.service:selected', style: { 'border-width':3,'border-color':'#fff' } },
                 { selector: 'edge', style: { 'width':1,'line-color':'#2a2a4a','curve-style':'bezier','opacity':0.5 } }
             ],
-            layout: { name:'breadthfirst', directed:true, roots:'#server', spacingFactor:1.3, avoidOverlap:true, animate:false },
+            layout: { name:'preset', positions: calcRadialLayout() },
             wheelSensitivity: 0.3, userZoomingEnabled: true, userPanningEnabled: true, minZoom: 0.15, maxZoom: 3
         });
 

@@ -160,7 +160,8 @@ body {
     font-size: 0.82rem;
 }
 
-.sidebar-panel { flex: 1; }
+.sidebar-panel { flex: 1; display: none; }
+.sidebar-panel.active { display: flex; flex-direction: column; }
 .sb-section { margin-bottom: 16px; }
 .sb-section h4 { font-size: 0.75rem; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
 .sb-buttons { display: flex; flex-direction: column; gap: 4px; }

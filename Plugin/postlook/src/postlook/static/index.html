@@ -16,7 +16,7 @@
                 <span>postlook</span>
             </div>
             <nav class="topbar-nav">
-                <a href="#" class="topbar-tab active" data-panel="logs" data-sidebar="logs">
+                <a href="#" class="topbar-tab" data-panel="logs" data-sidebar="logs">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                     <span>日志查询</span>
                 </a>
@@ -56,7 +56,7 @@
                     </div>
                 </div>
                 <!-- 配置管理侧栏 -->
-                <div class="sidebar-panel" id="sidebar-config" style="display:none">
+                <div class="sidebar-panel" id="sidebar-config">
                     <div class="sb-section">
                         <h4>配置项说明</h4>
                         <div class="sb-info">
@@ -67,14 +67,14 @@
                     </div>
                 </div>
                 <!-- 服务状态侧栏 -->
-                <div class="sidebar-panel" id="sidebar-status" style="display:none">
+                <div class="sidebar-panel" id="sidebar-status">
                     <div class="sb-section">
                         <h4>文件浏览器</h4>
                         <div id="statusSidebar" class="sb-file-tree"></div>
                     </div>
                 </div>
                 <!-- 拓扑侧栏 -->
-                <div class="sidebar-panel" id="sidebar-topology" style="display:none">
+                <div class="sidebar-panel" id="sidebar-topology">
                     <div class="sb-section">
                         <h4>🔍 搜索</h4>
                         <input type="text" class="sb-search" id="topoSearch" placeholder="搜索节点..." oninput="filterTopoNodes(this.value)">
