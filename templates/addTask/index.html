@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+
+{% block title %}AGV 跨环境任务下发 · 模板管理系统{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-dispatch.png?v=1">
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* addtask 页面特有样式 */
+    .card-header-custom {
+        background-color: var(--detail-card-bg);
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+    }
+
+    .card-body-custom {
+        padding: 1.75rem;
+    }
+
+    .detail-card {
+        border-left: 4px solid #0d6efd;
+        margin-bottom: 1rem;
+        background-color: var(--detail-card-bg);
+        border-radius: 8px;
+        transition: transform 0.2s;
+    }
+    .detail-card:hover { transform: translateX(5px); }
+
+    .form-section {
+        background: var(--form-section-bg);
+        padding: 0.5rem 0;
+    }
+
+    .task-item {
+        padding: 12px 16px;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 12px;
+        background: var(--detail-card-bg);
+    }
+    .task-item:first-child {
+        border-left: 4px solid #0d6efd;
+    }
+
+    .task-status {
+        padding: 4px 10px;
+        border-radius: 30px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    .status-8  { background-color: #198754; color: white; }
+    .status-6  { background-color: #ffc107; color: #212529; }
+    .status-4  { background-color: #0dcaf0; color: #212529; }
+    .status-9  { background-color: #6f42c1; color: white; }
+    .status--1 { background-color: #6c757d; color: white; }
+
+    .query-toggle {
+        display: flex;
+        margin-bottom: 20px;
+        border-radius: 50px;
+        overflow: hidden;
+        border: 1px solid var(--border-color);
+        background: var(--detail-card-bg);
+    }
+    .toggle-option {
+        flex: 1;
+        padding: 10px 16px;
+        text-align: center;
+        background: transparent;
+        cursor: pointer;
+        transition: var(--transition-speed);
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+    .toggle-option.active {
+        background: var(--accent-gradient);
+        color: white;
+    }
+
+    .debug-info {
+        background: var(--detail-card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.25rem;
+        margin-top: 1rem;
+        font-family: 'SF Mono', monospace;
+        font-size: 0.85rem;
+        overflow: auto;
+        max-height: 400px;
+        white-space: pre-wrap;
+        word-break: break-all;
+        display: none;
+    }
+
+    .response-box {
+        background: var(--detail-card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.25rem;
+        font-family: 'SF Mono', monospace;
+        font-size: 0.85rem;
+        overflow: auto;
+        max-height: 500px;
+        white-space: pre-wrap;
+    }
+    .response-box pre {
+        margin: 0;
+        white-space: pre-wrap;
+        font-size: 0.8rem;
+        color: var(--text-primary);
+    }
+
+    .shelf-suggestion {
+        padding: 8px 14px;
+        cursor: pointer;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.85rem;
+        transition: background 0.15s;
+    }
+    .shelf-suggestion:hover {
+        background: var(--accent-light);
+    }
+
+    .device-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        max-height: 220px;
+        overflow-y: auto;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 0 0 10px 10px;
+        z-index: 1000;
+        box-shadow: var(--shadow-md);
+        display: none;
+    }
+    .device-dropdown-item {
+        padding: 10px 16px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        border-bottom: 1px solid var(--border-light);
+        transition: background 0.15s;
+        display: flex;
+        justify-content: space-between;
+    }
+    .device-dropdown-item:hover {
+        background: var(--accent-light);
+    }
+    .device-dropdown-item .device-code {
+        font-family: 'SF Mono', monospace;
+        font-weight: 600;
+        color: var(--accent);
+    }
+
+    .form-control, .form-select {
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
+        background-color: var(--bg-card);
+        color: var(--text-primary);
+        transition: all 0.3s;
+        padding: 0.6rem 1rem;
+    }
+    .form-control:focus, .form-select:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        background-color: var(--bg-card);
+        color: var(--text-primary);
+    }
+
+    .capacity-bar {
+        height: 8px;
+        border-radius: 4px;
+        background: var(--border-color);
+        margin-top: 6px;
+        overflow: hidden;
+    }
+    .capacity-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.5s ease;
+    }
+    .capacity-fill.low { background: var(--accent-gradient); }
+    .capacity-fill.medium { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
+    .capacity-fill.high { background: linear-gradient(135deg, #ef4444, #f87171); }
+
+    .modal-content {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        box-shadow: var(--shadow-lg);
+    }
+    .modal-header, .modal-footer {
+        border-color: var(--border-color);
+    }
+
+    .btn-primary {
+        background: var(--accent-gradient);
+        border: none;
+        font-weight: 600;
+        border-radius: 10px;
+        padding: 0.6rem 1.5rem;
+        transition: all 0.2s;
+    }
+    .btn-primary:hover {
+        opacity: 0.9;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(99,102,241,0.3);
+    }
+
+    .btn-outline-primary {
+        border-color: var(--accent);
+        color: var(--accent);
+        border-radius: 10px;
+        font-weight: 600;
+    }
+    .btn-outline-primary:hover {
+        background: var(--accent-light);
+        border-color: var(--accent);
+        color: var(--accent);
+        transform: translateY(-1px);
+    }
+
+    .two-col-form {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+
+    @media (max-width: 992px) {
+        .two-col-form {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .field-group {
+        margin-bottom: 1.25rem;
+    }
+    .field-group label {
+        font-weight: 600;
+        font-size: 0.85rem;
+        margin-bottom: 0.4rem;
+        color: var(--text-secondary);
+        display: block;
+    }
+
+    .history-item {
+        padding: 8px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background 0.15s;
+        font-size: 0.8rem;
+        font-family: 'SF Mono', monospace;
+        border-bottom: 1px solid var(--border-light);
+    }
+    .history-item:hover {
+        background: var(--accent-light);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- 页头 -->
+{% include 'components/addtask_header.html' %}
+
+<!-- 主要内容区域：两列布局 -->
+<div class="two-col-form">
+    <!-- 左侧：任务下发 -->
+    <div>
+        {% include 'components/addtask_form.html' %}
+    </div>
+
+    <!-- 右侧：任务查询 -->
+    <div>
+        {% include 'components/addtask_query.html' %}
+    </div>
+</div>
+
+<!-- 响应信息卡片 -->
+<div class="mt-4">
+    <div class="card animate__animated animate__fadeInUp">
+        <div class="card-header-custom">
+            <h5 class="mb-0"><i class="bi bi-info-circle me-2"></i>响应信息</h5>
+        </div>
+        <div class="card-body-custom">
+            <div class="response-box" id="response-box" style="display: none;"></div>
+            <div id="no-response-placeholder" class="text-muted text-center py-3">
+                <i class="bi bi-arrow-up-short me-2"></i>下发任务后响应将显示在此处
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 模态框 -->
+<div class="modal fade" id="success-modal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title"><i class="bi bi-check-circle-fill text-success me-2"></i>下发成功</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>任务已成功下发，请勿重复下发。</p>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">确定</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="task-exists-modal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>任务已存在</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>当前选择的设备已有未完成任务，是否继续下发？</p>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="confirm-resend-btn">确认继续</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="priority-modal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title"><i class="bi bi-info-circle-fill text-primary me-2"></i>确认优先级</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>当前选择的优先级为 <strong id="priority-display">--</strong>，确认下发？</p>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="confirm-priority-btn">确认下发</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="capacity-modal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title"><i class="bi bi-speedometer2 me-2"></i>容量详情</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="capacity-modal-body"></div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="help-modal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title"><i class="bi bi-question-circle-fill text-info me-2"></i>帮助说明</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="help-modal-body"></div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/config.js') }}"></script>
+<script src="/static/js/addtask.js"></script>
+{% endblock %}

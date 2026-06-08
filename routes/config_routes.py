@@ -41,7 +41,15 @@ def admin_required(f):
 @config_bp.route('/addtask')
 @login_required
 def addtask():
+    """任务下发 - 桌面版（带侧边栏布局）"""
     return render_template('addTask/index.html')
+
+
+@config_bp.route('/addtask/pad')
+@login_required
+def addtask_pad():
+    """任务下发 - Pad/平板版（独立全宽布局）"""
+    return render_template('addTask/addtask.html')
 
 
 @config_bp.route('/help')
