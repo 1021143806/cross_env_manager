@@ -3,6 +3,32 @@
 # postlook · Supervisor 配置与服务管理
 # ============================================================
 
+# 检查 Supervisor 配置中的运行用户，若非 root 则强制改为 root
+# 原因：postlook 需要读取 /var/log/messages 等系统日志
+ensure_root_user() {
+    local conf="$1"
+    if [ ! -f "$conf" ]; then
+        return 0  # 配置不存在，由后续步骤创建
+    fi
+
+    local current_user
+    current_user=$(grep -oP '^\s*user\s*=\s*\K\S+' "$conf" 2>/dev/null || echo "")
+
+    if [ -z "$current_user" ]; then
+        log_warn "现有配置中未找到 user 行，将由新配置覆盖"
+        return 0
+    fi
+
+    if [ "$current_user" != "root" ]; then
+        log_warn "检测到 postlook 以 '$current_user' 运行，强制改为 root（读取系统日志需要）"
+        # 直接替换 user 行
+        sed -i "s/^\s*user\s*=.*$/user=root/" "$conf"
+        log_ok "已修改: $conf 中 user=$current_user → user=root"
+    else
+        log_info "运行用户已是 root，无需修改"
+    fi
+}
+
 configure_supervisor() {
     step "7" "配置 Supervisor"
 
@@ -14,6 +40,9 @@ configure_supervisor() {
     SUPERVISOR_CONF="$SUPERVISOR_CONF_DIR/${PROJECT_NAME}.conf"
     LOG_PATH="$LOG_DIR"
     VENV_PATH="$PROJECT_DIR/${VENV_DIR:-venv}"
+
+    # 强制检查运行用户（已存在配置时自动修正为 root）
+    ensure_root_user "$SUPERVISOR_CONF"
 
     # 确保日志目录存在
     mkdir -p "$LOG_PATH" 2>/dev/null || true
