@@ -3,29 +3,78 @@
 # postlook · Supervisor 配置与服务管理
 # ============================================================
 
-# 检查 Supervisor 配置中的运行用户，若非 root 则强制改为 root
-# 原因：postlook 需要读取 /var/log/messages 等系统日志
-ensure_root_user() {
-    local conf="$1"
-    if [ ! -f "$conf" ]; then
-        return 0  # 配置不存在，由后续步骤创建
-    fi
+# 确保 postlook 进程用户能读取 /var/log/messages 等系统日志
+# 使用 sudo setfacl 添加读权限，避免改为 root 运行
+ensure_syslog_access() {
+    local run_user="$1"
 
-    local current_user
-    current_user=$(grep -oP '^\s*user\s*=\s*\K\S+' "$conf" 2>/dev/null || echo "")
-
-    if [ -z "$current_user" ]; then
-        log_warn "现有配置中未找到 user 行，将由新配置覆盖"
+    # 如果已经是 root，无需额外操作
+    if [ "$run_user" = "root" ]; then
         return 0
     fi
 
-    if [ "$current_user" != "root" ]; then
-        log_warn "检测到 postlook 以 '$current_user' 运行，强制改为 root（读取系统日志需要）"
-        # 直接替换 user 行
-        sed -i "s/^\s*user\s*=.*$/user=root/" "$conf"
-        log_ok "已修改: $conf 中 user=$current_user → user=root"
-    else
-        log_info "运行用户已是 root，无需修改"
+    # 检查 sudo 是否可用
+    if ! command -v sudo &>/dev/null; then
+        log_warn "sudo 不可用，无法自动赋予系统日志读权限"
+        log_warn "可手动执行: sudo setfacl -m u:$run_user:r /var/log/messages /var/log/secure /var/log/cron"
+        return 0
+    fi
+
+    local syslog_files=()
+    for f in /var/log/messages /var/log/secure /var/log/cron; do
+        [ -f "$f" ] && syslog_files+=("$f")
+    done
+
+    if [ ${#syslog_files[@]} -eq 0 ]; then
+        log_warn "未找到系统日志文件，跳过权限设置"
+        return 0
+    fi
+
+    # 检查当前是否有读权限
+    local need_fix=false
+    for f in "${syslog_files[@]}"; do
+        if ! sudo -u "$run_user" test -r "$f" 2>/dev/null; then
+            need_fix=true
+            break
+        fi
+    done
+
+    if [ "$need_fix" = false ]; then
+        log_info "运行用户 '$run_user' 已有系统日志读权限"
+        return 0
+    fi
+
+    log_info "使用 sudo setfacl 为 '$run_user' 添加系统日志读权限..."
+
+    # 先尝试加入 adm 组（部分系统 adm 组有读日志权限）
+    if getent group adm &>/dev/null; then
+        sudo usermod -aG adm "$run_user" 2>/dev/null && \
+            log_ok "已添加 $run_user 到 adm 组"
+    fi
+
+    # 使用 setfacl 直接授予读权限（立即生效，不受 umask 影响）
+    local fixed_count=0
+    for f in "${syslog_files[@]}"; do
+        if sudo setfacl -m u:"$run_user":r "$f" 2>/dev/null; then
+            ((fixed_count++))
+        fi
+    done
+
+    if [ "$fixed_count" -gt 0 ]; then
+        log_ok "已为 $fixed_count 个系统日志文件添加 '$run_user' 读权限"
+    fi
+
+    # 验证
+    local verify_ok=true
+    for f in "${syslog_files[@]}"; do
+        if ! sudo -u "$run_user" test -r "$f" 2>/dev/null; then
+            log_warn "仍然无法读取: $f"
+            verify_ok=false
+        fi
+    done
+
+    if [ "$verify_ok" = true ]; then
+        log_ok "系统日志读取权限验证通过"
     fi
 }
 
@@ -41,8 +90,8 @@ configure_supervisor() {
     LOG_PATH="$LOG_DIR"
     VENV_PATH="$PROJECT_DIR/${VENV_DIR:-venv}"
 
-    # 强制检查运行用户（已存在配置时自动修正为 root）
-    ensure_root_user "$SUPERVISOR_CONF"
+    # 确保运行用户能读取系统日志
+    ensure_syslog_access "$SUPERVISOR_USER"
 
     # 确保日志目录存在
     mkdir -p "$LOG_PATH" 2>/dev/null || true
