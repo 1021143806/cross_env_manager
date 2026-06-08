@@ -4,6 +4,7 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('postlook v2 loaded, navLinks:', document.querySelectorAll('.topbar-tab').length, 'panels:', document.querySelectorAll('.panel').length);
 
     // ============================================================
     // 1. 主题切换
@@ -522,16 +523,16 @@ document.addEventListener('DOMContentLoaded', () => {
             container: container,
             elements: { nodes: TOPO_DATA.nodes, edges: TOPO_DATA.edges },
             style: [
-                { selector: '.server', style: { 'background-color':'#16213e','label':'data(label)','color':'#e0e0e0','font-size':'13px','text-valign':'center','text-halign':'center','width':100,'height':100,'border-width':3,'border-color':'#0abde3','text-wrap':'wrap','text-max-width':'70px' } },
-                { selector: '.category', style: { 'background-color':'#0f3460','label':'data(label)','color':'#ccc','font-size':'12px','font-weight':'bold','text-valign':'center','text-halign':'center','width':70,'height':70,'border-width':2 } },
-                { selector: '.apps', style: { 'border-color':'#0abde3' } },
-                { selector: '.planner', style: { 'border-color':'#e94560' } },
-                { selector: '.middleware', style: { 'border-color':'#f39c12' } },
-                { selector: '.system', style: { 'border-color':'#10ac84' } },
-                { selector: '.database', style: { 'border-color':'#9b59b6' } },
-                { selector: '.service', style: { 'background-color':'#1a1a3e','label':'data(label)','color':'#d0d0d0','font-size':'10px','text-valign':'center','text-halign':'center','width':'data(weight)','height':'data(weight)','border-width':1.5 } },
-                { selector: '.service:selected', style: { 'border-width':3,'border-color':'#fff' } },
-                { selector: 'edge', style: { 'width':1,'line-color':'#2a2a4a','curve-style':'bezier','opacity':0.5 } }
+                { selector: '.server', style: { 'background-color':'#1a1040','label':'data(label)','color':'#e0e0f0','font-size':'13px','text-valign':'center','text-halign':'center','width':110,'height':110,'border-width':3,'border-color':'#818cf8','text-wrap':'wrap','text-max-width':'70px','underlay-color':'#818cf8','underlay-opacity':0.12,'underlay-padding':8 } },
+                { selector: '.category', style: { 'background-color':'rgba(15,15,50,0.9)','label':'data(label)','color':'#c0c0e0','font-size':'12px','font-weight':'bold','text-valign':'center','text-halign':'center','width':75,'height':75,'border-width':2,'underlay-opacity':0.08,'underlay-padding':6 } },
+                { selector: '.apps', style: { 'border-color':'#0abde3','underlay-color':'#0abde3' } },
+                { selector: '.planner', style: { 'border-color':'#f87171','underlay-color':'#f87171' } },
+                { selector: '.middleware', style: { 'border-color':'#fbbf24','underlay-color':'#fbbf24' } },
+                { selector: '.system', style: { 'border-color':'#4ade80','underlay-color':'#4ade80' } },
+                { selector: '.database', style: { 'border-color':'#a855f7','underlay-color':'#a855f7' } },
+                { selector: '.service', style: { 'background-color':'rgba(20,20,50,0.85)','label':'data(label)','color':'#c8c8e0','font-size':'10px','text-valign':'center','text-halign':'center','width':'data(weight)','height':'data(weight)','border-width':1.5,'underlay-opacity':0.06,'underlay-padding':4 } },
+                { selector: '.service:selected', style: { 'border-width':3,'border-color':'#fff','underlay-opacity':0.25 } },
+                { selector: 'edge', style: { 'width':1,'line-color':'rgba(129,140,248,0.25)','curve-style':'bezier','opacity':0.6 } }
             ],
             layout: { name:'preset', positions: calcRadialLayout() },
             wheelSensitivity: 0.3, userZoomingEnabled: true, userPanningEnabled: true, minZoom: 0.15, maxZoom: 3
