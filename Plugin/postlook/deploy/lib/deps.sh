@@ -5,7 +5,7 @@
 # ============================================================
 
 # 关键包列表（用于检查完整性）
-readonly KEY_PACKAGES=("fastapi" "uvicorn" "pydantic" "starlette" "anyio" "pydantic_core" "typing_extensions")
+readonly KEY_PACKAGES=("fastapi" "uvicorn" "pydantic" "starlette" "anyio" "pydantic_core" "typing_extensions" "tomli")
 
 install_deps() {
     step "4" "检查离线依赖包"
@@ -78,7 +78,7 @@ install_deps() {
     fi
 
     # 阶段 1：批量安装（pip 会自动匹配 ABI）
-    if pip install --no-index $LINKS_ARGS fastapi uvicorn pydantic starlette anyio pydantic-core 2>/dev/null; then
+    if pip install --no-index $LINKS_ARGS fastapi uvicorn pydantic starlette anyio pydantic-core tomli 2>/dev/null; then
         log_ok "批量依赖安装成功"
     else
         # 阶段 2：逐个安装
@@ -100,7 +100,7 @@ install_deps() {
     # ---- 验证安装 ----
     step "6" "验证安装"
 
-    local VERIFY_PKGS=("fastapi" "uvicorn" "pydantic" "starlette" "anyio" "pydantic_core")
+    local VERIFY_PKGS=("fastapi" "uvicorn" "pydantic" "starlette" "anyio" "pydantic_core" "tomli")
     local ALL_OK=true
 
     for pkg in "${VERIFY_PKGS[@]}"; do
