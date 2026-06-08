@@ -148,7 +148,15 @@ var selectedNode = null;
 var timeoutRefresh = null;
 
 function initCytoscape() {
+    console.log('[topology] initCytoscape 开始');
+    try {
+        var container = document.getElementById('cy');
+        console.log('[topology] container:', container ? container.clientWidth + 'x' + container.clientHeight : 'NULL');
+    } catch(e) { console.error('[topology] container error:', e); }
+
     var elements = buildElements();
+    console.log('[topology] elements:', elements.nodes.length, 'nodes,', elements.edges.length, 'edges');
+    console.log('[topology] cytoscape global:', typeof cytoscape);
 
     cy = cytoscape({
         container: document.getElementById('cy'),
@@ -276,6 +284,11 @@ function initCytoscape() {
     // ---- 事件绑定 ----
 
     // 点击服务节点 → 打开侧边面板
+    cy.on('ready', function () {
+        console.log('[topology] graph ready, nodes:', cy.nodes().length);
+        document.getElementById('statusInfo').textContent = '34 个日志源就绪';
+    });
+
     cy.on('tap', '.service', function (evt) {
         var node = evt.target;
         selectService(node);
@@ -512,7 +525,17 @@ window.viewFile = viewFile;
 window.refreshLogs = refreshLogs;
 
 document.addEventListener('DOMContentLoaded', function () {
-    initCytoscape();
+    try {
+        initCytoscape();
+    } catch (e) {
+        console.error('[topology] init failed:', e);
+        document.getElementById('statusInfo').textContent = '初始化失败: ' + e.message;
+        document.getElementById('cy').innerHTML = 
+            '<div style="color:#e94560;text-align:center;padding-top:200px;font-size:14px;">' +
+            '<p>⚠ 拓扑图初始化失败</p>' +
+            '<p style="font-size:12px;color:#999;">' + e.message + '</p>' +
+            '</div>';
+    }
 });
 
 })();

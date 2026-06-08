@@ -45,8 +45,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     navLinks.forEach(link => {
         link.addEventListener('click', (e) => {
-            e.preventDefault();
-            switchPanel(link.dataset.panel);
+            if (link.dataset.panel) {
+                e.preventDefault();
+                switchPanel(link.dataset.panel);
+            }
         });
     });
 
