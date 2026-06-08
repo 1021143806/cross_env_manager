@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # 应用版本号
-APP_VERSION = '2.3.9'
+APP_VERSION = '2.4.0'
 
 # Python 3.9兼容性修改：使用pymysql替代mysql.connector
 import pymysql

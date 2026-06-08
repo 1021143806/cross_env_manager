@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block title %}平台切换{% endblock %}
+
+{% block extra_css %}
+<style>
+    .ps-header {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        color: #e0e0e0;
+        border: 1px solid #2a2a4a;
+    }
+    [data-bs-theme="light"] .ps-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #fff;
+        border: none;
+    }
+
+    .ps-card {
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        background: var(--card-bg);
+        box-shadow: var(--card-shadow);
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+    }
+    .ps-card .card-header {
+        background: var(--detail-card-bg);
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .ps-card .card-body {
+        padding: 1.5rem;
+    }
+
+    .ps-textarea {
+        font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+        font-size: 0.85rem;
+    }
+
+    .ps-log {
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 1rem;
+        font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+        font-size: 0.82rem;
+        max-height: 400px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+        color: #c9d1d9;
+    }
+    .ps-log .log-success { color: #3fb950; }
+    .ps-log .log-error   { color: #f85149; }
+    .ps-log .log-info    { color: #58a6ff; }
+    .ps-log .log-muted   { color: #8b949e; }
+
+    .result-table th {
+        background: var(--detail-card-bg);
+        white-space: nowrap;
+    }
+
+    .badge-ok  { background: #3fb950; color: #fff; }
+    .badge-fail { background: #f85149; color: #fff; }
+
+    .ip-input-group {
+        display: flex;
+        gap: 1rem;
+        align-items: flex-end;
+        flex-wrap: wrap;
+    }
+    .ip-input-group .form-group {
+        flex: 1;
+        min-width: 200px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 页头 -->
+    <div class="ps-header">
+        <div class="d-flex align-items-center gap-3">
+            <i class="bi bi-hdd-network fs-1"></i>
+            <div>
+                <h2 class="mb-1">平台切换</h2>
+                <p class="mb-0 opacity-75">
+                    修改 AGV 的 DVRIP 注册平台地址（
+                    <code>RegisterServer.Servers[0].Address</code>）
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 配置表单 -->
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- 目标平台 -->
+            <div class="ps-card">
+                <div class="card-header">
+                    <i class="bi bi-gear"></i> 目标平台
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">新平台 IP</label>
+                            <input type="text" id="newIp" class="form-control"
+                                   placeholder="10.68.2.32" value="">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">端口</label>
+                            <input type="number" id="newPort" class="form-control"
+                                   value="3002">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">SSH 密码</label>
+                            <input type="password" id="sshPass" class="form-control"
+                                   value="123$iRAY567*">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 设备列表 -->
+            <div class="ps-card">
+                <div class="card-header">
+                    <i class="bi bi-laptop"></i> 设备列表
+                    <span class="ms-auto small text-muted" id="deviceCount">0 台</span>
+                </div>
+                <div class="card-body">
+                    <div class="mb-2 text-muted small">
+                        每行一个 AGV IP 地址
+                    </div>
+                    <textarea id="hostsInput" class="form-control ps-textarea" rows="8"
+                              placeholder="10.68.178.75&#10;10.68.178.76&#10;10.68.178.77"></textarea>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="d-flex gap-2 mb-4">
+                <button id="btnQuery" class="btn btn-primary btn-lg flex-fill">
+                    <i class="bi bi-search"></i> 查询当前配置
+                </button>
+                <button id="btnExecute" class="btn btn-success btn-lg flex-fill" disabled>
+                    <i class="bi bi-send"></i> 执行切换
+                </button>
+            </div>
+        </div>
+
+        <!-- 右侧日志 -->
+        <div class="col-lg-4">
+            <div class="ps-card">
+                <div class="card-header">
+                    <i class="bi bi-terminal"></i> 执行日志
+                    <button id="btnClearLog" class="btn btn-sm btn-outline-secondary ms-auto py-0">
+                        <i class="bi bi-eraser"></i>
+                    </button>
+                </div>
+                <div class="card-body p-2">
+                    <div id="logArea" class="ps-log">
+                        <span class="log-muted">等待操作...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 查询结果 -->
+    <div id="resultSection" class="ps-card" style="display:none;">
+        <div class="card-header">
+            <i class="bi bi-table"></i> 查询结果
+            <span class="ms-auto">
+                <span id="resultSummary" class="small text-muted"></span>
+            </span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover mb-0 result-table">
+                    <thead>
+                        <tr>
+                            <th>AGV IP</th>
+                            <th>当前地址</th>
+                            <th>端口</th>
+                            <th>状态</th>
+                            <th>DeviceID</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/platform_switch.js"></script>
+{% endblock %}

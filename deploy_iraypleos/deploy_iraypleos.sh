@@ -46,7 +46,7 @@ fi
 
 # 快速检查关键包
 echo "   快速检查关键包..."
-KEY_PACKAGES=("markupsafe" "flask" "pymysql" "werkzeug" "jinja2" "dbutils" "flask_caching")
+KEY_PACKAGES=("markupsafe" "flask" "pymysql" "werkzeug" "jinja2" "dbutils" "flask_caching" "paramiko" "pyyaml" "cryptography" "typing_extensions")
 for pkg in "${KEY_PACKAGES[@]}"; do
     file=$(find "$VENDOR_DIR" -type f -iname "*${pkg}*.whl" | head -1)
     if [ -f "$file" ]; then
@@ -118,6 +118,16 @@ importlib_metadata==8.7.1
 DBUtils==3.1.2
 Flask-Caching==2.3.1
 cachelib==0.13.0
+importlib_metadata==8.7.1
+paramiko==5.0.0
+PyYAML==6.0.3
+cryptography==43.0.3
+bcrypt==5.0.0
+pynacl==1.6.2
+cffi==2.0.0
+pycparser==2.23
+invoke==3.0.3
+typing_extensions==4.15.0
 EOF
 
 echo "   依赖列表:"
@@ -129,7 +139,7 @@ if pip install --no-index --find-links="$VENDOR_DIR" -r "$TEMP_REQ" 2>/dev/null;
 else
     echo "   ⚠️  批量安装失败，尝试逐个安装..."
     # 逐个安装关键包
-    for pkg in click itsdangerous tomli zipp blinker python_dotenv PyMySQL Werkzeug Jinja2 markupsafe Markdown Flask importlib_metadata DBUtils Flask_Caching cachelib; do
+    for pkg in click itsdangerous tomli zipp blinker python_dotenv PyMySQL Werkzeug Jinja2 markupsafe Markdown Flask importlib_metadata DBUtils Flask_Caching cachelib paramiko PyYAML cryptography bcrypt pynacl cffi pycparser invoke typing_extensions; do
         wheel_file=$(find "$VENDOR_DIR" -type f -iname "*${pkg}*.whl" | head -1)
         if [ -f "$wheel_file" ]; then
             if pip install --no-index --no-deps "$wheel_file" 2>/dev/null; then
@@ -162,6 +172,10 @@ test_import_simple werkzeug
 test_import_simple jinja2
 test_import_simple markupsafe
 test_import_simple importlib_metadata
+test_import_simple paramiko
+test_import_simple yaml
+test_import_simple paramiko.client  # SSHClient
+test_import_simple cryptography
 
 echo ""
 echo "8. 配置Supervisor..."
