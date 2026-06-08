@@ -1,6 +1,6 @@
 /**
  * postlook · 前端交互逻辑
- * 功能：主题切换、面板导航、日志查询、配置管理、服务状态检测
+ * 功能：主题切换、面板导航、日志查询、配置管理、服务状态检测、拓扑图
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -11,7 +11,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const themeBtn = document.getElementById('themeBtn');
     const html = document.documentElement;
 
-    // 从 localStorage 恢复主题，默认暗黑
     const savedTheme = localStorage.getItem('postlook-theme') || 'dark';
     html.setAttribute('data-theme', savedTheme);
 
@@ -20,26 +19,32 @@ document.addEventListener('DOMContentLoaded', () => {
         const next = current === 'dark' ? 'light' : 'dark';
         html.setAttribute('data-theme', next);
         localStorage.setItem('postlook-theme', next);
+        if (typeof cy !== 'undefined' && cy) updateTopoTheme(next);
     });
 
     // ============================================================
-    // 2. 面板切换
+    // 2. 面板切换（顶部导航栏）
     // ============================================================
-    const navLinks = document.querySelectorAll('.sidebar nav a');
+    const navLinks = document.querySelectorAll('.topbar-tab');
     const panels = document.querySelectorAll('.panel');
+    const sidePanels = document.querySelectorAll('.sidebar-panel');
 
     function switchPanel(panelId) {
-        // 更新导航激活状态
         navLinks.forEach(link => {
             link.classList.toggle('active', link.dataset.panel === panelId);
         });
-        // 更新面板显示
         panels.forEach(panel => {
             panel.classList.toggle('active', panel.id === 'panel-' + panelId);
         });
-        // 切换到服务状态面板时自动检测
+        // 切换左侧子功能栏
+        sidePanels.forEach(sp => {
+            sp.style.display = (sp.id === 'sidebar-' + panelId) ? '' : 'none';
+        });
         if (panelId === 'status') {
             checkServiceStatus();
+        }
+        if (panelId === 'topology') {
+            initTopology();
         }
     }
 
@@ -395,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     item.addEventListener('click', function() {
                         var path = this.getAttribute('data-path');
                         // 切换到日志查询面板并填入路径
-                        document.querySelector('.sidebar nav a[data-panel="logs"]').click();
+                        document.querySelector('.topbar-tab[data-panel="logs"]').click();
                         setTimeout(function() {
                             document.getElementById('folder').value = path;
                         }, 100);
@@ -428,4 +433,189 @@ document.addEventListener('DOMContentLoaded', () => {
         if (parts.length === 0 || s > 0) parts.push(s + '秒');
         return parts.join(' ');
     }
+
+    // ============================================================
+    // 8. 拓扑图
+    // ============================================================
+    var cy = null;
+    var topoInited = false;
+
+    // 节点数据
+    var TOPO_DATA = (function() {
+        var cats = {
+            apps: { id: 'cat-apps', label: '应用系统', color: '#0abde3' },
+            planner: { id: 'cat-planner', label: '路径规划', color: '#e94560' },
+            middleware: { id: 'cat-middleware', label: '中间件', color: '#f39c12' },
+            system: { id: 'cat-system', label: '系统日志', color: '#10ac84' },
+            database: { id: 'cat-database', label: '数据库', color: '#9b59b6' }
+        };
+        var svcs = [
+            // 应用系统
+            { id:'gateway',label:'gateway',cat:'apps',logDir:'/main/app/gateway/logs',logFile:'GATEWAY.log',size:48.8,desc:'API 网关 / 鉴权 / 路由'},
+            { id:'bms',label:'BMS',cat:'apps',logDir:'/main/app/bms/logs',logFile:'BMS.log',size:96.9,desc:'业务管理 / 地图'},
+            { id:'rdms',label:'RDMS',cat:'apps',logDir:'/main/app/rdms/logs',logFile:'RDMS.log',size:118,desc:'资源调度'},
+            { id:'pms',label:'PMS',cat:'apps',logDir:'/main/app/pms/logs',logFile:'PMS.log',size:43.2,desc:'任务管理'},
+            { id:'sps',label:'SPS',cat:'apps',logDir:'/main/app/sps/logs',logFile:'SPS.log',size:30,desc:'路径服务'},
+            { id:'tps',label:'TPS',cat:'apps',logDir:'/main/app/tps/logs',logFile:'TPS.log',size:27.4,desc:'任务处理'},
+            { id:'gws',label:'GWS',cat:'apps',logDir:'/main/app/gws/logs',logFile:'GWS.log',size:31.3,desc:'网关 WebSocket'},
+            { id:'ics',label:'ICS',cat:'apps',logDir:'/main/app/ics/logs',logFile:'ICS.log',size:19.3,desc:'交叉控制'},
+            { id:'revent',label:'REVENT',cat:'apps',logDir:'/main/app/revent/logs',logFile:'REVENT.log',size:12.8,desc:'事件上报'},
+            { id:'wdcs',label:'WDCS',cat:'apps',logDir:'/main/app/wdcs/logs',logFile:'WDCS.log',size:11,desc:'仓库数据采集'},
+            // 路径规划
+            { id:'rtpsa',label:'rtpsa-all',cat:'planner',logDir:'/main/app/rtpsa-2,3,4,5,6/logs',logFile:'rtps.log',size:0,desc:'任务分配 (C++)'},
+            { id:'rtpsp2',label:'rtpsp-2',cat:'planner',logDir:'/main/app/rtpsp-2/logs',logFile:'rtps.log',size:0,desc:'路径规划 2'},
+            { id:'rtpsp3',label:'rtpsp-3',cat:'planner',logDir:'/main/app/rtpsp-3/logs',logFile:'rtps.log',size:0,desc:'路径规划 3'},
+            // 中间件
+            { id:'nacos',label:'Nacos',cat:'middleware',logDir:'/main/server/nacos/logs',logFile:'nacos.log',size:14.2,desc:'服务注册/配置'},
+            // 系统
+            { id:'messages',label:'messages',cat:'system',logDir:'/var/log',logFile:'messages',size:4,desc:'系统消息(内核/OOM/sshd)'},
+            { id:'secure',label:'secure',cat:'system',logDir:'/var/log',logFile:'secure',size:5.1,desc:'安全认证(SSH登录)'},
+            { id:'cron',label:'cron',cat:'system',logDir:'/var/log',logFile:'cron',size:1.3,desc:'定时任务'},
+            // 数据库
+            { id:'mariadb',label:'MariaDB',cat:'database',logDir:'/main/server/mysql',logFile:'mysql_error.log',size:0.3,desc:'MariaDB 8.4.8'}
+        ];
+        var nodes = [{data:{id:'server',label:'postlook\n服务器',type:'server',weight:100},classes:'server'}];
+        var edges = [];
+        for (var k in cats) { var c=cats[k]; nodes.push({data:{id:c.id,label:c.label,type:'category',cat:k,weight:60},classes:'category '+k}); edges.push({data:{source:'server',target:c.id}}); }
+        for (var i=0;i<svcs.length;i++){ var s=svcs[i],sz=Math.max(20,Math.min(50,(s.size||0.1)*0.35+18)); nodes.push({data:{id:s.id,label:s.label,type:'service',cat:s.cat,desc:s.desc,logDir:s.logDir,logFile:s.logFile,sizeMB:s.size,weight:sz},classes:'service '+s.cat}); edges.push({data:{source:cats[s.cat].id,target:s.id}}); }
+        return {nodes:nodes,edges:edges,services:svcs,categories:cats};
+    })();
+
+    function initTopology() {
+        if (topoInited) { if (cy) { cy.resize(); cy.fit(undefined, 30); } return; }
+        topoInited = true;
+
+        var container = document.getElementById('cy');
+        if (!container) return;
+
+        cy = cytoscape({
+            container: container,
+            elements: { nodes: TOPO_DATA.nodes, edges: TOPO_DATA.edges },
+            style: [
+                { selector: '.server', style: { 'background-color':'#16213e','label':'data(label)','color':'#e0e0e0','font-size':'13px','text-valign':'center','text-halign':'center','width':100,'height':100,'border-width':3,'border-color':'#0abde3','text-wrap':'wrap','text-max-width':'70px' } },
+                { selector: '.category', style: { 'background-color':'#0f3460','label':'data(label)','color':'#ccc','font-size':'12px','font-weight':'bold','text-valign':'center','text-halign':'center','width':70,'height':70,'border-width':2 } },
+                { selector: '.apps', style: { 'border-color':'#0abde3' } },
+                { selector: '.planner', style: { 'border-color':'#e94560' } },
+                { selector: '.middleware', style: { 'border-color':'#f39c12' } },
+                { selector: '.system', style: { 'border-color':'#10ac84' } },
+                { selector: '.database', style: { 'border-color':'#9b59b6' } },
+                { selector: '.service', style: { 'background-color':'#1a1a3e','label':'data(label)','color':'#d0d0d0','font-size':'10px','text-valign':'center','text-halign':'center','width':'data(weight)','height':'data(weight)','border-width':1.5 } },
+                { selector: '.service:selected', style: { 'border-width':3,'border-color':'#fff' } },
+                { selector: 'edge', style: { 'width':1,'line-color':'#2a2a4a','curve-style':'bezier','opacity':0.5 } }
+            ],
+            layout: { name:'breadthfirst', directed:true, roots:'#server', spacingFactor:1.3, avoidOverlap:true, animate:false },
+            wheelSensitivity: 0.3, userZoomingEnabled: true, userPanningEnabled: true, minZoom: 0.15, maxZoom: 3
+        });
+
+        cy.on('tap', '.service', function(evt) { var n=evt.target; showTopoDetail(n); });
+        cy.on('tap', function(evt) { if(evt.target===cy) closeTopoDetail(); });
+        cy.on('ready', function() {
+            document.getElementById('topoStatus').textContent = (TOPO_DATA.services.length + 5) + ' 个节点就绪';
+            setTimeout(function(){ cy.resize(); cy.fit(undefined, 40); }, 150);
+        });
+
+        // 左侧图层
+        var layersDiv = document.getElementById('topoLayers');
+        if (layersDiv) {
+            var html = '<div class="sb-labels">';
+            for (var k in TOPO_DATA.categories) {
+                var c = TOPO_DATA.categories[k];
+                var count = TOPO_DATA.services.filter(function(s){return s.cat===k;}).length;
+                html += '<label class="sb-label"><input type="checkbox" checked data-cat="'+k+'" onchange="toggleLayer(\''+k+'\',this.checked)"> <span class="sb-legend-dot" style="background:'+c.color+'"></span> '+c.label+' <span class="count">'+count+'</span></label>';
+            }
+            html += '</div>';
+            layersDiv.innerHTML = html;
+        }
+        // 左侧图例
+        var legendDiv = document.querySelector('.sb-legend');
+        if (legendDiv) {
+            var html = '';
+            for (var k in TOPO_DATA.categories) {
+                var c = TOPO_DATA.categories[k];
+                html += '<div class="sb-legend-item"><span class="sb-legend-dot" style="background:'+c.color+'"></span>'+c.label+'</div>';
+            }
+            legendDiv.innerHTML = html;
+        }
+    }
+
+    window.toggleLayer = function(cat, show) {
+        if (!cy) return;
+        var sel = show ? '.' + cat : '.' + cat;
+        if (show) { cy.nodes('.' + cat).style('display','element'); cy.nodes('.category.'+cat).style('display','element'); }
+        else { cy.nodes('.' + cat).style('display','none'); }
+    };
+
+    window.filterTopoNodes = function(query) {
+        if (!cy) return;
+        var q = query.toLowerCase();
+        cy.nodes('.service').forEach(function(n) {
+            var label = (n.data('label')||'').toLowerCase();
+            var desc = (n.data('desc')||'').toLowerCase();
+            n.style('display', (q === '' || label.indexOf(q) >= 0 || desc.indexOf(q) >= 0) ? 'element' : 'none');
+        });
+    };
+
+    function showTopoDetail(node) {
+        var el = document.getElementById('topoDetail');
+        var name = document.getElementById('topoDetailName');
+        var body = document.getElementById('topoDetailBody');
+        if (!el || !name || !body) return;
+        el.style.display = 'flex';
+        var label = node.data('label'), logDir = node.data('logDir'), logFile = node.data('logFile'), desc = node.data('desc')||'', sizeMB = node.data('sizeMB')||0;
+        name.textContent = label + (desc ? ' — ' + desc : '');
+        var html = '<div style="margin-bottom:8px;color:var(--text-tertiary);font-size:0.75rem">路径: '+logDir+' | 主日志: '+(logFile||'—')+' | '+(sizeMB?sizeMB.toFixed(1)+' MB':'')+'</div>';
+        html += '<div style="margin-bottom:4px;font-weight:600;font-size:0.8rem">日志文件</div>';
+        html += '<div id="topoFileList" style="margin-bottom:10px">加载中...</div>';
+        html += '<div style="font-weight:600;font-size:0.8rem">最新预览</div>';
+        html += '<div class="log-preview" id="topoLogPreview">加载中...</div>';
+        html += '<div style="margin-top:10px;display:flex;gap:6px">';
+        if (logFile) html += '<button class="file-actions" style=\"padding:4px 12px\" onclick=\"window.open(\'/api/download?path='+encodeURIComponent(logDir+'/'+logFile)+'\')\">⬇ 下载</button>';
+        html += '<button class="file-actions" style=\"padding:4px 12px\" onclick=\"closeTopoDetail()\">关闭</button></div>';
+        body.innerHTML = html;
+
+        // 加载文件列表
+        fetch('/api/files').then(function(r){return r.json();}).then(function(data){
+            var fl = document.getElementById('topoFileList');
+            if (!fl) return;
+            var items = '';
+            for (var i=0;i<data.directories.length;i++){
+                var d=data.directories[i];
+                if (d.path===logDir||d.path.indexOf(logDir+'/')===0){
+                    for (var j=0;j<Math.min(d.files.length,10);j++){
+                        var f=d.files[j], sz=f.size<1024?f.size+'B':f.size<1048576?(f.size/1024).toFixed(1)+'KB':(f.size/1048576).toFixed(1)+'MB';
+                        items += '<div class="file-row"><span class="file-name" title="'+f.path+'">'+f.name+'</span><span class="file-size">'+sz+'</span><div class="file-actions"><button onclick="window.open(\'/api/download?path='+encodeURIComponent(f.path)+'\')">⬇</button><button onclick="viewTopoLog(\''+encodeURIComponent(f.path)+'\')">👁</button></div></div>';
+                    }
+                    break;
+                }
+            }
+            fl.innerHTML = items || '暂无文件';
+        }).catch(function(){ var fl=document.getElementById('topoFileList'); if(fl)fl.innerHTML='加载失败'; });
+
+        // 加载日志预览
+        if (logFile) {
+            fetch('/api/logs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({folder:logDir,pattern:logFile,tail:true,line_start:1,line_end:60,recent_files:1})})
+                .then(function(r){return r.json();}).then(function(data){
+                    var lp = document.getElementById('topoLogPreview');
+                    if (!lp) return;
+                    var lines = '';
+                    if (data.results) for (var i=0;i<data.results.length;i++){ var c=data.results[i].content,cls=/ERROR|error|Error/.test(c)?'error':/WARN|warn/.test(c)?'warn':''; lines += '<div class="log-line '+cls+'" style="font-size:0.68rem;white-space:nowrap;line-height:1.3">'+c+'</div>'; }
+                    lp.innerHTML = lines || '暂无日志';
+                }).catch(function(){ var lp=document.getElementById('topoLogPreview'); if(lp)lp.innerHTML='加载失败'; });
+        }
+    }
+
+    window.closeTopoDetail = function() { document.getElementById('topoDetail').style.display = 'none'; };
+    window.viewTopoLog = function(path) {
+        document.querySelector('.topbar-tab[data-panel="logs"]').click();
+        setTimeout(function(){ document.getElementById('folder').value = decodeURIComponent(path); }, 150);
+    };
+
+    function updateTopoTheme(theme) {
+        if (!cy) return;
+        var bg = theme === 'dark' ? '#1a1a2e' : '#f0f0f5';
+        cy.style().selector('.service').style('background-color', theme==='dark'?'#1a1a3e':'#e8e8f0').update();
+        cy.style().selector('.category').style('background-color', theme==='dark'?'#0f3460':'#d0d0e0').update();
+        cy.style().selector('.server').style('background-color', theme==='dark'?'#16213e':'#c0c0d0').update();
+    }
+
 });

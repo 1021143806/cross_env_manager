@@ -285,8 +285,15 @@ function initCytoscape() {
 
     // 点击服务节点 → 打开侧边面板
     cy.on('ready', function () {
-        console.log('[topology] graph ready, nodes:', cy.nodes().length);
+        var rect = document.getElementById('cy').getBoundingClientRect();
+        console.log('[topology] graph ready, container:', rect.width + 'x' + rect.height, 'nodes:', cy.nodes().length);
         document.getElementById('statusInfo').textContent = '34 个日志源就绪';
+        // 延迟 resize 修复容器尺寸问题
+        setTimeout(function() {
+            cy.resize();
+            cy.fit(undefined, 40);
+            console.log('[topology] after resize+fit, zoom:', cy.zoom());
+        }, 100);
     });
 
     cy.on('tap', '.service', function (evt) {
