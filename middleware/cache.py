@@ -15,10 +15,39 @@
     cache.clear()
 """
 
-from flask_caching import Cache
-
 # 全局缓存实例
-cache = Cache()
+# flask_caching 可选依赖 - 若未安装则使用 NoOpCache 降级
+
+class _NoOpCache:
+    """当 flask_caching 不可用时的空缓存降级"""
+    def __init__(self):
+        self._app = None
+
+    def init_app(self, app, config=None):
+        self._app = app
+
+    def cached(self, timeout=None, key_prefix=None):
+        """装饰器：不做实际缓存，直接执行原函数"""
+        def decorator(f):
+            def wrapper(*args, **kwargs):
+                return f(*args, **kwargs)
+            return wrapper
+        return decorator
+
+    def clear(self):
+        pass
+
+    def get(self, key):
+        return None
+
+    def set(self, key, value, timeout=None):
+        return True
+
+try:
+    from flask_caching import Cache
+    cache = Cache()
+except ImportError:
+    cache = _NoOpCache()
 
 
 def init_cache(app):
