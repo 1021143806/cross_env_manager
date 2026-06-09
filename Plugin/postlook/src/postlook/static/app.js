@@ -4,7 +4,7 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('postlook v2 loaded, navLinks:', document.querySelectorAll('.topbar-tab').length, 'panels:', document.querySelectorAll('.panel').length);
+    console.log('postlook v3 loaded, navLinks:', document.querySelectorAll('.topbar-tab').length, 'panels:', document.querySelectorAll('.panel').length);
 
     // ============================================================
     // 0. 拓扑数据（必须在 switchPanel 之前定义）
@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
             { id:'cron',label:'cron',cat:'system',logDir:'/var/log',logFile:'cron',size:1.3,desc:'定时任务'},
             { id:'mariadb',label:'MariaDB',cat:'database',logDir:'/main/server/mysql',logFile:'mysql_error.log',size:0.3,desc:'MariaDB 8.4.8'}
         ];
-        var nodes = [{data:{id:'server',label:'postlook\n服务器',type:'server',weight:100},classes:'server'}];
+        var nodes = [{data:{id:'server',label:'postlook v3\n10.76.2.4',type:'server',weight:100},classes:'server'}];
         var edges = [];
         for (var k in cats) { var c=cats[k]; nodes.push({data:{id:c.id,label:c.label,type:'category',cat:k,weight:60},classes:'category '+k}); edges.push({data:{source:'server',target:c.id}}); }
         for (var i=0;i<svcs.length;i++){ var s=svcs[i],sz=Math.max(20,Math.min(50,(s.size||0.1)*0.35+18)); nodes.push({data:{id:s.id,label:s.label,type:'service',cat:s.cat,desc:s.desc,logDir:s.logDir,logFile:s.logFile,sizeMB:s.size,weight:sz},classes:'service '+s.cat}); edges.push({data:{source:cats[s.cat].id,target:s.id}}); }
@@ -109,7 +109,12 @@ document.addEventListener('DOMContentLoaded', () => {
             checkServiceStatus();
         }
         if (panelId === 'topology') {
+            document.querySelector('.content').style.padding = '0';
+            document.querySelector('.content').style.overflow = 'hidden';
             initTopology();
+        } else {
+            document.querySelector('.content').style.padding = '';
+            document.querySelector('.content').style.overflow = '';
         }
     }
 
@@ -562,8 +567,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!o || n.grabbed()) return;
                     floatPhases[id] += 0.03;
                     var p = floatPhases[id];
-                    var dx = Math.sin(p * 0.7 + floatTime) * 6 + Math.cos(p * 1.3) * 5;
-                    var dy = Math.cos(p * 0.9 + floatTime) * 6 + Math.sin(p * 1.1) * 5;
+                    var dx = Math.sin(p * 0.7 + floatTime) * 12 + Math.cos(p * 1.3) * 10;
+                    var dy = Math.cos(p * 0.9 + floatTime) * 12 + Math.sin(p * 1.1) * 10;
                     n.position({ x: o.x + dx, y: o.y + dy });
                     n.style('width', n.data('weight') * (1 + Math.sin(p) * 0.04));
                     n.style('height', n.data('weight') * (1 + Math.sin(p) * 0.04));
