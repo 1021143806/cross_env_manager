@@ -99,7 +99,7 @@ configure_supervisor() {
     fi
 
     SUPERVISOR_CONF="$SUPERVISOR_CONF_DIR/${PROJECT_NAME}.conf"
-    LOG_PATH="$LOG_DIR"
+    LOG_PATH="$PROJECT_DIR/${LOG_DIR:-logs}"
     VENV_PATH="$PROJECT_DIR/${VENV_DIR:-venv}"
 
     log_info "Supervisor 配置路径: $SUPERVISOR_CONF"
@@ -156,7 +156,7 @@ stdout_logfile_backups=0
 stderr_logfile=$LOG_PATH/${PROJECT_NAME}_error.log
 stderr_logfile_maxbytes=5MB
 stderr_logfile_backups=0
-environment=PYTHONPATH="$PROJECT_DIR"
+environment=PYTHONPATH="$PROJECT_DIR",POSTLOOK_SELF_LOG="$LOG_PATH/${PROJECT_NAME}.log"
 SUPERVISOR_EOF
         log_ok "Supervisor 配置已生成: $SUPERVISOR_CONF"
     else
@@ -178,7 +178,7 @@ stdout_logfile_backups=0
 stderr_logfile=$LOG_PATH/${PROJECT_NAME}_error.log
 stderr_logfile_maxbytes=5MB
 stderr_logfile_backups=0
-environment=PYTHONPATH="$PROJECT_DIR"
+environment=PYTHONPATH="$PROJECT_DIR",POSTLOOK_SELF_LOG="$LOG_PATH/${PROJECT_NAME}.log"
 SUPERVISOR_EOF
         log_warn "EOF"
         log_warn "然后执行: sudo supervisorctl reread && sudo supervisorctl update && sudo supervisorctl start $PROJECT_NAME"

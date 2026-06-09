@@ -7,6 +7,68 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('postlook v2 loaded, navLinks:', document.querySelectorAll('.topbar-tab').length, 'panels:', document.querySelectorAll('.panel').length);
 
     // ============================================================
+    // 0. 拓扑数据（必须在 switchPanel 之前定义）
+    // ============================================================
+    var cy = null;
+    var topoInited = false;
+
+    var TOPO_DATA = (function() {
+        var cats = {
+            apps: { id: 'cat-apps', label: '应用系统', color: '#0abde3' },
+            planner: { id: 'cat-planner', label: '路径规划', color: '#e94560' },
+            middleware: { id: 'cat-middleware', label: '中间件', color: '#f39c12' },
+            system: { id: 'cat-system', label: '系统日志', color: '#10ac84' },
+            database: { id: 'cat-database', label: '数据库', color: '#9b59b6' }
+        };
+        var svcs = [
+            { id:'gateway',label:'gateway',cat:'apps',logDir:'/main/app/gateway/logs',logFile:'GATEWAY.log',size:48.8,desc:'API 网关 / 鉴权 / 路由'},
+            { id:'bms',label:'BMS',cat:'apps',logDir:'/main/app/bms/logs',logFile:'BMS.log',size:96.9,desc:'业务管理 / 地图'},
+            { id:'rdms',label:'RDMS',cat:'apps',logDir:'/main/app/rdms/logs',logFile:'RDMS.log',size:118,desc:'资源调度'},
+            { id:'pms',label:'PMS',cat:'apps',logDir:'/main/app/pms/logs',logFile:'PMS.log',size:43.2,desc:'任务管理'},
+            { id:'sps',label:'SPS',cat:'apps',logDir:'/main/app/sps/logs',logFile:'SPS.log',size:30,desc:'路径服务'},
+            { id:'tps',label:'TPS',cat:'apps',logDir:'/main/app/tps/logs',logFile:'TPS.log',size:27.4,desc:'任务处理'},
+            { id:'gws',label:'GWS',cat:'apps',logDir:'/main/app/gws/logs',logFile:'GWS.log',size:31.3,desc:'网关 WebSocket'},
+            { id:'ics',label:'ICS',cat:'apps',logDir:'/main/app/ics/logs',logFile:'ICS.log',size:19.3,desc:'交叉控制'},
+            { id:'revent',label:'REVENT',cat:'apps',logDir:'/main/app/revent/logs',logFile:'REVENT.log',size:12.8,desc:'事件上报'},
+            { id:'wdcs',label:'WDCS',cat:'apps',logDir:'/main/app/wdcs/logs',logFile:'WDCS.log',size:11,desc:'仓库数据采集'},
+            { id:'rtpsa',label:'rtpsa-all',cat:'planner',logDir:'/main/app/rtpsa-2,3,4,5,6/logs',logFile:'rtps.log',size:0,desc:'任务分配 (C++)'},
+            { id:'rtpsp2',label:'rtpsp-2',cat:'planner',logDir:'/main/app/rtpsp-2/logs',logFile:'rtps.log',size:0,desc:'路径规划 2'},
+            { id:'rtpsp3',label:'rtpsp-3',cat:'planner',logDir:'/main/app/rtpsp-3/logs',logFile:'rtps.log',size:0,desc:'路径规划 3'},
+            { id:'nacos',label:'Nacos',cat:'middleware',logDir:'/main/server/nacos/logs',logFile:'nacos.log',size:14.2,desc:'服务注册/配置'},
+            { id:'messages',label:'messages',cat:'system',logDir:'/var/log',logFile:'messages',size:4,desc:'系统消息(内核/OOM/sshd)'},
+            { id:'secure',label:'secure',cat:'system',logDir:'/var/log',logFile:'secure',size:5.1,desc:'安全认证(SSH登录)'},
+            { id:'cron',label:'cron',cat:'system',logDir:'/var/log',logFile:'cron',size:1.3,desc:'定时任务'},
+            { id:'mariadb',label:'MariaDB',cat:'database',logDir:'/main/server/mysql',logFile:'mysql_error.log',size:0.3,desc:'MariaDB 8.4.8'}
+        ];
+        var nodes = [{data:{id:'server',label:'postlook\n服务器',type:'server',weight:100},classes:'server'}];
+        var edges = [];
+        for (var k in cats) { var c=cats[k]; nodes.push({data:{id:c.id,label:c.label,type:'category',cat:k,weight:60},classes:'category '+k}); edges.push({data:{source:'server',target:c.id}}); }
+        for (var i=0;i<svcs.length;i++){ var s=svcs[i],sz=Math.max(20,Math.min(50,(s.size||0.1)*0.35+18)); nodes.push({data:{id:s.id,label:s.label,type:'service',cat:s.cat,desc:s.desc,logDir:s.logDir,logFile:s.logFile,sizeMB:s.size,weight:sz},classes:'service '+s.cat}); edges.push({data:{source:cats[s.cat].id,target:s.id}}); }
+        return {nodes:nodes,edges:edges,services:svcs,categories:cats};
+    })();
+
+    function calcRadialLayout() {
+        var pos = {};
+        var cats = Object.keys(TOPO_DATA.categories);
+        for (var i = 0; i < cats.length; i++) {
+            var cat = TOPO_DATA.categories[cats[i]];
+            var a = (2 * Math.PI * i) / cats.length - Math.PI / 2;
+            var cx = Math.cos(a) * 260, cy = Math.sin(a) * 260;
+            pos[cat.id] = { x: cx, y: cy };
+            var svcs = TOPO_DATA.services.filter(function(s) { return s.cat === cats[i]; });
+            var svcLen = svcs.length;
+            var arc = Math.min(3.5, Math.max(0.4, svcLen * 0.13));
+            var dist = 110 + Math.max(0, svcLen - 8) * 8;
+            for (var j = 0; j < svcLen; j++) {
+                var sa = svcLen <= 1 ? a : a - arc / 2 + (arc * j / (svcLen - 1));
+                pos[svcs[j].id] = { x: cx + Math.cos(sa) * dist, y: cy + Math.sin(sa) * dist };
+            }
+        }
+        pos['server'] = { x: 0, y: 0 };
+        return pos;
+    }
+
+    // ============================================================
     // 1. 主题切换
     // ============================================================
     const themeBtn = document.getElementById('themeBtn');
@@ -383,7 +445,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 html += '<span class="file-time">' + timeStr + '</span>';
                                 html += '<span class="file-size">' + sizeStr + '</span>';
                                 html += '</div>';
-                            });
+});
                             html += '</div>';
                         } else if (!dir.exists) {
                             html += '<div class="file-list"><p class="dir-empty">目录不存在</p></div>';
@@ -444,74 +506,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============================================================
     // 8. 拓扑图
     // ============================================================
-    var cy = null;
-    var topoInited = false;
-
-    // 节点数据
-    var TOPO_DATA = (function() {
-        var cats = {
-            apps: { id: 'cat-apps', label: '应用系统', color: '#0abde3' },
-            planner: { id: 'cat-planner', label: '路径规划', color: '#e94560' },
-            middleware: { id: 'cat-middleware', label: '中间件', color: '#f39c12' },
-            system: { id: 'cat-system', label: '系统日志', color: '#10ac84' },
-            database: { id: 'cat-database', label: '数据库', color: '#9b59b6' }
-        };
-        var svcs = [
-            // 应用系统
-            { id:'gateway',label:'gateway',cat:'apps',logDir:'/main/app/gateway/logs',logFile:'GATEWAY.log',size:48.8,desc:'API 网关 / 鉴权 / 路由'},
-            { id:'bms',label:'BMS',cat:'apps',logDir:'/main/app/bms/logs',logFile:'BMS.log',size:96.9,desc:'业务管理 / 地图'},
-            { id:'rdms',label:'RDMS',cat:'apps',logDir:'/main/app/rdms/logs',logFile:'RDMS.log',size:118,desc:'资源调度'},
-            { id:'pms',label:'PMS',cat:'apps',logDir:'/main/app/pms/logs',logFile:'PMS.log',size:43.2,desc:'任务管理'},
-            { id:'sps',label:'SPS',cat:'apps',logDir:'/main/app/sps/logs',logFile:'SPS.log',size:30,desc:'路径服务'},
-            { id:'tps',label:'TPS',cat:'apps',logDir:'/main/app/tps/logs',logFile:'TPS.log',size:27.4,desc:'任务处理'},
-            { id:'gws',label:'GWS',cat:'apps',logDir:'/main/app/gws/logs',logFile:'GWS.log',size:31.3,desc:'网关 WebSocket'},
-            { id:'ics',label:'ICS',cat:'apps',logDir:'/main/app/ics/logs',logFile:'ICS.log',size:19.3,desc:'交叉控制'},
-            { id:'revent',label:'REVENT',cat:'apps',logDir:'/main/app/revent/logs',logFile:'REVENT.log',size:12.8,desc:'事件上报'},
-            { id:'wdcs',label:'WDCS',cat:'apps',logDir:'/main/app/wdcs/logs',logFile:'WDCS.log',size:11,desc:'仓库数据采集'},
-            // 路径规划
-            { id:'rtpsa',label:'rtpsa-all',cat:'planner',logDir:'/main/app/rtpsa-2,3,4,5,6/logs',logFile:'rtps.log',size:0,desc:'任务分配 (C++)'},
-            { id:'rtpsp2',label:'rtpsp-2',cat:'planner',logDir:'/main/app/rtpsp-2/logs',logFile:'rtps.log',size:0,desc:'路径规划 2'},
-            { id:'rtpsp3',label:'rtpsp-3',cat:'planner',logDir:'/main/app/rtpsp-3/logs',logFile:'rtps.log',size:0,desc:'路径规划 3'},
-            // 中间件
-            { id:'nacos',label:'Nacos',cat:'middleware',logDir:'/main/server/nacos/logs',logFile:'nacos.log',size:14.2,desc:'服务注册/配置'},
-            // 系统
-            { id:'messages',label:'messages',cat:'system',logDir:'/var/log',logFile:'messages',size:4,desc:'系统消息(内核/OOM/sshd)'},
-            { id:'secure',label:'secure',cat:'system',logDir:'/var/log',logFile:'secure',size:5.1,desc:'安全认证(SSH登录)'},
-            { id:'cron',label:'cron',cat:'system',logDir:'/var/log',logFile:'cron',size:1.3,desc:'定时任务'},
-            // 数据库
-            { id:'mariadb',label:'MariaDB',cat:'database',logDir:'/main/server/mysql',logFile:'mysql_error.log',size:0.3,desc:'MariaDB 8.4.8'}
-        ];
-        var nodes = [{data:{id:'server',label:'postlook\n服务器',type:'server',weight:100},classes:'server'}];
-        var edges = [];
-        for (var k in cats) { var c=cats[k]; nodes.push({data:{id:c.id,label:c.label,type:'category',cat:k,weight:60},classes:'category '+k}); edges.push({data:{source:'server',target:c.id}}); }
-        for (var i=0;i<svcs.length;i++){ var s=svcs[i],sz=Math.max(20,Math.min(50,(s.size||0.1)*0.35+18)); nodes.push({data:{id:s.id,label:s.label,type:'service',cat:s.cat,desc:s.desc,logDir:s.logDir,logFile:s.logFile,sizeMB:s.size,weight:sz},classes:'service '+s.cat}); edges.push({data:{source:cats[s.cat].id,target:s.id}}); }
-        return {nodes:nodes,edges:edges,services:svcs,categories:cats};
-    })();
-
-    // 径向布局：服务器居中，类别环绕，服务分支
-    function calcRadialLayout() {
-        var pos = {};
-        var cats = Object.keys(TOPO_DATA.categories);
-        for (var i = 0; i < cats.length; i++) {
-            var cat = TOPO_DATA.categories[cats[i]];
-            var a = (2 * Math.PI * i) / cats.length - Math.PI / 2;
-            var cx = Math.cos(a) * 260, cy = Math.sin(a) * 260;
-            pos[cat.id] = { x: cx, y: cy };
-
-            var svcs = TOPO_DATA.services.filter(function(s) { return s.cat === cats[i]; });
-            var svcLen = svcs.length;
-            // 弧长根据子节点数动态调整：最少0.4弧度，最多3.5弧度
-            var arc = Math.min(3.5, Math.max(0.4, svcLen * 0.13));
-            var dist = 110 + Math.max(0, svcLen - 8) * 8;
-            for (var j = 0; j < svcLen; j++) {
-                var sa = svcLen <= 1 ? a : a - arc / 2 + (arc * j / (svcLen - 1));
-                pos[svcs[j].id] = { x: cx + Math.cos(sa) * dist, y: cy + Math.sin(sa) * dist };
-            }
-        }
-        pos['server'] = { x: 0, y: 0 };
-        return pos;
-    }
-
     function initTopology() {
         if (topoInited) { if (cy) { cy.resize(); cy.fit(undefined, 30); } return; }
         topoInited = true;
@@ -532,17 +526,62 @@ document.addEventListener('DOMContentLoaded', () => {
                 { selector: '.database', style: { 'border-color':'#a855f7','underlay-color':'#a855f7' } },
                 { selector: '.service', style: { 'background-color':'rgba(20,20,50,0.85)','label':'data(label)','color':'#c8c8e0','font-size':'10px','text-valign':'center','text-halign':'center','width':'data(weight)','height':'data(weight)','border-width':1.5,'underlay-opacity':0.06,'underlay-padding':4 } },
                 { selector: '.service:selected', style: { 'border-width':3,'border-color':'#fff','underlay-opacity':0.25 } },
-                { selector: 'edge', style: { 'width':1,'line-color':'rgba(129,140,248,0.25)','curve-style':'bezier','opacity':0.6 } }
+                { selector: 'edge', style: { 'width':1.2,'line-color':'rgba(129,140,248,0.35)','curve-style':'bezier','opacity':0.7,'line-dash-pattern':[4,8],'line-dash-offset':0 } }
             ],
-            layout: { name:'preset', positions: calcRadialLayout() },
-            wheelSensitivity: 0.3, userZoomingEnabled: true, userPanningEnabled: true, minZoom: 0.15, maxZoom: 3
+            layout: { name:'preset', positions: calcRadialLayout(), animate:true, animationDuration:800 },
+            wheelSensitivity: 0.3, userZoomingEnabled: true, userPanningEnabled: true, minZoom: 0.15, maxZoom: 3,
+            // 开启节点拖拽
+            autoungrabify: false, autounselectify: false
         });
 
         cy.on('tap', '.service', function(evt) { var n=evt.target; showTopoDetail(n); });
         cy.on('tap', function(evt) { if(evt.target===cy) closeTopoDetail(); });
+
         cy.on('ready', function() {
-            document.getElementById('topoStatus').textContent = (TOPO_DATA.services.length + 5) + ' 个节点就绪';
+            document.getElementById('topoStatus').textContent = (TOPO_DATA.services.length + 5) + ' 节点 · 拖拽可移动 · 滚轮缩放';
             setTimeout(function(){ cy.resize(); cy.fit(undefined, 40); }, 150);
+
+            // 动态悬浮 + 回弹
+            var floatPhases = {}, floatTime = 0, basePos = {};
+            cy.nodes().forEach(function(n) { basePos[n.id()] = { x: n.position('x'), y: n.position('y') }; floatPhases[n.id()] = Math.random() * Math.PI * 2; });
+
+            // 拖拽松手回弹
+            cy.on('free', '.service', function(evt) {
+                var n = evt.target, id = n.id();
+                if (basePos[id]) { n.animate({ position: basePos[id] }, { duration: 300 }); }
+            });
+
+            // 每40ms微调位置
+            setInterval(function() {
+                floatTime += 0.05;
+                cy.nodes().forEach(function(n) {
+                    var id = n.id(), o = basePos[id];
+                    if (!o || n.grabbed()) return;
+                    floatPhases[id] += 0.03;
+                    var p = floatPhases[id];
+                    var dx = Math.sin(p * 0.7 + floatTime) * 6 + Math.cos(p * 1.3) * 5;
+                    var dy = Math.cos(p * 0.9 + floatTime) * 6 + Math.sin(p * 1.1) * 5;
+                    n.position({ x: o.x + dx, y: o.y + dy });
+                    n.style('width', n.data('weight') * (1 + Math.sin(p) * 0.04));
+                    n.style('height', n.data('weight') * (1 + Math.sin(p) * 0.04));
+                });
+            }, 40);
+
+            // 边流动动画
+            var dashOffset = 0;
+            cy.edges().forEach(function(e){ e.style('line-dash-pattern', [4,8]); e.style('line-dash-offset', 0); });
+            setInterval(function(){
+                dashOffset = (dashOffset - 0.5) % 12;
+                cy.edges().forEach(function(e){ e.style('line-dash-offset', dashOffset); });
+            }, 80);
+
+            // 服务器节点脉动
+            var pulsePhase = 0;
+            setInterval(function(){
+                pulsePhase += 0.1;
+                var glow = 0.06 + Math.sin(pulsePhase) * 0.06;
+                cy.getElementById('server').style('underlay-opacity', glow);
+            }, 60);
         });
 
         // 左侧图层

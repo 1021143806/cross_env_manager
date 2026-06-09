@@ -3,6 +3,7 @@ postlook · API 路由
 """
 
 import os
+from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -212,7 +213,7 @@ async def scan_dirs(base: str = "/main/app"):
 async def self_logs(lines: int = 100, keyword: str = None):
     """查看 postlook 自身日志"""
     import os
-    log_path = os.environ.get("POSTLOOK_SELF_LOG", "/main/log/app/postlook.log")
+    log_path = os.environ.get("POSTLOOK_SELF_LOG", str(Path(__file__).resolve().parent.parent.parent / "logs" / "postlook.log"))
     try:
         with open(log_path, "r", encoding="utf-8", errors="replace") as f:
             all_lines = f.readlines()
