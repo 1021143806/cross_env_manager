@@ -101,12 +101,17 @@ function applyRulesAndAnnotations(content, file) {
             }
         }
 
-        if (matchInfo && !wrapped) {
-            var style = 'color:' + (rule.color || 'inherit') + ';' +
-                (rule.background ? 'background:' + rule.background + ';' : '') +
-                (rule.bold ? 'font-weight:700;' : '');
-            content = '<span style="border-left:3px solid ' + (rule.color || 'transparent') + ';padding-left:6px;' + style + '">' +
-                content + '</span>';
+        if (matchInfo) {
+            // 整行着色（仅首次匹配生效）
+            if (!wrapped) {
+                var style = 'color:' + (rule.color || 'inherit') + ';' +
+                    (rule.background ? 'background:' + rule.background + ';' : '') +
+                    (rule.bold ? 'font-weight:700;' : '');
+                content = '<span style="border-left:3px solid ' + (rule.color || 'transparent') + ';padding-left:6px;' + style + '">' +
+                    content + '</span>';
+                wrapped = true;
+            }
+            // 注解（所有匹配规则都累积）
             if (rule.annotation) {
                 annotations.push(
                     '<span class="rule-annotation" style="background:' + (rule.color || '#818cf8') + '20;color:' +
@@ -114,7 +119,6 @@ function applyRulesAndAnnotations(content, file) {
                     rule.annotation + '</span>'
                 );
             }
-            wrapped = true;
         }
     });
 
