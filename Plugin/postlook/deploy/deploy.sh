@@ -71,12 +71,38 @@ if [ ! -f "src/postlook/app.py" ]; then
 fi
 log_ok "项目文件检查通过"
 
-# 初始化配置文件（不存在或为空时从模板复制）
+# ---- 配置文件初始化 ----
+
+# env.toml（旧版兼容，回退方案）
 if [ ! -f "config/env.toml" ] || [ ! -s "config/env.toml" ]; then
     if [ -f "config/template/env.toml" ]; then
         cp config/template/env.toml config/env.toml
         log_ok "配置文件已从模板初始化: config/env.toml"
     fi
+fi
+
+# app.toml（主配置）
+if [ ! -f "config/app.toml" ] || [ ! -s "config/app.toml" ]; then
+    if [ -f "config/template/app.toml" ]; then
+        cp config/template/app.toml config/app.toml
+        log_ok "主配置已从模板初始化: config/app.toml"
+    fi
+fi
+
+# rules.toml（规则配置）
+if [ ! -f "config/rules.toml" ] || [ ! -s "config/rules.toml" ]; then
+    if [ -f "config/template/rules.toml" ]; then
+        cp config/template/rules.toml config/rules.toml
+        log_ok "规则配置已从模板初始化: config/rules.toml"
+    fi
+fi
+
+# ---- 配置文件权限修复 ----
+# 确保运行用户对 config 目录有写权限（支持热更新）
+if command -v chown &>/dev/null && [ -n "${SUPERVISOR_USER:-}" ]; then
+    chown -R "$SUPERVISOR_USER" config/ 2>/dev/null && \
+        log_ok "配置文件权限已设为 $SUPERVISOR_USER" || \
+        log_warn "无法更改 config/ 所有者，热更新可能需要手动授权"
 fi
 
 # 3. Python 环境准备

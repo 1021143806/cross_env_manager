@@ -109,6 +109,17 @@ configure_supervisor() {
     # 确保运行用户能读取系统日志
     ensure_syslog_access "$SUPERVISOR_USER"
 
+    # 确保运行用户对 config/ 目录有写权限（支持热更新）
+    if [ -d "$PROJECT_DIR/config" ]; then
+        if command -v setfacl &>/dev/null; then
+            setfacl -R -m u:"$SUPERVISOR_USER":rwx "$PROJECT_DIR/config" 2>/dev/null || true
+            setfacl -R -d -m u:"$SUPERVISOR_USER":rwx "$PROJECT_DIR/config" 2>/dev/null || true
+        fi
+        # 兜底：尝试 chown
+        chown -R "$SUPERVISOR_USER:$SUPERVISOR_USER" "$PROJECT_DIR/config" 2>/dev/null || true
+        log_info "配置文件目录权限已设置为 $SUPERVISOR_USER"
+    fi
+
     # 确保日志目录存在
     mkdir -p "$LOG_PATH" 2>/dev/null || true
     chown "$SUPERVISOR_USER:$SUPERVISOR_USER" "$LOG_PATH" 2>/dev/null || true
