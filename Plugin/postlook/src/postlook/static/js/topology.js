@@ -55,27 +55,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     };
 
-    // 放射布局计算
-    window.calcRadialLayout = function(topoData) {
-        var pos = {};
-        var cats = Object.keys(topoData.categories);
-        for (var i = 0; i < cats.length; i++) {
-            var cat = topoData.categories[cats[i]];
-            var a = (2 * Math.PI * i) / cats.length - Math.PI / 2;
-            var cx = Math.cos(a) * 260, cy = Math.sin(a) * 260;
-            pos[cat.id] = { x: cx, y: cy };
-            var svcs = topoData.services.filter(function(s) { return s.category === cats[i]; });
-            var svcLen = svcs.length;
-            var arc = Math.min(3.5, Math.max(0.4, svcLen * 0.13));
-            var dist = 110 + Math.max(0, svcLen - 8) * 8;
-            for (var j = 0; j < svcLen; j++) {
-                var sa = svcLen <= 1 ? a : a - arc / 2 + (arc * j / (svcLen - 1));
-                pos[svcs[j].id] = { x: cx + Math.cos(sa) * dist, y: cy + Math.sin(sa) * dist };
-            }
-        }
-        pos['server'] = { x: 0, y: 0 };
-        return pos;
-    };
+
 
     // 初始化拓扑
     function initTopology() {
@@ -106,9 +86,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 { selector: '.database', style: { 'background-color':'#a855f7','background-opacity':0.18,'border-color':'#a855f7' } },
                 { selector: '.service', style: { 'shape':'ellipse','label':'data(label)','color':'#e8e0f0','font-size':'10px','text-valign':'center','text-halign':'center','width':'data(weight)','height':'data(weight)','border-width':2 } },
                 { selector: '.service:selected', style: { 'border-width':3,'border-color':'#fff' } },
-                { selector: 'edge', style: { 'width':1.2,'line-color':'rgba(129,140,248,0.35)','curve-style':'bezier','opacity':0.7,'line-dash-pattern':[4,8],'line-dash-offset':0 } }
+                { selector: '.pulse-dot', style: { 'shape':'ellipse','width':6,'height':6,'background-opacity':0.9,'border-width':0,'underlay-opacity':0.5,'underlay-padding':4,'pointer-events':'none' } },
+                { selector: 'edge', style: { 'width':1.2,'line-color':'rgba(129,140,248,0.35)','curve-style':'bezier','opacity':0.7 } }
             ],
-            layout: { name:'preset', positions: calcRadialLayout(data), animate:true, animationDuration:800 },
+            layout: { name:'cose', animate:true, animationDuration:1000, nodeRepulsion:8000, idealEdgeLength:150, gravity:0.5, numIter:1000 },
             wheelSensitivity: 0.3, userZoomingEnabled: true, userPanningEnabled: true, minZoom: 0.15, maxZoom: 3,
             autoungrabify: false, autounselectify: false
         });
@@ -122,26 +103,32 @@ document.addEventListener('DOMContentLoaded', function() {
             cy.fit(undefined, 40);
             document.getElementById('topoStatus').textContent = (data.services.length + 5) + ' 节点 · 滚轮缩放';
 
-            // 浮动动画
-            var floatPhases = {}, floatTime = 0, basePos = {};
-            cy.nodes().forEach(function(n) { basePos[n.id()] = {x:n.position('x'),y:n.position('y')}; floatPhases[n.id()] = Math.random()*Math.PI*2; });
+            // ── 节点绕心缓旋 ──
+            var orbitAngle = {}, orbitBasePos = {};
+            cy.nodes(':childless').forEach(function(n) {
+                orbitBasePos[n.id()] = {x:n.position('x'),y:n.position('y')};
+                orbitAngle[n.id()] = Math.random() * Math.PI * 2;
+            });
             cy.on('free', '.service', function(evt) {
                 var n = evt.target, id = n.id();
-                if (basePos[id]) n.animate({position:basePos[id]},{duration:300});
+                if (orbitBasePos[id]) {
+                    orbitBasePos[id] = {x:n.position('x'),y:n.position('y')};
+                    n.animate({position:{x:n.position('x'),y:n.position('y')}},{duration:300});
+                }
             });
             setInterval(function() {
-                floatTime += 0.05;
-                cy.nodes().forEach(function(n) {
-                    var id = n.id(), o = basePos[id];
+                cy.nodes(':childless').forEach(function(n) {
+                    var id = n.id(), o = orbitBasePos[id];
                     if (!o || n.grabbed()) return;
-                    floatPhases[id] += 0.03;
-                    var p = floatPhases[id];
-                    n.position({x: o.x + Math.sin(p*0.7+floatTime)*12 + Math.cos(p*1.3)*10, y: o.y + Math.cos(p*0.9+floatTime)*12 + Math.sin(p*1.1)*10});
-                    n.style('width', n.data('weight')*(1+Math.sin(p)*0.04));
-                    n.style('height', n.data('weight')*(1+Math.sin(p)*0.04));
+                    orbitAngle[id] += 0.005;
+                    var a = orbitAngle[id];
+                    n.position({x: o.x + Math.cos(a) * 4, y: o.y - Math.sin(a) * 4});
                 });
             }, 40);
-        }, 900); // 布局动画 800ms 结束后启动
+
+            // ── 连线脉冲动画 ──
+            initEdgePulses();
+        }, 1100); // cose 布局动画 1000ms 结束后启动
 
         // 点击事件
         cy.on('tap', '.service', function(evt) { showTopoDetail(evt.target); });
@@ -172,11 +159,71 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // ── 连线脉冲：从 server 出发沿每条边发射光点 ──
+    function initEdgePulses() {
+        // 获取分类色映射
+        var catColors = {};
+        try {
+            var cats = JSON.parse(sessionStorage.getItem('topo_cats') || '{}');
+            catColors = cats;
+        } catch(e) {}
+        // 从 data 中提取分类色
+        for (var k in data.categories) {
+            catColors[k] = data.categories[k].color || '#818cf8';
+        }
+
+        cy.edges().forEach(function(edge) {
+            var src = edge.source(), tgt = edge.target();
+            // 颜色：优先按 target 的分类色
+            var color = '#818cf8';
+            var classes = tgt.className();
+            for (var k in catColors) {
+                if (classes.indexOf(k) >= 0) { color = catColors[k]; break; }
+            }
+
+            var pulse = cy.add({
+                group: 'nodes',
+                data: { id: 'pulse-' + edge.id() },
+                classes: 'pulse-dot',
+                position: src.position()
+            });
+            pulse.style('background-color', color);
+            pulse.style('underlay-color', color);
+
+            function firePulse() {
+                pulse.position(src.position());
+                pulse.style('opacity', 1);
+                pulse.animate({
+                    position: {x: tgt.position('x'), y: tgt.position('y')},
+                    style: { 'opacity': 0.3 }
+                }, {
+                    duration: 2500,
+                    easing: 'linear',
+                    complete: function() {
+                        pulse.style('opacity', 1);
+                        firePulse();
+                    }
+                });
+            }
+
+            setTimeout(firePulse, Math.random() * 1500);
+        });
+    }
+
     // 图层切换
     window.toggleLayer = function(cat, show) {
         if (!cy) return;
-        if (show) { cy.nodes('.' + cat).style('display','element'); }
-        else { cy.nodes('.' + cat).style('display','none'); }
+        // 切换分类节点和服务节点
+        cy.nodes('.' + cat).style('display', show ? 'element' : 'none');
+        // 切换对应脉冲点
+        cy.edges().forEach(function(e) {
+            var tgt = e.target();
+            if (tgt.hasClass(cat)) {
+                var pulseId = 'pulse-' + e.id();
+                var pulse = cy.getElementById(pulseId);
+                if (pulse.length) pulse.style('display', show ? 'element' : 'none');
+            }
+        });
     };
 
     // 搜索过滤

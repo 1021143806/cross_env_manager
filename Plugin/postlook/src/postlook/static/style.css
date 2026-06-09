@@ -1013,6 +1013,12 @@ body {
 #panel-topology .server { filter: drop-shadow(0 0 8px rgba(10, 189, 227, 0.3)); }
 #panel-topology .category { filter: drop-shadow(0 0 6px rgba(129, 140, 248, 0.2)); }
 
+/* 拓扑脉冲光点 */
+.pulse-dot {
+    z-index: 10;
+    box-shadow: 0 0 6px currentColor;
+}
+
 /* 拓扑详情浮层 */
 .topo-detail {
     backdrop-filter: blur(35px);
