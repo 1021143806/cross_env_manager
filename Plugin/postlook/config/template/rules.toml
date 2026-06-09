@@ -135,6 +135,28 @@ color = "#f472b6"
 annotation = "【关门】"
 
 # ═════════════════════════════════════════════════════
+# 快捷查询规则（侧栏按钮）
+# ═════════════════════════════════════════════════════
+
+[[rule]]
+name = "WDCS 报文"
+type = "hex"
+match = "AB 66"
+folder = "/main/app/wdcs/logs"
+pattern = "WDCS*.log"
+color = "#06b6d4"
+desc = "WDCS 仓库数据采集 — 电梯485报文"
+
+[[rule]]
+name = "WDCS 错误"
+type = "keyword"
+match = "ERROR|Exception"
+folder = "/main/app/wdcs/logs"
+pattern = "WDCS*.log"
+color = "#ef4444"
+desc = "WDCS 异常日志"
+
+# ═════════════════════════════════════════════════════
 # 日志级别着色（全局生效，不限定文件）
 # ═════════════════════════════════════════════════════
 
