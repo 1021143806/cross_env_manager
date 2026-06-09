@@ -124,12 +124,14 @@ class ThemeManager {
 document.addEventListener('DOMContentLoaded', () => {
     window.themeManager = new ThemeManager();
     
+    // 全局主题切换函数（供 HTML onclick / inline script 使用）
+    window.toggleTheme = () => {
+        if (window.themeManager) window.themeManager.toggleTheme();
+    };
+    
     // 监听主题变化事件
     document.addEventListener('themeChanged', (event) => {
-        console.log(`主题已切换为: ${event.detail.theme}`);
-        
-        // 这里可以添加其他需要在主题变化时执行的逻辑
-        // 例如：更新图表颜色、调整组件样式等
+        // console.log(`主题已切换为: ${event.detail.theme}`);
     });
 });
 

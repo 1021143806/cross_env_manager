@@ -2,6 +2,7 @@
 config/*.toml
 config/old/*
 config/env.toml
+config/backups/*
 
 # 测试文件（压力测试脚本除外）
 test/*

@@ -1,0 +1,71 @@
+{
+  "areas": {
+    "111": {
+      "tasks": {
+        "12323": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "23232",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": [],
+          "capacity": 123
+        }
+      }
+    },
+    "A1-1 PCBA": {
+      "tasks": {
+        "回空A1pcba1F去A2华昱欣3F": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "HJBY_31A1DZ1F_to_19A2HYX3F_back",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "送满A1pcba1F去A2华昱欣3F": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "HJBY_31A1DZ1F_to_19A2HYX3F_go",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A1-2 电装工厂": {
+      "tasks": {
+        "314空车A1电装2F去A2华消1F": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_31A1DZ1F_to_19A2HX1F_go",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A2-2 存储备料": {
+      "tasks": {
+        "上架任务": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "capacity": 10,
+          "code": "shangjiafangxia",
+          "requires_shelf": true,
+          "requires_task_path": true,
+          "task_path_options": [
+            {
+              "label": "（33254836）",
+              "value": "33254836"
+            },
+            {
+              "label": "（33254835）",
+              "value": "33254835"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "general": {
+    "footer_text": "任务下发系统 © 2025 | 运营 AGV 组提供技术支持",
+    "title": "AGV 跨环境任务下发系统 v1.5.1.4"
+  },
+  "_version": 2
+}

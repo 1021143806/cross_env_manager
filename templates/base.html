@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-bs-theme="dark">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,21 +7,52 @@
     <link rel="icon" type="image/png" href="/static/img/agv/favicon.png?v=1">
     {% endblock %}
     <title>{% block title %}跨环境任务管理系统{% endblock %}</title>
+
+    {# Bootstrap 5.3 + Icons + AdminLTE 4 #}
     <link href="/static/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/static/vendor/bootstrap-icons/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/static/vendor/adminlte/adminlte.min.css">
     <link rel="stylesheet" href="/static/vendor/animate.css/animate.min.css">
+
+    {# 同步脚本：在浏览器绘制前确定模块 + 主题，防止闪烁 #}
+    <script>
+        (function(){
+            // --- 模块 ---
+            var path = window.location.pathname;
+            var mod = 'config';
+            if (path.indexOf('/dispatch') === 0) mod = 'dispatch';
+            else if (path.indexOf('/addtask') === 0) mod = 'task';
+            else if (path.indexOf('/query') === 0) mod = 'query';
+            else if (path.indexOf('/monitor') === 0 || path.indexOf('/stats') === 0 ||
+                     path.indexOf('/platform-switch') === 0 || path.indexOf('/docs') === 0 ||
+                     path.indexOf('/system/config') === 0 || path.indexOf('/config-editor') === 0) mod = 'system';
+            document.documentElement.setAttribute('data-module', mod);
+
+            // --- 主题（从 localStorage 读取，默认 dark）---
+            var saved = localStorage.getItem('theme');
+            document.documentElement.setAttribute('data-bs-theme', saved || 'dark');
+        })();
+    </script>
+    {# 同步 CSS：仅显示当前模块的侧边栏，其余隐藏 #}
     <style>
-        /***** 主题 CSS 变量 *****/
+        [data-sidebar-module] { display: none !important; }
+        html[data-module="config"]  [data-sidebar-module="config"]  { display: flex !important; }
+        html[data-module="dispatch"] [data-sidebar-module="dispatch"] { display: flex !important; }
+        html[data-module="task"]    [data-sidebar-module="task"]    { display: flex !important; }
+        html[data-module="query"]   [data-sidebar-module="query"]   { display: flex !important; }
+        html[data-module="system"]  [data-sidebar-module="system"]  { display: flex !important; }
+    </style>
+
+    <style>
+        /***** 主题 CSS 变量（保持与 theme-manager.js 兼容） *****/
         :root {
-            --sidebar-width: 230px;
-            --topbar-height: 52px;
+            --sidebar-width: 250px;
             --transition-speed: 0.25s;
         }
 
         [data-bs-theme="light"] {
             --bg-root: #f0f2f5;
             --bg-sidebar: #ffffff;
-            --bg-topbar: #ffffff;
             --bg-card: #ffffff;
             --bg-card-hover: #f8f9fa;
             --bg-secondary: #e9ecef;
@@ -34,9 +65,6 @@
             --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
             --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
             --shadow-lg: 0 8px 32px rgba(0,0,0,0.1);
-            --glass-bg: rgba(255,255,255,0.72);
-            --glass-border: rgba(0,0,0,0.06);
-            --glass-blur: blur(16px);
             --accent: #6366f1;
             --accent-light: #eef2ff;
             --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
@@ -45,6 +73,7 @@
             --sidebar-hover-bg: #f3f4f6;
             --topbar-tab-active-color: #4f46e5;
             --topbar-tab-active-bg: #eef2ff;
+            --sidebar-brand-bg: #ffffff;
             /* 兼容旧模板变量 */
             --bg-color: #f0f2f5;
             --card-bg: #ffffff;
@@ -65,7 +94,6 @@
         [data-bs-theme="dark"] {
             --bg-root: #0f1117;
             --bg-sidebar: #161822;
-            --bg-topbar: #161822;
             --bg-card: #1a1d2e;
             --bg-card-hover: #1f2335;
             --bg-secondary: #2a2d3a;
@@ -78,9 +106,6 @@
             --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
             --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
             --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
-            --glass-bg: rgba(22,24,34,0.82);
-            --glass-border: rgba(255,255,255,0.06);
-            --glass-blur: blur(20px);
             --accent: #818cf8;
             --accent-light: rgba(99,102,241,0.15);
             --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
@@ -89,6 +114,7 @@
             --sidebar-hover-bg: rgba(255,255,255,0.04);
             --topbar-tab-active-color: #a5b4fc;
             --topbar-tab-active-bg: rgba(99,102,241,0.15);
+            --sidebar-brand-bg: #161822;
             /* 兼容旧模板变量 */
             --bg-color: #0f1117;
             --card-bg: #1a1d2e;
@@ -119,193 +145,210 @@
             transition: background-color var(--transition-speed), color var(--transition-speed);
         }
 
-        /***** Alert 容器（兼容旧模板 flash 消息） *****/
+        /***** Alert 容器 *****/
         .alert-container {
             position: fixed; top: 70px; right: 20px; z-index: 1050; max-width: 400px;
         }
 
-        /***** ========== 顶部模块切换栏 ========== *****/
-        .topbar {
-            position: fixed; top: 0; left: 0; right: 0;
-            height: var(--topbar-height);
-            background: var(--glass-bg);
-            backdrop-filter: var(--glass-blur);
-            -webkit-backdrop-filter: var(--glass-blur);
-            border-bottom: 1px solid var(--glass-border);
-            z-index: 1000;
-            display: flex; align-items: center;
-            padding: 0 16px; gap: 0;
-            box-shadow: var(--shadow-sm);
+        /***** AdminLTE 4 覆盖/微调 *****/
+        .app-wrapper {
+            background: var(--bg-root) !important;
         }
 
-        .topbar-brand {
-            display: flex; align-items: center; gap: 10px;
-            padding-right: 20px; margin-right: 6px;
-            border-right: 1px solid var(--border-color);
-            white-space: nowrap; flex-shrink: 0;
+        /* 顶栏微调 */
+        .app-header {
+            background: var(--bg-topbar, var(--bg-sidebar)) !important;
+            border-bottom: 1px solid var(--border-color) !important;
         }
 
-        .topbar-brand .logo-icon {
-            width: 34px; height: 34px; border-radius: 9px;
-            background: var(--accent-gradient);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 17px; color: #fff;
+        .app-header .navbar-nav .nav-link {
+            color: var(--text-secondary);
+        }
+        .app-header .navbar-nav .nav-link:hover {
+            color: var(--text-primary);
         }
 
-        .topbar-brand .brand-text {
-            font-weight: 700; font-size: 14px; color: var(--text-primary); letter-spacing: -0.3px;
-        }
-        .topbar-brand .brand-version {
-            font-size: 10px; color: var(--text-muted); font-weight: 500;
+        /* 侧边栏微调 */
+        .app-sidebar {
+            background: var(--bg-sidebar) !important;
+            border-right: 1px solid var(--border-color) !important;
         }
 
-        .topbar-tabs {
-            display: flex; align-items: center; gap: 3px;
-            height: 100%; flex: 1; overflow-x: auto;
-            scrollbar-width: none; -ms-overflow-style: none;
+        .sidebar-brand {
+            background: var(--sidebar-brand-bg) !important;
+            border-bottom: 1px solid var(--border-color) !important;
         }
-        .topbar-tabs::-webkit-scrollbar { display: none; }
+        .sidebar-brand .brand-link {
+            color: var(--text-primary) !important;
+        }
 
-        .topbar-tab {
-            display: flex; align-items: center; gap: 7px;
-            padding: 7px 16px; height: 37px; border-radius: 9px;
-            font-size: 13px; font-weight: 600; white-space: nowrap;
+        .sidebar-wrapper {
+            background: var(--bg-sidebar) !important;
+        }
+
+        /* 侧边栏菜单 */
+        .sidebar-menu .nav-item {
+            margin: 1px 6px;
+        }
+        .sidebar-menu .nav-link {
+            color: var(--text-secondary) !important;
+            border-radius: 8px !important;
+            padding: 8px 12px !important;
+            font-size: 13px !important;
+            font-weight: 500 !important;
+            transition: all 0.15s ease !important;
+        }
+        .sidebar-menu .nav-link:hover {
+            background: var(--sidebar-hover-bg) !important;
+            color: var(--text-primary) !important;
+        }
+        .sidebar-menu .nav-link.active {
+            background: var(--sidebar-active-bg) !important;
+            color: var(--sidebar-active-text) !important;
+            font-weight: 600 !important;
+            box-shadow: inset 3px 0 0 var(--accent) !important;
+        }
+        .sidebar-menu .nav-link .nav-icon {
+            font-size: 15px !important;
+            margin-right: 6px !important;
+            opacity: 0.75;
+        }
+        .sidebar-menu .nav-link.active .nav-icon {
+            opacity: 1;
+        }
+
+        .sidebar-menu .nav-header {
+            color: var(--text-muted) !important;
+            font-size: 10.5px !important;
+            font-weight: 700 !important;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            padding: 6px 12px 4px !important;
+            margin-top: 8px;
+        }
+
+        /* 主内容区微调 */
+        .app-main {
+            background: var(--bg-root) !important;
+        }
+        .app-content-header {
+            background: transparent !important;
+            border-bottom: 1px solid var(--border-color) !important;
+        }
+        .app-content {
+            background: var(--bg-root) !important;
+            min-height: calc(100vh - 120px);
+            padding: 20px 24px;
+        }
+
+        /* 页脚 */
+        .app-footer {
+            background: var(--bg-sidebar) !important;
+            color: var(--text-muted) !important;
+            border-top: 1px solid var(--border-color) !important;
+            font-size: 12px !important;
+            padding: 12px 0 !important;
+            text-align: center !important;
+        }
+
+        /***** 模块切换 Tab（在顶栏内） *****/
+        .module-tabs {
+            display: flex; align-items: center; gap: 2px;
+            margin-left: 4px;
+        }
+        .module-tab {
+            display: flex; align-items: center; gap: 6px;
+            padding: 6px 14px; height: 34px; border-radius: 8px;
+            font-size: 12.5px; font-weight: 600; white-space: nowrap;
             cursor: pointer; transition: all 0.2s ease;
             color: var(--text-secondary); background: transparent;
             border: none; text-decoration: none;
-            letter-spacing: 0.1px; user-select: none;
+            letter-spacing: 0.1px;
         }
-        .topbar-tab:hover {
+        .module-tab:hover {
             color: var(--text-primary);
             background: var(--sidebar-hover-bg);
         }
-        .topbar-tab.active {
+        .module-tab.active {
             color: var(--topbar-tab-active-color);
             background: var(--topbar-tab-active-bg);
-            box-shadow: 0 0 0 1px rgba(99,102,241,0.2);
         }
-        .topbar-tab i { font-size: 16px; opacity: 0.85; }
+        .module-tab i { font-size: 15px; opacity: 0.85; }
 
-        .topbar-actions {
-            display: flex; align-items: center; gap: 6px;
-            flex-shrink: 0; margin-left: auto;
-            padding-left: 14px; border-left: 1px solid var(--border-color);
-        }
-
-        .topbar-actions .btn-icon {
-            width: 34px; height: 34px; border-radius: 9px;
-            display: flex; align-items: center; justify-content: center;
-            background: transparent; border: none;
-            color: var(--text-secondary); cursor: pointer;
-            transition: all 0.2s; font-size: 15px;
-        }
-        .topbar-actions .btn-icon:hover {
-            background: var(--sidebar-hover-bg); color: var(--text-primary);
-        }
-
-        .topbar-user {
-            display: flex; align-items: center; gap: 7px;
-            padding: 4px 10px; border-radius: 9px;
-            cursor: default; font-size: 12.5px; color: var(--text-secondary);
-        }
-        .topbar-user .avatar {
-            width: 26px; height: 26px; border-radius: 7px;
-            background: var(--accent-gradient);
-            display: flex; align-items: center; justify-content: center;
-            color: #fff; font-size: 11px; font-weight: 700;
-        }
-        .topbar-admin-badge {
-            font-size: 10px; padding: 2px 6px; border-radius: 4px;
-            background: rgba(245,158,11,0.2); color: #fbbf24; font-weight: 600;
-        }
-
-        .mobile-menu-btn { display: none !important; }
-        @media (max-width: 768px) {
-            .mobile-menu-btn { display: flex !important; }
-            .topbar-tab span { display: none; }
-            .topbar-tab { padding: 7px 10px; }
-            .topbar-brand .brand-text { display: none; }
-        }
-
-        /***** ========== 布局容器 ========== *****/
-        .app-layout {
-            display: flex; padding-top: var(--topbar-height); min-height: 100vh;
-        }
-
-        /***** ========== 左侧功能栏 ========== *****/
-        .sidebar {
-            width: var(--sidebar-width);
-            background: var(--glass-bg);
-            backdrop-filter: var(--glass-blur);
-            -webkit-backdrop-filter: var(--glass-blur);
-            border-right: 1px solid var(--glass-border);
-            position: fixed; top: var(--topbar-height); left: 0; bottom: 0;
-            z-index: 999; display: flex; flex-direction: column;
-            overflow-y: auto; padding: 14px 10px;
-            transition: transform 0.3s ease;
-        }
-
-        .sidebar-section { margin-bottom: 16px; }
-        .sidebar-section-title {
-            font-size: 10.5px; font-weight: 700; text-transform: uppercase;
-            letter-spacing: 1.2px; color: var(--text-muted);
-            padding: 0 10px; margin-bottom: 6px;
-        }
-
-        .sidebar-nav { list-style: none; padding: 0; margin: 0; }
-        .sidebar-nav li { margin-bottom: 1px; }
-        .sidebar-nav a {
-            display: flex; align-items: center; gap: 9px;
-            padding: 9px 10px; border-radius: 8px;
-            font-size: 13px; font-weight: 500;
-            color: var(--text-secondary); text-decoration: none;
-            transition: all 0.15s ease; cursor: pointer;
-        }
-        .sidebar-nav a:hover {
-            background: var(--sidebar-hover-bg); color: var(--text-primary);
-        }
-        .sidebar-nav a.active {
-            background: var(--sidebar-active-bg); color: var(--sidebar-active-text);
-            font-weight: 600; box-shadow: inset 3px 0 0 var(--accent);
-        }
-        .sidebar-nav a i { font-size: 15px; width: 18px; text-align: center; opacity: 0.75; }
-        .sidebar-nav a.active i { opacity: 1; }
-
-        .sidebar-nav .badge-count {
-            margin-left: auto; font-size: 10.5px; padding: 2px 7px;
-            border-radius: 20px; background: var(--accent-light); color: var(--accent);
+        /* 侧边栏徽章 */
+        .badge-count {
+            margin-left: auto;
+            font-size: 10.5px; padding: 2px 7px;
+            border-radius: 20px;
+            background: var(--accent-light);
+            color: var(--accent);
             font-weight: 600;
+            line-height: 1.2;
         }
 
-        .sidebar-divider {
-            height: 1px; background: var(--border-color); margin: 10px 10px;
+        /***** 兼容旧模板的常用样式 *****/
+        .form-control, .form-select {
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-card);
+            color: var(--text-primary);
+            transition: all 0.3s;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+            background-color: var(--bg-card);
+            color: var(--text-primary);
         }
 
-        /***** 移动端侧栏 *****/
-        .sidebar-overlay {
-            display: none; position: fixed; inset: 0;
-            background: rgba(0,0,0,0.5); z-index: 998;
-        }
-        .sidebar-overlay.active { display: block; }
-
-        @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%);
-                box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-            }
-            .sidebar.mobile-open { transform: translateX(0); }
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            box-shadow: var(--shadow-sm);
         }
 
-        /***** ========== 主内容区 ========== *****/
-        .main-content {
-            flex: 1; margin-left: var(--sidebar-width);
-            padding: 24px 28px; min-height: calc(100vh - var(--topbar-height));
+        .panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
         }
-        @media (max-width: 768px) {
-            .main-content { margin-left: 0; padding: 14px; }
+        .panel-header {
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
+        .panel-title {
+            font-size: 14px; font-weight: 700; color: var(--text-primary);
+            display: flex; align-items: center; gap: 7px;
+        }
+        .panel-title i { color: var(--accent); font-size: 15px; }
+        .panel-body { padding: 18px; }
 
-        /***** ========== 仪表盘组件(首页用) ========== *****/
+        .table-modern {
+            width: 100%; border-collapse: collapse; font-size: 12.5px;
+            --bs-table-color: var(--text-primary);
+            --bs-table-bg: transparent;
+            --bs-table-border-color: var(--border-color);
+            --bs-table-hover-bg: var(--bg-card-hover);
+            color: var(--text-primary);
+        }
+        .table-modern th {
+            text-align: left; padding: 9px 14px; font-weight: 600;
+            font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.7px;
+            color: var(--text-muted); background: var(--bg-card-hover);
+            border-bottom: 1px solid var(--border-color);
+        }
+        .table-modern td {
+            padding: 11px 14px; border-bottom: 1px solid var(--border-light);
+            color: var(--text-primary);
+        }
+        .table-modern tr:hover td { background: var(--bg-card-hover); }
+
         .dashboard-header { margin-bottom: 24px; }
         .dashboard-header h1 {
             font-size: 24px; font-weight: 700; letter-spacing: -0.5px;
@@ -348,117 +391,7 @@
         .stat-info { flex: 1; min-width: 0; }
         .stat-value { font-size: 26px; font-weight: 800; line-height: 1; letter-spacing: -1px; color: var(--text-primary); }
         .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 3px; font-weight: 500; }
-        .stat-change { font-size: 11px; font-weight: 600; margin-top: 2px; }
-        .stat-change.up { color: #10b981; }
-        .stat-change.down { color: #ef4444; }
 
-        .search-card {
-            background: var(--accent-gradient); border-radius: 16px;
-            padding: 24px 28px; margin-bottom: 24px;
-            box-shadow: 0 8px 32px rgba(99,102,241,0.25);
-        }
-        .search-card h3 { color: #fff; font-size: 17px; font-weight: 700; margin-bottom: 4px; }
-        .search-card p { color: rgba(255,255,255,0.75); font-size: 12.5px; margin-bottom: 14px; }
-        .search-card .form-control {
-            border-radius: 10px 0 0 10px; border: 2px solid transparent;
-            padding: 11px 16px; font-size: 13.5px;
-            background: rgba(255,255,255,0.95); color: #1a1a2e;
-        }
-        .search-card .form-control:focus {
-            border-color: rgba(255,255,255,0.5);
-            box-shadow: 0 0 0 4px rgba(255,255,255,0.15); background: #fff;
-        }
-        .search-card .btn-search {
-            border-radius: 0 10px 10px 0; padding: 11px 22px; font-weight: 600;
-            background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.3);
-            color: #fff; backdrop-filter: blur(8px);
-        }
-        .search-card .btn-search:hover { background: rgba(255,255,255,0.35); }
-
-        .quick-actions {
-            display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;
-        }
-        .quick-action-chip {
-            padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 500;
-            cursor: pointer; background: rgba(255,255,255,0.15);
-            color: rgba(255,255,255,0.9); border: 1px solid rgba(255,255,255,0.2);
-            transition: all 0.2s; text-decoration: none;
-        }
-        .quick-action-chip:hover { background: rgba(255,255,255,0.25); color: #fff; }
-
-        .content-grid {
-            display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px;
-        }
-        @media (max-width: 1100px) { .content-grid { grid-template-columns: 1fr; } }
-
-        .panel {
-            background: var(--bg-card); border: 1px solid var(--border-color);
-            border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-sm);
-        }
-        .panel-header {
-            padding: 14px 18px; border-bottom: 1px solid var(--border-color);
-            display: flex; align-items: center; justify-content: space-between;
-        }
-        .panel-title {
-            font-size: 14px; font-weight: 700; color: var(--text-primary);
-            display: flex; align-items: center; gap: 7px;
-        }
-        .panel-title i { color: var(--accent); font-size: 15px; }
-        .panel-body { padding: 18px; }
-        .panel-body.no-padding { padding: 0; }
-
-        /***** ========== 表格 ========== *****/
-        .table-modern {
-            width: 100%; border-collapse: collapse; font-size: 12.5px;
-            --bs-table-color: var(--text-primary);
-            --bs-table-bg: transparent;
-            --bs-table-border-color: var(--border-color);
-            --bs-table-hover-bg: var(--bg-card-hover);
-            color: var(--text-primary);
-        }
-        .table-modern th {
-            text-align: left; padding: 9px 14px; font-weight: 600;
-            font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.7px;
-            color: var(--text-muted); background: var(--bg-card-hover);
-            border-bottom: 1px solid var(--border-color);
-        }
-        .table-modern td {
-            padding: 11px 14px; border-bottom: 1px solid var(--border-light);
-            color: var(--text-primary);
-        }
-        .table-modern tr:hover td { background: var(--bg-card-hover); }
-        .table-modern .code-cell {
-            font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11.5px;
-            color: var(--accent); font-weight: 600;
-        }
-
-        .badge-status {
-            font-size: 10.5px; padding: 3px 9px; border-radius: 20px; font-weight: 600;
-        }
-        .badge-enabled { background: rgba(16,185,129,0.15); color: #34d399; }
-        .badge-disabled { background: rgba(239,68,68,0.12); color: #f87171; }
-
-        /***** ========== Bootstrap 暗色兼容 ========== *****/
-        [data-bs-theme="dark"] .text-muted {
-            color: #94a3b8 !important;
-            opacity: 0.85;
-        }
-        [data-bs-theme="dark"] .table {
-            --bs-table-color: var(--text-primary);
-            --bs-table-bg: transparent;
-            --bs-table-border-color: var(--border-color);
-            --bs-table-hover-bg: var(--bg-card-hover);
-            --bs-table-striped-color: var(--text-primary);
-        }
-        [data-bs-theme="light"] .text-muted {
-            color: #6b7280 !important;
-        }
-        [data-bs-theme="light"] .table {
-            --bs-table-color: var(--text-primary);
-            --bs-table-bg: transparent;
-        }
-
-        /***** ========== 服务器列表 ========== *****/
         .server-list { display: flex; flex-direction: column; gap: 7px; }
         .server-item {
             display: flex; align-items: center; gap: 11px;
@@ -477,207 +410,190 @@
         .server-meta { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
         .server-count { font-size: 12.5px; font-weight: 700; color: var(--accent); white-space: nowrap; }
 
-        /***** ========== 兼容旧模板的样式 ========== *****/
-        .form-control, .form-select {
-            border-radius: 8px; border: 1px solid var(--border-color);
-            background-color: var(--bg-card); color: var(--text-primary);
-            transition: all 0.3s;
+        .quick-actions {
+            display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;
         }
-        .form-control:focus, .form-select:focus {
-            border-color: #0d6efd;
-            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
-            background-color: var(--bg-card); color: var(--text-primary);
+        .quick-action-chip {
+            padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 500;
+            cursor: pointer; background: rgba(255,255,255,0.15);
+            color: rgba(255,255,255,0.9); border: 1px solid rgba(255,255,255,0.2);
+            transition: all 0.2s; text-decoration: none;
         }
+        .quick-action-chip:hover { background: rgba(255,255,255,0.25); color: #fff; }
 
-        .card {
-            background: var(--bg-card); border: 1px solid var(--border-color);
-            border-radius: 14px; box-shadow: var(--shadow-sm);
+        .badge-status {
+            font-size: 10.5px; padding: 3px 9px; border-radius: 20px; font-weight: 600;
         }
+        .badge-enabled { background: rgba(16,185,129,0.15); color: #34d399; }
+        .badge-disabled { background: rgba(239,68,68,0.12); color: #f87171; }
 
-        /***** ========== 动画 ========== *****/
         @keyframes fadeInUp {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
         .animate-in { animation: fadeInUp 0.35s ease forwards; }
-        .delay-1 { animation-delay: 0.05s; opacity: 0; }
-        .delay-2 { animation-delay: 0.1s; opacity: 0; }
-        .delay-3 { animation-delay: 0.15s; opacity: 0; }
-        .delay-4 { animation-delay: 0.2s; opacity: 0; }
-        .delay-5 { animation-delay: 0.25s; opacity: 0; }
-        .delay-6 { animation-delay: 0.3s; opacity: 0; }
+        .delay-1 { animation-delay: 0.05s; }
+        .delay-2 { animation-delay: 0.1s; }
+        .delay-3 { animation-delay: 0.15s; }
+        .delay-4 { animation-delay: 0.2s; }
+        .delay-5 { animation-delay: 0.25s; }
+        .delay-6 { animation-delay: 0.3s; }
 
-        /***** ========== 页脚 ========== *****/
-        .app-footer {
-            text-align: center; padding: 18px 0; color: var(--text-muted); font-size: 11.5px;
-            margin-top: auto;
-        }
-
-        /***** ========== 全宽模式（无侧栏页面） ========== *****/
-        .main-content.full-width { margin-left: 0; }
-
-        /***** 兼容旧版按钮样式 *****/
-        .btn-action {
-            margin-right: 8px; margin-bottom: 8px;
-            border-radius: 8px; padding: 0.5rem 1rem; font-weight: 500;
+        /* 全宽模式（无侧栏页面） */
+        .app-main.full-width .app-content {
+            max-width: none !important;
         }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
-<body>
+<body class="sidebar-expand-lg sidebar-mini bg-body-tertiary">
 
-    <!-- ==================== 顶部模块切换栏 ==================== -->
-    <header class="topbar">
-        <div class="topbar-brand">
-            <div class="logo-icon">⚙</div>
-            <div>
-                <div class="brand-text">CEM</div>
-                <div class="brand-version">v{{ app_version }}</div>
+<div class="app-wrapper">
+
+    <!-- ==================== 顶栏 ==================== -->
+    <nav class="app-header navbar navbar-expand bg-body" data-bs-theme="auto">
+        <div class="container-fluid">
+            <!-- 左侧：汉堡菜单 + 模块切换 Tab -->
+            <ul class="navbar-nav">
+                <li class="nav-item">
+                    <a class="nav-link" data-lte-toggle="sidebar" href="#" role="button">
+                        <i class="bi bi-list"></i>
+                    </a>
+                </li>
+            </ul>
+
+            <div class="module-tabs" id="topbarTabs">
+                <a class="module-tab" data-module="config" href="/">
+                    <i class="bi bi-diagram-3"></i><span>跨环境配置</span>
+                </a>
+                <a class="module-tab" data-module="dispatch" href="/dispatch">
+                    <i class="bi bi-truck"></i><span>调车调度</span>
+                </a>
+                <a class="module-tab" data-module="task" href="/addtask">
+                    <i class="bi bi-send"></i><span>任务下发</span>
+                </a>
+                <a class="module-tab" data-module="query" href="/query">
+                    <i class="bi bi-search"></i><span>任务查询</span>
+                </a>
+                <a class="module-tab" data-module="system" href="/monitor">
+                    <i class="bi bi-gear"></i><span>系统管理</span>
+                </a>
             </div>
+
+            <!-- 右侧：用户信息等 -->
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item">
+                    <button id="themeToggleNav" class="nav-link btn btn-link border-0" title="切换主题">
+                        <i class="bi bi-moon-stars"></i>
+                    </button>
+                </li>
+                <li class="nav-item" id="navUserInfo" style="display:none;">
+                    <a class="nav-link" href="#">
+                        <span id="navAvatar" class="badge bg-primary rounded-pill">A</span>
+                        <span id="navUsername" class="d-none d-md-inline ms-1">admin</span>
+                        <span id="navAdminBadge" class="badge bg-warning text-dark ms-1" style="display:none;font-size:10px;">管理</span>
+                    </a>
+                </li>
+                <li class="nav-item" id="navLogoutBtn" style="display:none;">
+                    <button class="nav-link btn btn-link border-0" title="注销">
+                        <i class="bi bi-box-arrow-right"></i>
+                    </button>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- ==================== 侧边栏 ==================== -->
+    <aside class="app-sidebar bg-body" data-bs-theme="auto">
+
+        <!-- 侧边栏头部 -->
+        <div class="sidebar-brand">
+            <a href="/" class="brand-link">
+                <span class="brand-text fw-bold" style="font-size:16px;">⚙ CEM</span>
+                <span class="fw-light" style="font-size:12px;">v{{ app_version }}</span>
+            </a>
         </div>
 
-        <nav class="topbar-tabs" id="topbarTabs">
-            <a class="topbar-tab" data-module="config" href="/">
-                <i class="bi bi-diagram-3"></i><span>跨环境配置</span>
-            </a>
-            <a class="topbar-tab" data-module="dispatch" href="/dispatch">
-                <i class="bi bi-truck"></i><span>调车调度</span>
-            </a>
-            <a class="topbar-tab" data-module="task" href="/addtask">
-                <i class="bi bi-send"></i><span>任务下发</span>
-            </a>
-            <a class="topbar-tab" data-module="query" href="/query">
-                <i class="bi bi-search"></i><span>任务查询</span>
-            </a>
-            <a class="topbar-tab" data-module="system" href="/monitor">
-                <i class="bi bi-gear"></i><span>系统管理</span>
-            </a>
-        </nav>
+        <!-- 侧边栏菜单 -->
+        <div class="sidebar-wrapper">
+            <nav class="mt-2">
 
-        <div class="topbar-actions">
-            <button class="btn-icon mobile-menu-btn" id="mobileMenuBtn" title="菜单">
-                <i class="bi bi-list"></i>
-            </button>
-            <button id="themeToggleNav" class="btn-icon" title="切换主题">
-                <i class="bi bi-moon-stars"></i>
-            </button>
-            <span id="navUserInfo" class="topbar-user" style="display:none;">
-                <div class="avatar" id="navAvatar">A</div>
-                <span id="navUsername">admin</span>
-                <span id="navAdminBadge" class="topbar-admin-badge" style="display:none;">管理</span>
-            </span>
-            <button id="navLogoutBtn" class="btn-icon" style="display:none;" title="注销">
-                <i class="bi bi-box-arrow-right"></i>
-            </button>
+                <!-- ===== 跨环境配置 ===== -->
+                <ul class="nav sidebar-menu flex-column" data-sidebar-module="config" data-lte-toggle="treeview">
+                    <li class="nav-header">配置管理</li>
+                    <li class="nav-item"><a href="/" class="nav-link" data-nav="home"><i class="nav-icon bi bi-grid-1x2"></i><p>配置总览</p></a></li>
+                    <li class="nav-item"><a href="/search" class="nav-link" data-nav="search"><i class="nav-icon bi bi-search"></i><p>模板搜索</p></a></li>
+                    <li class="nav-item"><a href="/pair/list" class="nav-link" data-nav="join-qr"><i class="nav-icon bi bi-signpost"></i><p>交接点配置</p></a></li>
+                    <li class="nav-item"><a href="/template/device-sync" class="nav-link" data-nav="device-sync"><i class="nav-icon bi bi-arrow-left-right"></i><p>设备同步</p></a></li>
+                    <li class="nav-item"><a href="/custom_table" class="nav-link" data-nav="custom-table"><i class="nav-icon bi bi-table"></i><p>定制表编辑</p></a></li>
+
+                    <li class="nav-header">帮助</li>
+                    <li class="nav-item"><a href="/docs/module/template" class="nav-link" data-nav="help"><i class="nav-icon bi bi-question-circle"></i><p>配置帮助</p></a></li>
+                </ul>
+
+                <!-- ===== 调车调度 ===== -->
+                <ul class="nav sidebar-menu flex-column" data-sidebar-module="dispatch" data-lte-toggle="treeview">
+                    <li class="nav-header">调车控制</li>
+                    <li class="nav-item"><a href="/dispatch" class="nav-link" data-nav="dispatch-dashboard"><i class="nav-icon bi bi-speedometer2"></i><p>调车看板</p></a></li>
+                    <li class="nav-item"><a href="/dispatch/config" class="nav-link" data-nav="dispatch-config"><i class="nav-icon bi bi-sliders"></i><p>调车配置</p></a></li>
+                    <li class="nav-item"><a href="/dispatch/test" class="nav-link" data-nav="dispatch-test"><i class="nav-icon bi bi-joystick"></i><p>自动驾驶测试</p></a></li>
+
+                    <li class="nav-header">区域总览 <span style="font-size:10px;font-weight:400;" id="areaRefreshHint"></span></li>
+                    <div id="dispatchAreaList" style="padding:0 6px;">
+                        <li class="nav-item"><a class="nav-link disabled" style="font-style:italic;"><p>加载中...</p></a></li>
+                    </div>
+
+                    <li class="nav-header">快捷操作</li>
+                    <li class="nav-item" id="dispatchQuickActions">
+                        <a href="#" class="nav-link" data-action="self-heal-check"><i class="nav-icon bi bi-arrow-repeat"></i><p>全量自愈检查</p></a>
+                        <a href="#" class="nav-link" data-action="cancel-all-empty"><i class="nav-icon bi bi-x-circle"></i><p>取消全部空车</p></a>
+                        <a href="/api/dispatch/logs" class="nav-link" data-action="logs"><i class="nav-icon bi bi-journal-text"></i><p>操作日志</p></a>
+                    </li>
+
+                    <li class="nav-header">帮助</li>
+                    <li class="nav-item"><a href="/docs/module/dispatch" class="nav-link" data-nav="help"><i class="nav-icon bi bi-question-circle"></i><p>调车帮助</p></a></li>
+                </ul>
+
+                <!-- ===== 任务下发 ===== -->
+                <ul class="nav sidebar-menu flex-column" data-sidebar-module="task" data-lte-toggle="treeview">
+                    <li class="nav-header">任务操作</li>
+                    <li class="nav-item"><a href="/addtask" class="nav-link" data-nav="addtask"><i class="nav-icon bi bi-send-check"></i><p>任务下发</p></a></li>
+
+                    <li class="nav-header">配置</li>
+                    <li class="nav-item"><a href="/addtask#config" class="nav-link" data-nav="addtask-config"><i class="nav-icon bi bi-sliders"></i><p>下发配置</p></a></li>
+
+                    <li class="nav-header">帮助</li>
+                    <li class="nav-item"><a href="/addtask/help" class="nav-link" data-nav="help"><i class="nav-icon bi bi-question-circle"></i><p>下发帮助</p></a></li>
+                </ul>
+
+                <!-- ===== 任务查询 ===== -->
+                <ul class="nav sidebar-menu flex-column" data-sidebar-module="query" data-lte-toggle="treeview">
+                    <li class="nav-header">查询功能</li>
+                    <li class="nav-item"><a href="/query" class="nav-link" data-nav="query-home"><i class="nav-icon bi bi-search"></i><p>统一查询</p></a></li>
+
+                    <li class="nav-header">帮助</li>
+                    <li class="nav-item"><a href="/query/help" class="nav-link" data-nav="help"><i class="nav-icon bi bi-question-circle"></i><p>查询帮助</p></a></li>
+                </ul>
+
+                <!-- ===== 系统管理 ===== -->
+                <ul class="nav sidebar-menu flex-column" data-sidebar-module="system" data-lte-toggle="treeview">
+                    <li class="nav-header">系统</li>
+                    <li class="nav-item"><a href="/system/config" class="nav-link" data-nav="system-config"><i class="nav-icon bi bi-gear-wide-connected"></i><p>系统配置</p></a></li>
+                    <li class="nav-item"><a href="/monitor" class="nav-link" data-nav="monitor"><i class="nav-icon bi bi-activity"></i><p>系统监控</p></a></li>
+                    <li class="nav-item"><a href="/stats" class="nav-link" data-nav="stats"><i class="nav-icon bi bi-graph-up"></i><p>数据统计</p></a></li>
+                    <li class="nav-item"><a href="/platform-switch" class="nav-link" data-nav="platform-switch"><i class="nav-icon bi bi-hdd-network"></i><p>平台切换</p></a></li>
+
+                    <li class="nav-header">其他</li>
+                    <li class="nav-item"><a href="/docs" class="nav-link" data-nav="docs"><i class="nav-icon bi bi-journal-text"></i><p>文档中心</p></a></li>
+                </ul>
+
+            </nav>
         </div>
-    </header>
+    </aside>
 
-    <!-- 移动端侧栏遮罩 -->
-    <div class="sidebar-overlay" id="sidebarOverlay"></div>
-
-    <!-- ==================== 应用布局 ==================== -->
-    <div class="app-layout">
-
-        <!-- ==================== 左侧功能栏 ==================== -->
-        <aside class="sidebar" id="sidebar">
-
-            <!-- 跨环境配置 子菜单 -->
-            <div class="sidebar-section" data-sidebar-module="config">
-                <div class="sidebar-section-title">配置管理</div>
-                <ul class="sidebar-nav">
-                    <li><a href="/" data-nav="home"><i class="bi bi-grid-1x2"></i> 配置总览</a></li>
-                    <li><a href="/search" data-nav="search"><i class="bi bi-search"></i> 模板搜索</a></li>
-                    <li><a href="/pair/list" data-nav="join-qr"><i class="bi bi-signpost"></i> 交接点配置</a></li>
-                    <li><a href="/template/device-sync" data-nav="device-sync"><i class="bi bi-arrow-left-right"></i> 设备同步</a></li>
-                    <li><a href="/custom_table" data-nav="custom-table"><i class="bi bi-table"></i> 定制表编辑</a></li>
-                </ul>
-                <div class="sidebar-divider"></div>
-                <div class="sidebar-section-title">帮助</div>
-                <ul class="sidebar-nav">
-                    <li><a href="/docs/module/template" data-nav="help"><i class="bi bi-question-circle"></i> 配置帮助</a></li>
-                </ul>
-            </div>
-
-            <!-- 调车调度 子菜单 -->
-            <div class="sidebar-section" data-sidebar-module="dispatch" style="display:none;">
-                <div class="sidebar-section-title">调车控制</div>
-                <ul class="sidebar-nav">
-                    <li><a href="/dispatch" data-nav="dispatch-dashboard"><i class="bi bi-speedometer2"></i> 调车看板</a></li>
-                    <li><a href="/dispatch/config" data-nav="dispatch-config"><i class="bi bi-sliders"></i> 调车配置</a></li>
-                    <li><a href="/dispatch/test" data-nav="dispatch-test"><i class="bi bi-joystick"></i> 自动驾驶测试</a></li>
-                </ul>
-                <div class="sidebar-divider"></div>
-                <div class="sidebar-section-title">区域总览 <span style="font-size:10px;font-weight:400;" id="areaRefreshHint"></span></div>
-                <ul class="sidebar-nav" id="dispatchAreaList" style="max-height:300px;overflow-y:auto;">
-                    <li><a style="color:var(--text-muted);font-style:italic;font-size:12px;">加载中...</a></li>
-                </ul>
-                <div class="sidebar-divider"></div>
-                <div class="sidebar-section-title">快捷操作</div>
-                <ul class="sidebar-nav" id="dispatchQuickActions">
-                    <li><a href="#" data-action="self-heal-check"><i class="bi bi-arrow-repeat"></i> 全量自愈检查</a></li>
-                    <li><a href="#" data-action="cancel-all-empty"><i class="bi bi-x-circle"></i> 取消全部空车</a></li>
-                    <li><a href="/api/dispatch/logs" data-action="logs"><i class="bi bi-journal-text"></i> 操作日志</a></li>
-                </ul>
-                <div class="sidebar-divider"></div>
-                <div class="sidebar-section-title">帮助</div>
-                <ul class="sidebar-nav">
-                    <li><a href="/docs/module/dispatch" data-nav="help"><i class="bi bi-question-circle"></i> 调车帮助</a></li>
-                </ul>
-            </div>
-
-            <!-- 任务下发 子菜单 -->
-            <div class="sidebar-section" data-sidebar-module="task" style="display:none;">
-                <div class="sidebar-section-title">任务操作</div>
-                <ul class="sidebar-nav">
-                    <li><a href="/addtask" data-nav="addtask"><i class="bi bi-send-check"></i> 任务下发</a></li>
-                </ul>
-                <div class="sidebar-divider"></div>
-                <div class="sidebar-section-title">配置</div>
-                <ul class="sidebar-nav">
-                    <li><a href="/addtask#config" data-nav="addtask-config"><i class="bi bi-sliders"></i> 下发配置</a></li>
-                </ul>
-                <div class="sidebar-divider"></div>
-                <div class="sidebar-section-title">帮助</div>
-                <ul class="sidebar-nav">
-                    <li><a href="/addtask/help" data-nav="help"><i class="bi bi-question-circle"></i> 下发帮助</a></li>
-                </ul>
-            </div>
-
-            <!-- 任务查询 子菜单 -->
-            <div class="sidebar-section" data-sidebar-module="query" style="display:none;">
-                <div class="sidebar-section-title">查询功能</div>
-                <ul class="sidebar-nav">
-                    <li><a href="/query" data-nav="query-home"><i class="bi bi-search"></i> 统一查询</a></li>
-                </ul>
-                <div class="sidebar-divider"></div>
-                <div class="sidebar-section-title">帮助</div>
-                <ul class="sidebar-nav">
-                    <li><a href="/query/help" data-nav="help"><i class="bi bi-question-circle"></i> 查询帮助</a></li>
-                </ul>
-            </div>
-
-            <!-- 系统管理 子菜单 -->
-            <div class="sidebar-section" data-sidebar-module="system" style="display:none;">
-                <div class="sidebar-section-title">系统</div>
-                <ul class="sidebar-nav">
-                    <li><a href="/system/config" data-nav="system-config"><i class="bi bi-gear-wide-connected"></i> 系统配置</a></li>
-                </ul>
-                <div class="sidebar-divider"></div>
-                <ul class="sidebar-nav">
-                    <li><a href="/monitor" data-nav="monitor"><i class="bi bi-activity"></i> 系统监控</a></li>
-                    <li><a href="/stats" data-nav="stats"><i class="bi bi-graph-up"></i> 数据统计</a></li>
-                    <li><a href="/platform-switch" data-nav="platform-switch"><i class="bi bi-hdd-network"></i> 平台切换</a></li>
-                </ul>
-                <div class="sidebar-divider"></div>
-                <div class="sidebar-section-title">其他</div>
-                <ul class="sidebar-nav">
-                    <li><a href="/docs" data-nav="docs"><i class="bi bi-journal-text"></i> 文档中心</a></li>
-                </ul>
-            </div>
-        </aside>
-
-        <!-- ==================== 主内容区 ==================== -->
-        <main class="main-content" id="mainContent">
+    <!-- ==================== 主内容区 ==================== -->
+    <main class="app-main">
+        <div class="app-content">
             <!-- 消息提示 -->
             <div class="alert-container">
                 {% with messages = get_flashed_messages(with_categories=true) %}
@@ -697,279 +613,262 @@
 
             <!-- 页脚 -->
             <footer class="app-footer">
-                跨环境任务管理系统 CEM v{{ app_version }} &copy; 2026
+                <span>跨环境任务管理系统 CEM v{{ app_version }} &copy; 2026</span>
                 <span class="ms-2 opacity-50">基于《跨环境配置及实施说明书》开发</span>
             </footer>
-        </main>
-    </div>
+        </div>
+    </main>
 
-    <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-    <script src="/static/vendor/jquery/jquery-3.6.0.min.js"></script>
-    <script src="/static/vendor/mermaid/mermaid.min.js"></script>
-    <script src="/static/js/theme-manager.js"></script>
+</div>
 
-    <script>
-        // ========== Mermaid 初始化 ==========
-        mermaid.initialize({ startOnLoad: false, securityLevel: 'loose',
-            theme: document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'default'
-        });
-        function renderMermaidDiagrams() {
-            if (typeof mermaid === 'undefined') return;
-            try {
-                document.querySelectorAll('.markdown-content pre code.language-mermaid').forEach(code => {
-                    const pre = code.parentElement;
-                    if (!pre) return;
-                    const div = document.createElement('div');
-                    div.className = 'mermaid';
-                    div.textContent = code.textContent;
-                    pre.replaceWith(div);
+<script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+<script src="/static/vendor/adminlte/adminlte.min.js"></script>
+<script src="/static/vendor/jquery/jquery-3.6.0.min.js"></script>
+<script src="/static/vendor/mermaid/mermaid.min.js"></script>
+<script src="/static/js/theme-manager.js"></script>
+
+<script>
+    // ========== Mermaid 初始化 ==========
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'loose',
+        theme: document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'default'
+    });
+    function renderMermaidDiagrams() {
+        if (typeof mermaid === 'undefined') return;
+        try {
+            document.querySelectorAll('.markdown-content pre code.language-mermaid').forEach(code => {
+                const pre = code.parentElement;
+                if (!pre) return;
+                const div = document.createElement('div');
+                div.className = 'mermaid';
+                div.textContent = code.textContent;
+                pre.replaceWith(div);
+            });
+            const els = document.querySelectorAll('.markdown-content .mermaid:not([data-processed])');
+            Array.prototype.slice.call(els).forEach(node => {
+                mermaid.run({ nodes: [node] }).catch(e => {
+                    node.innerHTML = '<pre style="color:var(--text-primary);background:var(--bg-card);padding:1rem;border-radius:8px;font-size:0.85rem;overflow:auto;"><code>' +
+                        node.textContent.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</code></pre>';
+                    node.setAttribute('data-processed', 'true');
                 });
-                const els = document.querySelectorAll('.markdown-content .mermaid:not([data-processed])');
-                Array.prototype.slice.call(els).forEach(node => {
-                    mermaid.run({ nodes: [node] }).catch(e => {
-                        node.innerHTML = '<pre style="color:var(--text-primary);background:var(--bg-card);padding:1rem;border-radius:8px;font-size:0.85rem;overflow:auto;"><code>' +
-                            node.textContent.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</code></pre>';
-                        node.setAttribute('data-processed', 'true');
-                    });
+            });
+        } catch(e) { console.warn('Mermaid render failed:', e); }
+    }
+    document.addEventListener('DOMContentLoaded', renderMermaidDiagrams);
+    document.addEventListener('themeChanged', function(e) {
+        mermaid.initialize({ theme: e.detail.theme === 'dark' ? 'dark' : 'default', securityLevel: 'loose' });
+        document.querySelectorAll('.markdown-content .mermaid[data-processed]').forEach(el => {
+            el.removeAttribute('data-processed'); el.innerHTML = '';
+        });
+        renderMermaidDiagrams();
+    });
+
+    // ========== 全局 fetch 403 拦截 + Toast ==========
+    const originalFetch = window.fetch;
+    window.fetch = function(...args) {
+        return originalFetch.apply(this, args).then(response => {
+            if (response.status === 403) {
+                response.clone().json().then(data => {
+                    showToast(data.error || '需要管理员权限，请在首页启用管理员提权', 'warning');
+                }).catch(() => {
+                    showToast('需要管理员权限，请在首页启用管理员提权', 'warning');
                 });
-            } catch(e) { console.warn('Mermaid render failed:', e); }
-        }
-        document.addEventListener('DOMContentLoaded', renderMermaidDiagrams);
-        document.addEventListener('themeChanged', function(e) {
-            mermaid.initialize({ theme: e.detail.theme === 'dark' ? 'dark' : 'default', securityLevel: 'loose' });
-            document.querySelectorAll('.markdown-content .mermaid[data-processed]').forEach(el => {
-                el.removeAttribute('data-processed'); el.innerHTML = '';
-            });
-            renderMermaidDiagrams();
-        });
-
-        // ========== 全局 fetch 403 拦截 + Toast ==========
-        const originalFetch = window.fetch;
-        window.fetch = function(...args) {
-            return originalFetch.apply(this, args).then(response => {
-                if (response.status === 403) {
-                    response.clone().json().then(data => {
-                        showToast(data.error || '需要管理员权限，请在首页启用管理员提权', 'warning');
-                    }).catch(() => {
-                        showToast('需要管理员权限，请在首页启用管理员提权', 'warning');
-                    });
-                }
-                return response;
-            });
-        };
-
-        function showToast(message, type) {
-            const bgClass = type === 'warning' ? 'bg-warning text-dark' : 'bg-danger text-white';
-            const icon = type === 'warning' ? 'bi-exclamation-triangle' : 'bi-x-circle';
-            const toastHtml = '<div class="toast align-items-center ' + bgClass + ' border-0" role="alert"><div class="d-flex"><div class="toast-body"><i class="bi ' + icon + ' me-2"></i>' + message + '</div><button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button></div></div>';
-            const container = document.getElementById('toastContainer') || (() => { const d = document.createElement('div'); d.id = 'toastContainer'; d.className = 'toast-container position-fixed top-0 end-0 p-3'; d.style.zIndex = '9999'; document.body.appendChild(d); return d; })();
-            const toastEl = document.createElement('div');
-            toastEl.innerHTML = toastHtml;
-            container.appendChild(toastEl.firstElementChild);
-            const toast = new bootstrap.Toast(container.lastElementChild, { delay: 4000 });
-            toast.show();
-        }
-
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                const alertDiv = document.createElement('div');
-                alertDiv.className = 'alert alert-success alert-dismissible fade show';
-                alertDiv.innerHTML = '<i class="bi bi-check-circle me-2"></i>已复制: ' + text + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
-                document.querySelector('.alert-container').appendChild(alertDiv);
-                setTimeout(() => alertDiv.remove(), 3000);
-            });
-        }
-
-        // 自动关闭 flash 消息
-        $(document).ready(function() {
-            setTimeout(function() { $('.alert').alert('close'); }, 5000);
-            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-            tooltipTriggerList.map(function(t) { return new bootstrap.Tooltip(t); });
-        });
-
-        // ========== 侧边栏模块切换逻辑 ==========
-        (function() {
-            const path = window.location.pathname;
-            const topbarTabs = document.querySelectorAll('.topbar-tab');
-            const sidebarSections = document.querySelectorAll('[data-sidebar-module]');
-
-            // 根据当前 URL 确定活跃模块
-            let activeModule = 'config';
-            if (path.startsWith('/dispatch')) activeModule = 'dispatch';
-            else if (path.startsWith('/addtask')) activeModule = 'task';
-            else if (path.startsWith('/query')) activeModule = 'query';
-            else if (path.startsWith('/monitor') || path.startsWith('/stats') ||
-                     path.startsWith('/platform-switch') || path.startsWith('/docs') ||
-                     path.startsWith('/system/config') || path.startsWith('/config')) activeModule = 'system';
-            else if (path.startsWith('/pair') || path.startsWith('/template/device-sync') ||
-                     path.startsWith('/custom_table') || path.startsWith('/search') ||
-                     path.startsWith('/template') || path.startsWith('/edit') ||
-                     path.startsWith('/copy') || path === '/') activeModule = 'config';
-
-            // 激活顶部 Tab
-            topbarTabs.forEach(t => {
-                t.classList.toggle('active', t.dataset.module === activeModule);
-            });
-
-            // 显示对应侧边栏
-            sidebarSections.forEach(s => {
-                s.style.display = s.dataset.sidebarModule === activeModule ? '' : 'none';
-            });
-
-            // 根据当前 URL 激活侧边栏菜单项
-            const sidebarLinks = document.querySelectorAll('.sidebar-nav a[data-nav]');
-            const sidebarLinksHref = document.querySelectorAll('.sidebar-nav a[href]');
-            let bestMatch = null, bestLen = 0;
-
-            sidebarLinksHref.forEach(a => {
-                const href = a.getAttribute('href');
-                if (href && href !== '#' && path.startsWith(href) && href.length > bestLen) {
-                    bestMatch = a;
-                    bestLen = href.length;
-                }
-            });
-            if (bestMatch) {
-                // 在同一分组内取消所有 active
-                const parentNav = bestMatch.closest('.sidebar-nav');
-                if (parentNav) parentNav.querySelectorAll('a').forEach(a => a.classList.remove('active'));
-                bestMatch.classList.add('active');
             }
-        })();
+            return response;
+        });
+    };
 
-        // ========== 移动端菜单 ==========
-        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
-        const sidebar = document.getElementById('sidebar');
-        const sidebarOverlay = document.getElementById('sidebarOverlay');
+    function showToast(message, type) {
+        const bgClass = type === 'warning' ? 'bg-warning text-dark' : 'bg-danger text-white';
+        const icon = type === 'warning' ? 'bi-exclamation-triangle' : 'bi-x-circle';
+        const toastHtml = '<div class="toast align-items-center ' + bgClass + ' border-0" role="alert"><div class="d-flex"><div class="toast-body"><i class="bi ' + icon + ' me-2"></i>' + message + '</div><button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button></div></div>';
+        const container = document.getElementById('toastContainer') || (() => { const d = document.createElement('div'); d.id = 'toastContainer'; d.className = 'toast-container position-fixed top-0 end-0 p-3'; d.style.zIndex = '9999'; document.body.appendChild(d); return d; })();
+        const toastEl = document.createElement('div');
+        toastEl.innerHTML = toastHtml;
+        container.appendChild(toastEl.firstElementChild);
+        const toast = new bootstrap.Toast(container.lastElementChild, { delay: 4000 });
+        toast.show();
+    }
 
-        if (mobileMenuBtn) {
-            mobileMenuBtn.addEventListener('click', () => {
-                sidebar.classList.toggle('mobile-open');
-                sidebarOverlay.classList.toggle('active');
-            });
-        }
-        if (sidebarOverlay) {
-            sidebarOverlay.addEventListener('click', () => {
-                sidebar.classList.remove('mobile-open');
-                sidebarOverlay.classList.remove('active');
-            });
-        }
-        // 点击侧边栏链接后关闭移动端菜单
-        sidebar.addEventListener('click', (e) => {
-            if (e.target.closest('a') && window.innerWidth <= 768) {
-                sidebar.classList.remove('mobile-open');
-                sidebarOverlay.classList.remove('active');
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-success alert-dismissible fade show';
+            alertDiv.innerHTML = '<i class="bi bi-check-circle me-2"></i>已复制: ' + text + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+            document.querySelector('.alert-container').appendChild(alertDiv);
+            setTimeout(() => alertDiv.remove(), 3000);
+        });
+    }
+
+    // 自动关闭 flash 消息
+    $(document).ready(function() {
+        setTimeout(function() { $('.alert').alert('close'); }, 5000);
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function(t) { return new bootstrap.Tooltip(t); });
+    });
+
+    // ========== 侧边栏模块切换逻辑 ==========
+    (function() {
+        const path = window.location.pathname;
+        const topbarTabs = document.querySelectorAll('.module-tab');
+        const sidebarModules = document.querySelectorAll('[data-sidebar-module]');
+
+        // 根据当前 URL 确定活跃模块
+        let activeModule = 'config';
+        if (path.startsWith('/dispatch')) activeModule = 'dispatch';
+        else if (path.startsWith('/addtask')) activeModule = 'task';
+        else if (path.startsWith('/query')) activeModule = 'query';
+        else if (path.startsWith('/monitor') || path.startsWith('/stats') ||
+                 path.startsWith('/platform-switch') || path.startsWith('/docs') ||
+                 path.startsWith('/system/config') || path.startsWith('/config-editor')) activeModule = 'system';
+        else if (path.startsWith('/pair') || path.startsWith('/template/device-sync') ||
+                 path.startsWith('/custom_table') || path.startsWith('/search') ||
+                 path.startsWith('/template') || path.startsWith('/edit') ||
+                 path.startsWith('/copy') || path === '/') activeModule = 'config';
+
+        // 激活顶部 Tab
+        topbarTabs.forEach(t => {
+            t.classList.toggle('active', t.dataset.module === activeModule);
+        });
+
+        // 显示对应侧边栏
+        sidebarModules.forEach(s => {
+            s.style.display = s.dataset.sidebarModule === activeModule ? '' : 'none';
+        });
+
+        // 根据当前 URL 激活侧边栏菜单项（含 hash 支持）
+        const sidebarLinks = document.querySelectorAll('.sidebar-menu a[data-nav], .sidebar-menu a[href]');
+        let bestMatch = null, bestLen = 0;
+        const matchPath = path + (window.location.hash || '');
+
+        sidebarLinks.forEach(a => {
+            const href = a.getAttribute('href');
+            if (!href || href === '#') return;
+            const hrefPath = href.split('#')[0];
+            // 优先精确匹配（path + hash）
+            if (matchPath === href && href.length > bestLen) {
+                bestMatch = a;
+                bestLen = href.length;
+            }
+            // 回退：按 path 前缀匹配
+            if (path.startsWith(hrefPath) && hrefPath.length > bestLen) {
+                bestMatch = a;
+                bestLen = hrefPath.length;
             }
         });
+        if (bestMatch) {
+            // 在同一 sidebar-menu 内取消所有 active
+            const parentMenu = bestMatch.closest('.sidebar-menu');
+            if (parentMenu) parentMenu.querySelectorAll('.nav-link').forEach(a => a.classList.remove('active'));
+            bestMatch.classList.add('active');
+        }
+    })();
 
-        // ========== 调车侧边栏 - 动态加载区域列表 ==========
-        (function loadDispatchAreas() {
-            const areaList = document.getElementById('dispatchAreaList');
-            if (!areaList) return;  // 不在调车模块
+    // ========== 调车侧边栏 - 动态加载区域列表 ==========
+    (function loadDispatchAreas() {
+        const areaList = document.getElementById('dispatchAreaList');
+        if (!areaList) return;
 
+        function fetchAndRender() {
             fetch('/api/dispatch/status')
                 .then(r => r.json())
                 .then(data => {
                     const areas = data.areas || [];
+                    const now = new Date();
+                    const hint = document.getElementById('areaRefreshHint');
+                    if (hint) hint.textContent =
+                        now.getHours().toString().padStart(2,'0') + ':' +
+                        now.getMinutes().toString().padStart(2,'0') + ':' +
+                        now.getSeconds().toString().padStart(2,'0');
+
                     if (areas.length === 0) {
-                        areaList.innerHTML = '<li><a style="color:var(--text-muted);font-style:italic;font-size:12px;">暂无区域数据</a></li>';
+                        areaList.innerHTML = '<li class="nav-item"><a class="nav-link disabled" style="font-style:italic;"><p>暂无区域数据</p></a></li>';
                         return;
                     }
-                    const now = new Date();
-                    document.getElementById('areaRefreshHint').textContent =
-                        now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0') + ':' + now.getSeconds().toString().padStart(2,'0');
-
                     areaList.innerHTML = areas.map(a => {
                         const aid = a.areaId || '?';
                         const name = a.areaName || ('区域 ' + aid);
-                        // API 返回 currentCount（当前空闲车数），xmax 为区域上限
                         const freeCount = a.currentCount || 0;
                         const deviceCount = a.xmax || 0;
                         const totalPending = (a.pending_devices || []).length;
                         const statusColor = freeCount > 0 ? '#34d399' : '#fbbf24';
                         const pendingBadge = totalPending > 0
-                            ? ` <span style="font-size:10px;color:var(--monitor-blue);">⟳${totalPending}</span>`
+                            ? ` <span style="font-size:10px;color:var(--accent);">⟳${totalPending}</span>`
                             : '';
-                        return `<li><a href="/dispatch/area/${aid}" data-nav="area-${aid}">
-                            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor};margin-right:2px;"></span>
-                            ${escapeHtmlSidebar(name)}${pendingBadge}
+                        return `<li class="nav-item"><a href="/dispatch/area/${aid}" class="nav-link" data-nav="area-${aid}">
+                            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor};margin-right:4px;"></span>
+                            <p>${escapeHtmlSidebar(name)}${pendingBadge}</p>
                             <span class="badge-count">${freeCount}/${deviceCount}</span>
                         </a></li>`;
                     }).join('');
                 })
                 .catch(() => {
-                    areaList.innerHTML = '<li><a style="color:var(--text-muted);font-style:italic;font-size:12px;">加载失败</a></li>';
+                    areaList.innerHTML = '<li class="nav-item"><a class="nav-link disabled" style="font-style:italic;"><p>加载失败</p></a></li>';
                 });
-
-            // 每30秒自动刷新
-            setInterval(() => {
-                fetch('/api/dispatch/status').then(r => r.json()).then(data => {
-                    const areas = data.areas || [];
-                    const now = new Date();
-                    const hint = document.getElementById('areaRefreshHint');
-                    if (hint) hint.textContent = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0') + ':' + now.getSeconds().toString().padStart(2,'0');
-                    if (areas.length === 0) return;
-                    const items = areaList.querySelectorAll('li a .badge-count');
-                    areas.forEach((a, i) => {
-                        if (items[i]) {
-                            items[i].textContent = (a.currentCount || 0) + '/' + (a.xmax || 0);
-                        }
-                    });
-                }).catch(() => {});
-            }, 30000);
-        })();
-
-        function escapeHtmlSidebar(str) {
-            const div = document.createElement('div');
-            div.textContent = str;
-            return div.innerHTML;
         }
 
-        // ========== 调车快捷操作（事件委托） ==========
-        document.getElementById('dispatchQuickActions')?.addEventListener('click', function(e) {
-            const action = e.target.closest('[data-action]')?.dataset?.action;
-            if (!action) return;
-            e.preventDefault();
+        fetchAndRender();
+        setInterval(fetchAndRender, 30000);
+    })();
 
-            const actions = {
-                'self-heal-check': () => {
-                    if (!confirm('确认执行全量自愈检查？')) return;
-                    fetch('/api/dispatch/self_heal/check', { method: 'POST' })
-                        .then(r => r.json())
-                        .then(d => showToast(d.message || '检查完成', d.success ? 'success' : 'warning'))
-                        .catch(() => showToast('检查请求失败', 'danger'));
-                },
-                'cancel-all-empty': () => {
-                    if (!confirm('确认取消所有空车任务？此操作不可逆。')) return;
-                    fetch('/api/dispatch/cancel_empty_tasks/' + (prompt('请输入区域编号(area_id):') || ''), { method: 'POST' })
-                        .then(r => r.json())
-                        .then(d => showToast(d.message || '操作完成', d.success ? 'success' : 'warning'))
-                        .catch(() => showToast('操作请求失败', 'danger'));
-                },
-                'logs': () => { window.location.href = '/api/dispatch/logs'; }
-            };
-            if (actions[action]) actions[action]();
-        });
+    function escapeHtmlSidebar(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
 
-        // ========== 登录状态初始化 ==========
-        $(document).ready(function() {
-            fetch('/api/auth/status')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.logged_in) {
-                        $('#navUserInfo').show();
-                        $('#navUsername').text(data.username);
-                        $('#navAvatar').text(data.username.charAt(0).toUpperCase());
-                        if (data.is_admin) {
-                            $('#navAdminBadge').show();
-                        }
-                        $('#navLogoutBtn').show().click(async () => {
-                            await fetch('/api/logout', { method: 'POST' });
-                            window.location.reload();
-                        });
+    // ========== 调车快捷操作（事件委托） ==========
+    document.getElementById('dispatchQuickActions')?.addEventListener('click', function(e) {
+        const action = e.target.closest('[data-action]')?.dataset?.action;
+        if (!action) return;
+        e.preventDefault();
+
+        const actions = {
+            'self-heal-check': () => {
+                if (!confirm('确认执行全量自愈检查？')) return;
+                fetch('/api/dispatch/self_heal/check', { method: 'POST' })
+                    .then(r => r.json())
+                    .then(d => showToast(d.message || '检查完成', d.success ? 'success' : 'warning'))
+                    .catch(() => showToast('检查请求失败', 'danger'));
+            },
+            'cancel-all-empty': () => {
+                if (!confirm('确认取消所有空车任务？此操作不可逆。')) return;
+                fetch('/api/dispatch/cancel_empty_tasks/' + (prompt('请输入区域编号(area_id):') || ''), { method: 'POST' })
+                    .then(r => r.json())
+                    .then(d => showToast(d.message || '操作完成', d.success ? 'success' : 'warning'))
+                    .catch(() => showToast('操作请求失败', 'danger'));
+            },
+            'logs': () => { window.location.href = '/api/dispatch/logs'; }
+        };
+        if (actions[action]) actions[action]();
+    });
+
+    // ========== 登录状态初始化 ==========
+    $(document).ready(function() {
+        fetch('/api/auth/status')
+            .then(r => r.json())
+            .then(data => {
+                if (data.logged_in) {
+                    $('#navUserInfo').show();
+                    $('#navUsername').text(data.username);
+                    $('#navAvatar').text(data.username.charAt(0).toUpperCase());
+                    if (data.is_admin) {
+                        $('#navAdminBadge').show();
                     }
-                });
-        });
-    </script>
-    {% block extra_js %}{% endblock %}
+                    $('#navLogoutBtn').show().click(async () => {
+                        await fetch('/api/logout', { method: 'POST' });
+                        window.location.reload();
+                    });
+                }
+            });
+    });
+
+    // ========== 主题切换按钮 ==========
+    document.getElementById('themeToggleNav')?.addEventListener('click', function() {
+        if (typeof window.toggleTheme === 'function') {
+            window.toggleTheme();
+        }
+    });
+</script>
+{% block extra_js %}{% endblock %}
 </body>
 </html>

@@ -434,16 +434,56 @@
 <script src="{{ url_for('static', filename='js/config.js') }}"></script>
 <script src="/static/js/addtask.js"></script>
 <script>
-// ========== 内联配置管理 ==========
+// ========== 内联配置管理（前后端分离版） ==========
+// 通过 /api/config 接口读写，数据不耦合全局 config 变量
+let _editorConfig = null;   // 编辑器持有的配置副本，由 loadEditorConfig() 填充
 let _selectedArea = null;
 let _selectedTask = null;
 
-function switchToConfig() {
+// 简易 HTML 转义（避免 XSS）
+function escHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+/**
+ * 从 API 加载完整配置并缓存到 _editorConfig
+ */
+async function loadEditorConfig() {
+    try {
+        const res = await fetch('/api/config');
+        const result = await res.json();
+        if (result.success && result.data) {
+            _editorConfig = result.data;
+            return _editorConfig;
+        }
+        throw new Error(result.error || '加载配置失败');
+    } catch (e) {
+        showConfigStatus('加载配置失败: ' + e.message, 'error');
+        // 降级：读取全局 config（JS 文件加载）
+        if (typeof config !== 'undefined') {
+            _editorConfig = JSON.parse(JSON.stringify(config));
+            return _editorConfig;
+        }
+        return null;
+    }
+}
+
+async function switchToConfig() {
     document.getElementById('dispatch-view').style.display = 'none';
     document.getElementById('config-view').style.display = 'block';
     document.getElementById('view-switcher').dataset.current = 'config';
+
+    // 从 API 加载最新配置
+    document.getElementById('inline-area-list').innerHTML =
+        '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>加载中...</div>';
+    document.getElementById('inline-task-list').innerHTML = '';
+
+    await loadEditorConfig();
     renderAreaList();
-    // 更新按钮样式
+
+    // 更新顶部 tab 样式
     document.querySelectorAll('.topbar-tab[data-module]').forEach(t => {
         t.classList.toggle('active', t.dataset.module === 'task');
     });
@@ -455,18 +495,19 @@ window.switchToDispatch = function() {
     document.getElementById('view-switcher').dataset.current = 'dispatch';
     _selectedArea = null;
     _selectedTask = null;
+    _editorConfig = null;
 };
 
 function renderAreaList() {
     const list = document.getElementById('inline-area-list');
-    if (!list || !window.config) return;
-    const areas = Object.keys(window.config.areas || {}).sort();
+    if (!list || !_editorConfig) return;
+    const areas = Object.keys(_editorConfig.areas || {}).sort();
     list.innerHTML = areas.map(name => `
         <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center ${_selectedArea === name ? 'active' : ''}"
                 onclick="selectArea('${name.replace(/'/g, "\\'")}')">
-            <span>${name}</span>
+            <span>${escHtml(name)}</span>
             <span>
-                <span class="badge bg-secondary">${Object.keys(window.config.areas[name]?.tasks || {}).length}</span>
+                <span class="badge bg-secondary">${Object.keys(_editorConfig.areas[name]?.tasks || {}).length}</span>
                 <i class="bi bi-x-circle-fill ms-1" style="cursor:pointer;opacity:0.5;font-size:0.75rem;"
                    onclick="event.stopPropagation();deleteArea('${name.replace(/'/g, "\\'")}')"></i>
             </span>
@@ -484,11 +525,11 @@ function selectArea(name) {
 
 function renderTaskList() {
     const container = document.getElementById('inline-task-list');
-    if (!_selectedArea || !window.config.areas[_selectedArea]) {
+    if (!_selectedArea || !_editorConfig?.areas[_selectedArea]) {
         container.innerHTML = '<div class="text-muted text-center py-4">请先选择左侧区域</div>';
         return;
     }
-    const tasks = window.config.areas[_selectedArea].tasks || {};
+    const tasks = _editorConfig.areas[_selectedArea].tasks || {};
     const names = Object.keys(tasks);
     if (names.length === 0) {
         container.innerHTML = '<div class="text-muted text-center py-4">该区域暂无任务，点击右上角"新增任务"添加</div>';
@@ -501,7 +542,7 @@ function renderTaskList() {
             <div class="card-body py-2 px-3">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <strong>${name}</strong>
+                        <strong>${escHtml(name)}</strong>
                         <span class="badge bg-dark ms-1">${t.code || '-'}</span>
                     </div>
                     <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="event.stopPropagation();deleteTask('${name.replace(/'/g, "\\'")}')">
@@ -509,7 +550,7 @@ function renderTaskList() {
                     </button>
                 </div>
                 <div class="small text-muted mt-1">
-                    ${t.base_url ? `<span class="me-2"><i class="bi bi-link-45deg"></i>${t.base_url}</span>` : ''}
+                    ${t.base_url ? `<span class="me-2"><i class="bi bi-link-45deg"></i>${escHtml(t.base_url)}</span>` : ''}
                     ${t.requires_shelf ? '<span class="badge bg-info me-1">带货架</span>' : '<span class="badge bg-secondary me-1">空车</span>'}
                     ${t.capacity ? `<span class="badge bg-warning">容量:${t.capacity}</span>` : ''}
                 </div>
@@ -521,26 +562,27 @@ function renderTaskList() {
 function selectTask(name) {
     _selectedTask = name;
     renderTaskList();
-    // 弹出编辑模态框
-    editTask(name);
+    editTask(name);  // 弹出编辑弹窗
 }
 
 function addArea() {
+    if (!_editorConfig) { showConfigStatus('配置尚未加载，请稍后重试', 'error'); return; }
     const name = prompt('请输入区域名称（如：A1-1 PCBA）：');
     if (!name || !name.trim()) return;
     const trimmed = name.trim();
-    if (window.config.areas[trimmed]) {
+    if (_editorConfig.areas[trimmed]) {
         alert('该区域已存在');
         return;
     }
-    window.config.areas[trimmed] = { tasks: {} };
+    _editorConfig.areas[trimmed] = { tasks: {} };
     renderAreaList();
     showConfigStatus('区域 "' + trimmed + '" 已添加（尚未保存）', 'info');
 }
 
 function deleteArea(name) {
+    if (!_editorConfig) return;
     if (!confirm('确定删除区域 "' + name + '" 及其所有任务？')) return;
-    delete window.config.areas[name];
+    delete _editorConfig.areas[name];
     if (_selectedArea === name) { _selectedArea = null; _selectedTask = null; }
     renderAreaList();
     renderTaskList();
@@ -548,15 +590,16 @@ function deleteArea(name) {
 }
 
 function addTask() {
+    if (!_editorConfig) { showConfigStatus('配置尚未加载', 'error'); return; }
     if (!_selectedArea) { alert('请先选择区域'); return; }
     const name = prompt('请输入任务名称（如：送满A1pcba1F去A2华昱欣3F）：');
     if (!name || !name.trim()) return;
     const trimmed = name.trim();
-    if (window.config.areas[_selectedArea].tasks[trimmed]) {
+    if (_editorConfig.areas[_selectedArea].tasks[trimmed]) {
         alert('该任务已存在');
         return;
     }
-    window.config.areas[_selectedArea].tasks[trimmed] = {
+    _editorConfig.areas[_selectedArea].tasks[trimmed] = {
         base_url: 'http://10.68.2.32:7000/ics/taskOrder/addTask',
         code: '',
         requires_shelf: false,
@@ -569,16 +612,16 @@ function addTask() {
 }
 
 function editTask(name) {
-    if (!_selectedArea || !window.config.areas[_selectedArea]?.tasks[name]) return;
-    const task = window.config.areas[_selectedArea].tasks[name];
+    if (!_editorConfig || !_selectedArea || !_editorConfig.areas[_selectedArea]?.tasks[name]) return;
+    const task = _editorConfig.areas[_selectedArea].tasks[name];
     const code = prompt('模板代码（code）：', task.code || '');
     if (code === null) return;
     const baseUrl = prompt('RCS 接口地址（base_url）：', task.base_url || 'http://10.68.2.32:7000/ics/taskOrder/addTask');
     if (baseUrl === null) return;
-    const requiresShelf = confirm('是否需要货架（requires_shelf）？\n确定=需要，取消=不需要') ? true : false;
+    const requiresShelf = confirm('是否需要货架（requires_shelf）？\n确定=需要，取消=不需要');
     const capacity = prompt('容量上限（输入0或空表示不限）：', task.capacity || '0');
     if (capacity === null) return;
-    window.config.areas[_selectedArea].tasks[name] = {
+    _editorConfig.areas[_selectedArea].tasks[name] = {
         base_url: baseUrl,
         code: code,
         requires_shelf: requiresShelf,
@@ -592,35 +635,44 @@ function editTask(name) {
 }
 
 function deleteTask(name) {
-    if (!_selectedArea || !confirm('确定删除任务 "' + name + '" ？')) return;
-    delete window.config.areas[_selectedArea].tasks[name];
+    if (!_editorConfig || !_selectedArea) return;
+    if (!confirm('确定删除任务 "' + name + '" ？')) return;
+    delete _editorConfig.areas[_selectedArea].tasks[name];
     if (_selectedTask === name) _selectedTask = null;
     renderTaskList();
     showConfigStatus('任务 "' + name + '" 已删除（尚未保存）', 'info');
 }
 
+/**
+ * 通过 API 保存配置（前后端分离）
+ */
 async function saveInlineConfig() {
+    if (!_editorConfig) { showConfigStatus('无可保存的数据', 'error'); return; }
     try {
-        // 构建配置对象
-        const configToSave = JSON.parse(JSON.stringify(window.config));
-        const clientVersion = configToSave._version || 0;
-        delete configToSave._version;
-        configToSave._client_version = clientVersion;
-        configToSave._commit_message = '内联配置更新';
+        const payload = JSON.parse(JSON.stringify(_editorConfig));
+        const clientVersion = payload._version || 0;
+        delete payload._version;
+        payload._client_version = clientVersion;
 
-        const response = await fetch('/addtask/config', {
+        const response = await fetch('/api/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(configToSave)
+            body: JSON.stringify({
+                data: payload,
+                message: '内联配置更新',
+                _client_version: clientVersion
+            })
         });
         const result = await response.json();
         if (response.ok && result.success) {
-            window.config._version = result.new_version || (clientVersion + 1);
+            // 更新本地缓存的版本号
+            _editorConfig._version = result.new_version || (clientVersion + 1);
             showConfigStatus('配置已保存！', 'success');
-            // 刷新下发页面的下拉框
+            // 刷新下发页面的下拉框（由 addtask.js 管理）
             if (typeof initForm === 'function') initForm();
         } else if (response.status === 409) {
-            alert('版本冲突，请刷新页面重试');
+            showConfigStatus('版本冲突，请刷新后重试', 'error');
+            setTimeout(() => alert('版本冲突，请刷新页面重试'), 500);
         } else {
             showConfigStatus('保存失败: ' + (result.error || result.message || '未知错误'), 'error');
         }
@@ -631,15 +683,17 @@ async function saveInlineConfig() {
 
 function showConfigStatus(msg, type) {
     const statusEl = document.getElementById('config-status-msg');
-    if (!statusEl) {
-        const div = document.createElement('div');
-        div.id = 'config-status-msg';
-        div.className = 'alert alert-' + (type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info') + ' alert-dismissible fade show position-fixed bottom-0 end-0 m-3';
-        div.style.zIndex = '9999';
-        div.innerHTML = msg + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
-        document.body.appendChild(div);
-        setTimeout(() => div.remove(), 3000);
+    if (statusEl) {
+        statusEl.remove();
     }
+    const div = document.createElement('div');
+    div.id = 'config-status-msg';
+    div.className = 'alert alert-' + (type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info') + ' alert-dismissible fade show position-fixed bottom-0 end-0 m-3';
+    div.style.zIndex = '9999';
+    div.style.maxWidth = '400px';
+    div.innerHTML = msg + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), 4000);
 }
 
 // ========== URL hash 驱动视图切换 ==========

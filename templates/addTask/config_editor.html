@@ -359,12 +359,16 @@
                     delete configToSave._version;
                     configToSave._client_version = clientVersion;
                     
-                    const response = await fetch('/addtask/config', {
+                    const response = await fetch('/api/config', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify(configToSave)
+                        body: JSON.stringify({
+                            data: configToSave,
+                            message: '自动保存',
+                            _client_version: clientVersion
+                        })
                     });
                     
                     const result = await response.json();
@@ -1010,12 +1014,16 @@ const config = ${JSON.stringify(configData, null, 4)};`;
                     }
                     
                     // 调用后端API保存配置
-                    const response = await fetch('/addtask/config', {
+                    const response = await fetch('/api/config', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify(configToSave)
+                        body: JSON.stringify({
+                            data: configToSave,
+                            message: message || '源文件编辑保存',
+                            _client_version: clientVersion
+                        })
                     });
                     
                     const result = await response.json();
@@ -1082,7 +1090,7 @@ const config = ${JSON.stringify(configData, null, 4)};`;
             // ---------- 备份管理 ----------
             async function loadBackups() {
                 try {
-                    const response = await fetch('/addtask/config/backups');
+                    const response = await fetch('/api/config/backups');
                     if (!response.ok) throw new Error('无法加载备份列表');
                     backups = await response.json();
                     renderBackupList();
@@ -1146,7 +1154,7 @@ const config = ${JSON.stringify(configData, null, 4)};`;
             async function createBackup(manual = true, message = '') {
                 try {
                     showStatus('正在创建备份...', 'info');
-                    const response = await fetch('/addtask/config/backup', {
+                    const response = await fetch('/api/config/backup', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1514,7 +1522,7 @@ const config = ${JSON.stringify(configData, null, 4)};`;
                 
                 try {
                     showStatus('正在恢复备份...', 'info');
-                    const response = await fetch(`/addtask/config/backup/${name}/restore`, {
+                    const response = await fetch(`/api/config/backup/${name}/restore`, {
                         method: 'POST'
                     });
                     
@@ -1538,7 +1546,7 @@ const config = ${JSON.stringify(configData, null, 4)};`;
 
             async function viewBackup(name) {
                 try {
-                    const response = await fetch(`/addtask/config/backup/${name}`);
+                    const response = await fetch(`/api/config/backup/${name}`);
                     if (!response.ok) throw new Error('无法加载备份内容');
                     const content = await response.text();
                     document.getElementById('backup-content-view').textContent = content;
@@ -1552,7 +1560,7 @@ const config = ${JSON.stringify(configData, null, 4)};`;
                 if (!confirm(`确定删除备份 ${name} 吗？`)) return;
                 
                 try {
-                    const response = await fetch(`/addtask/config/backup/${name}`, {
+                    const response = await fetch(`/api/config/backup/${name}`, {
                         method: 'DELETE'
                     });
                     
@@ -1608,12 +1616,17 @@ const config = ${JSON.stringify(configData, null, 4)};`;
                                 importedConfig._is_import = true;
                                 
                                 // 调用后端API保存，使用_is_import标志跳过版本检查
-                                const response = await fetch('/addtask/config', {
+                                const response = await fetch('/api/config', {
                                     method: 'POST',
                                     headers: {
                                         'Content-Type': 'application/json',
                                     },
-                                    body: JSON.stringify(importedConfig)
+                                    body: JSON.stringify({
+                                        data: importedConfig,
+                                        message: `导入配置文件: ${file.name}`,
+                                        _is_import: true,
+                                        _client_version: 0
+                                    })
                                 });
                                 
                                 const result = await response.json();
@@ -1648,12 +1661,17 @@ const config = ${JSON.stringify(configData, null, 4)};`;
                                         importedConfig._is_import = true;
                                         importedConfig._force_overwrite = true;
                                         
-                                        const forceResponse = await fetch('/addtask/config', {
+                                        const forceResponse = await fetch('/api/config', {
                                             method: 'POST',
                                             headers: {
                                                 'Content-Type': 'application/json',
                                             },
-                                            body: JSON.stringify(importedConfig)
+                                            body: JSON.stringify({
+                                                data: importedConfig,
+                                                message: '强制覆盖导入',
+                                                _is_import: true,
+                                                _force_overwrite: true
+                                            })
                                         });
                                         
                                         const forceResult = await forceResponse.json();
