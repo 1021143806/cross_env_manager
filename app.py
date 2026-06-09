@@ -1780,216 +1780,8 @@ def query_index():
     
     return render_template('query/unified_home.html')
 
-@app.route('/query/legacy')
-@login_required
-def query_legacy():
-    """旧版查询功能主页（兼容性）"""
-    if not QUERY_MODULES_AVAILABLE:
-        flash('查询功能模块未正确加载，请检查模块配置', 'error')
-        return redirect(url_for('index'))
-    
-    return render_template('query/index_optimized.html')
-
-@app.route('/query/task', methods=['GET', 'POST'])
-@login_required
-def query_task_extended():
-    """整合任务查询页面"""
-    if not QUERY_MODULES_AVAILABLE:
-        flash('查询功能模块未正确加载，请检查模块配置', 'error')
-        return redirect(url_for('index'))
-    
-    return render_template('query/task_extended.html')
-
-@app.route('/query/device', methods=['GET', 'POST'])
-@login_required
-def query_device():
-    """设备验证"""
-    if not QUERY_MODULES_AVAILABLE:
-        return jsonify({'success': False, 'message': '查询功能不可用'}), 503
-    
-    if request.method == 'POST':
-        device_sn = request.form.get('device_sn', '').strip()
-        device_type = request.form.get('device_type', 'agv').strip()
-        
-        if not device_sn:
-            flash('请输入设备序列号', 'warning')
-            return render_template('query/device_validation.html')
-        
-        try:
-            if device_type == 'agv':
-                device_info = device_validation.validate_agv_device(device_sn, use_production=False)
-            elif device_type == 'shelf':
-                device_info = device_validation.validate_shelf_device(device_sn, use_production=False)
-            elif device_type == 'rfid':
-                device_info = device_validation.validate_rfid_device(device_sn, use_production=False)
-            else:
-                flash(f'不支持的设备类型: {device_type}', 'error')
-                return render_template('query/device_validation.html')
-            
-            if device_info:
-                return render_template('query/device_result.html',
-                                     device_info=device_info,
-                                     device_sn=device_sn,
-                                     device_type=device_type)
-            else:
-                flash(f'未找到设备: {device_sn}', 'info')
-                return render_template('query/device_validation.html')
-                
-        except Exception as e:
-            flash(f'验证失败: {str(e)}', 'error')
-            return render_template('query/device_validation.html')
-    
-    return render_template('query/device_validation.html')
-
-# @app.route('/query/cross_model', methods=['GET', 'POST'])
-# def query_cross_model():
-#     """跨环境模型查询 - 已禁用"""
-#     flash('此查询功能已暂时禁用', 'info')
-#     return redirect(url_for('query_home'))
-
-# @app.route('/query/join_point', methods=['GET', 'POST'])
-# def query_join_point():
-#     """交接点查询 - 已禁用"""
-#     flash('此查询功能已暂时禁用', 'info')
-#     return redirect(url_for('query_home'))
-        
-
-# @app.route('/query/shelf_model', methods=['GET', 'POST'])
-# def query_shelf_model():
-#     """货架模型查询 - 已禁用"""
-#     flash('此查询功能已暂时禁用', 'info')
-#     return redirect(url_for('query_home'))
-        
-
-# @app.route('/query/shelf', methods=['GET', 'POST'])
-# def query_shelf():
-#     """货架查询 - 已禁用"""
-#     flash('此查询功能已暂时禁用', 'info')
-#     return redirect(url_for('query_home'))
-
-# @app.route('/query/agv_status', methods=['GET', 'POST'])
-# def query_agv_status():
-#     """AGV状态查询 - 已禁用"""
-#     flash('此查询功能已暂时禁用', 'info')
-#     return redirect(url_for('query_home'))
-
-# @app.route('/query/agv_status/all')
-# def query_all_agv_status():
-#     """查询所有AGV状态 - 已禁用"""
-#     flash('此查询功能已暂时禁用', 'info')
-#     return redirect(url_for('query_home'))
-
 # ============================================================================
-# 1.3项目功能整合 - 任务查询路由
-# ============================================================================
-
-@app.route('/task_query')
-@login_required
-def task_query_home():
-    """任务查询主页 - 对应1.3项目的home.html功能"""
-    return render_template('query/task_query_home.html')
-
-@app.route('/task_query/result')
-@login_required
-def task_query_result():
-    """任务单号查询结果 - 对应FindTheTask.php功能"""
-    order_id = request.args.get('order_id', '').strip()
-    server_ip = request.args.get('server_ip', '').strip()
-    
-    if not order_id:
-        flash('请输入任务单号', 'warning')
-        return redirect(url_for('task_query_home'))
-    
-    try:
-        # 处理服务器IP格式（支持简写如"31"或完整IP）
-        if server_ip and len(server_ip) < 4:
-            server_ip = f"10.68.2.{server_ip}"
-        
-        result = task_query_extended.get_task_info_by_order_id(order_id, server_ip)
-        
-        if 'error' in result:
-            flash(result['error'], 'error')
-            return redirect(url_for('task_query_home'))
-        
-        return render_template('query/task_query_result.html', result=result)
-        
-    except Exception as e:
-        flash(f'查询失败: {str(e)}', 'error')
-        return redirect(url_for('task_query_home'))
-
-@app.route('/task_query/cross_task_by_template')
-@login_required
-def cross_task_by_template():
-    """跨环境任务模板查询 - 对应Kua.php功能"""
-    template_code = request.args.get('template_code', '').strip()
-    
-    if not template_code:
-        flash('请输入跨环境任务模板', 'warning')
-        return redirect(url_for('task_query_home'))
-    
-    try:
-        result = task_query_extended.search_tasks_by_template(template_code)
-        
-        if 'error' in result:
-            flash(result['error'], 'error')
-            return redirect(url_for('task_query_home'))
-        
-        return render_template('query/cross_task_by_template.html', 
-                             result=result, 
-                             template_code=template_code)
-        
-    except Exception as e:
-        flash(f'查询失败: {str(e)}', 'error')
-        return redirect(url_for('task_query_home'))
-
-@app.route('/task_query/cross_model_process_info')
-@login_required
-def cross_model_process_info():
-    """跨环境任务模板详情 - 对应Chech_Kua_model_process.php功能"""
-    template_code = request.args.get('template_code', '').strip()
-    
-    if not template_code:
-        flash('请输入跨环境任务模板', 'warning')
-        return redirect(url_for('task_query_home'))
-    
-    try:
-        result = task_query_extended.get_cross_model_process_info(template_code)
-        
-        if 'error' in result:
-            flash(result['error'], 'error')
-            return redirect(url_for('task_query_home'))
-        
-        return render_template('query/cross_model_process_info.html', result=result)
-        
-    except Exception as e:
-        flash(f'查询失败: {str(e)}', 'error')
-        return redirect(url_for('task_query_home'))
-
-@app.route('/task_query/cross_task_info')
-@login_required
-def cross_task_info():
-    """跨环境任务详情 - 对应FindTheTaskKua.php功能"""
-    order_id = request.args.get('order_id', '').strip()
-    
-    if not order_id:
-        flash('请输入跨环境任务编号', 'warning')
-        return redirect(url_for('task_query_home'))
-    
-    try:
-        result = task_query_extended.get_cross_task_info(order_id)
-        
-        if 'error' in result:
-            flash(result['error'], 'error')
-            return redirect(url_for('task_query_home'))
-        
-        return render_template('query/cross_task_info.html', result=result)
-        
-    except Exception as e:
-        flash(f'查询失败: {str(e)}', 'error')
-        return redirect(url_for('task_query_home'))
-
-# ============================================================================
-# join_qr_node_info 相关路由
+# join_qr_node_info 相关路由（旧路由，已被 join_qr 蓝图替代，保留兼容）
 # ============================================================================
 
 @app.route('/join_qr_nodes')
@@ -2161,8 +1953,14 @@ def get_join_qr_node_stats_api():
 @app.route('/addtask')
 @login_required
 def addtask():
-    """AGV任务下发页面"""
-    # 传递登录状态到模板
+    """AGV任务下发页面（桌面版，带侧边栏布局）"""
+    return render_template('addTask/index.html')
+
+
+@app.route('/addtask/pad')
+@login_required
+def addtask_pad():
+    """AGV任务下发页面（Pad/平板版，独立全宽布局）"""
     return render_template('addTask/addtask.html', 
                           logged_in=session.get('logged_in', False),
                           username=session.get('username', ''))

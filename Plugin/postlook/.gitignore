@@ -2,6 +2,8 @@
 
 # 配置文件（含敏感信息）
 config/env.toml
+config/app.toml
+config/rules.toml
 
 # 日志
 logs/

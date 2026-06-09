@@ -3,202 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>postlook · 日志查询</title>
+    <title>postlook</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="app">
-        <!-- 侧边栏 -->
-        <aside class="sidebar">
-            <div class="logo">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                    <line x1="16" y1="13" x2="8" y2="13"/>
-                    <line x1="16" y1="17" x2="8" y2="17"/>
-                    <polyline points="10 9 9 9 8 9"/>
-                </svg>
+        <header class="topbar">
+            <div class="topbar-brand">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                 <span>postlook</span>
             </div>
-            <nav>
-                <a href="#" data-panel="logs" class="active">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="11" cy="11" r="8"/>
-                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    </svg>
-                    <span>日志查询</span>
-                </a>
-                <a href="#" data-panel="config">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="3"/>
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                    </svg>
-                    <span>配置管理</span>
-                </a>
-                <a href="#" data-panel="status">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-                    </svg>
-                    <span>服务状态</span>
-                </a>
+            <nav class="topbar-nav">
+                <a href="logs.html" class="topbar-tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span>日志查询</span></a>
+                <a href="config.html" class="topbar-tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>配置管理</span></a>
+                <a href="status.html" class="topbar-tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>服务状态</span></a>
+                <a href="topology.html" class="topbar-tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><line x1="12" y1="8" x2="5" y2="15"/><circle cx="19" cy="18" r="3"/><line x1="12" y1="8" x2="19" y2="15"/></svg><span>拓扑</span></a>
             </nav>
-            <div class="theme-toggle">
-                <button id="themeBtn" title="切换浅色/暗黑模式">
-                    <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="5"/>
-                        <line x1="12" y1="1" x2="12" y2="3"/>
-                        <line x1="12" y1="21" x2="12" y2="23"/>
-                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                        <line x1="1" y1="12" x2="3" y2="12"/>
-                        <line x1="21" y1="12" x2="23" y2="12"/>
-                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-                    </svg>
-                    <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                    </svg>
-                </button>
+            <button class="topbar-theme" id="themeBtn" title="切换主题">
+                <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+        </header>
+
+        <div class="main-area" style="align-items:center;justify-content:center">
+            <div style="text-align:center;max-width:600px">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" style="margin-bottom:20px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+                <h1 style="font-size:1.8rem;font-weight:600;margin-bottom:8px">postlook</h1>
+                <p style="color:var(--text-tertiary);margin-bottom:30px">日志 HTTP 查询服务 · 选择功能开始使用</p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                    <a href="logs.html" class="glass-card" style="display:flex;flex-direction:column;align-items:center;padding:24px;gap:10px;text-decoration:none;color:var(--text-primary);transition:all 0.2s">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <span style="font-weight:600">日志查询</span>
+                        <span style="font-size:0.78rem;color:var(--text-tertiary)">全文搜索、关键字过滤、行号定位</span>
+                    </a>
+                    <a href="config.html" class="glass-card" style="display:flex;flex-direction:column;align-items:center;padding:24px;gap:10px;text-decoration:none;color:var(--text-primary);transition:all 0.2s">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                        <span style="font-weight:600">配置管理</span>
+                        <span style="font-size:0.78rem;color:var(--text-tertiary)">白名单、规则、TOML 编辑热更新</span>
+                    </a>
+                    <a href="status.html" class="glass-card" style="display:flex;flex-direction:column;align-items:center;padding:24px;gap:10px;text-decoration:none;color:var(--text-primary);transition:all 0.2s">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        <span style="font-weight:600">服务状态</span>
+                        <span style="font-size:0.78rem;color:var(--text-tertiary)">健康检查、文件浏览、运行概览</span>
+                    </a>
+                    <a href="topology.html" class="glass-card" style="display:flex;flex-direction:column;align-items:center;padding:24px;gap:10px;text-decoration:none;color:var(--text-primary);transition:all 0.2s">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><line x1="12" y1="8" x2="5" y2="15"/><circle cx="19" cy="18" r="3"/><line x1="12" y1="8" x2="19" y2="15"/></svg>
+                        <span style="font-weight:600">拓扑</span>
+                        <span style="font-size:0.78rem;color:var(--text-tertiary)">服务依赖关系、节点详情、日志入口</span>
+                    </a>
+                </div>
             </div>
-        </aside>
-
-        <!-- 主内容区 -->
-        <main class="content">
-            <!-- 日志查询面板 -->
-            <section id="panel-logs" class="panel active">
-                <h2>日志查询</h2>
-                <form id="logForm" class="glass-card">
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="folder">目录或文件路径</label>
-                            <input type="text" id="folder" name="folder" placeholder="目录: /var/log  文件: /var/log/app.log" required>
-                            <span class="form-hint">白名单内的目录（配合通配符搜索）或直接指定文件路径</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="pattern">文件名匹配</label>
-                            <input type="text" id="pattern" name="pattern" value="*.log" placeholder="*.log">
-                            <span class="form-hint">目录模式下生效，支持通配符如 *.log；文件模式下忽略</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="keyword">搜索关键字</label>
-                            <input type="text" id="keyword" name="keyword" placeholder="可选，不区分大小写">
-                            <span class="form-hint">留空则返回文件尾部或头部行</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="line_start">起始行号</label>
-                            <input type="number" id="line_start" name="line_start" value="1" min="1">
-                            <span class="form-hint">从第几行开始读取，默认 1</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="line_end">结束行号</label>
-                            <input type="number" id="line_end" name="line_end" value="100" min="1">
-                            <span class="form-hint">到第几行结束（含），默认 100</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="tail">读取方向</label>
-                            <select id="tail" name="tail">
-                                <option value="true" selected>文件尾部 (tail)</option>
-                                <option value="false">文件头部 (head)</option>
-                            </select>
-                            <span class="form-hint">无行号范围时生效，有关键字时忽略</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="recent_files">最近文件数</label>
-                            <input type="number" id="recent_files" name="recent_files" value="10" min="1" max="50">
-                            <span class="form-hint">1-50，只扫描最近修改的 N 个文件</span>
-                        </div>
-                    </div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn-primary">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <circle cx="11" cy="11" r="8"/>
-                                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                            </svg>
-                            查询
-                        </button>
-                        <button type="reset" class="btn-secondary">重置</button>
-                    </div>
-                </form>
-                <div id="logResults" class="results-area">
-                    <div class="results-placeholder">
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                            <polyline points="14 2 14 8 20 8"/>
-                            <line x1="16" y1="13" x2="8" y2="13"/>
-                            <line x1="16" y1="17" x2="8" y2="17"/>
-                        </svg>
-                        <p>输入查询条件后点击"查询"查看日志</p>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 配置管理面板 -->
-            <section id="panel-config" class="panel">
-                <h2>配置管理 (TOML)</h2>
-                <div class="glass-card">
-                    <div class="config-toolbar">
-                        <button id="loadConfigBtn" class="btn-secondary">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                <polyline points="7 10 12 15 17 10"/>
-                                <line x1="12" y1="15" x2="12" y2="3"/>
-                            </svg>
-                            加载配置
-                        </button>
-                        <button id="saveConfigBtn" class="btn-primary">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                                <polyline points="17 21 17 13 7 13 7 21"/>
-                                <polyline points="7 3 7 8 15 8"/>
-                            </svg>
-                            保存配置
-                        </button>
-                    </div>
-
-                    <!-- 日志目录扫描 -->
-                    <div class="scan-section">
-                        <div class="scan-header">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                            <span>扫描日志目录</span>
-                        </div>
-                        <div class="scan-input-row">
-                            <input type="text" id="scanBase" placeholder="输入基础路径，如 /main/app/" value="/main/app/">
-                            <button id="scanBtn" class="btn-secondary">扫描</button>
-                        </div>
-                        <div id="scanResults" class="scan-results"></div>
-                    </div>
-
-                    <textarea id="configEditor" rows="18" placeholder="# postlook 配置文件 (TOML 格式)
-# 在此编辑配置内容...
-
-[server]
-host = "0.0.0.0"
-port = 5011
-
-[logs]
-root_dirs = ["/var/log"]
-max_lines = 100
-default_lines = 50
-
-[ui]
-theme = "dark"
-"></textarea>
-                    <div id="configStatus" class="config-status"></div>
-                </div>
-            </section>
-
-            <!-- 服务状态面板 -->
-            <section id="panel-status" class="panel">
-                <h2>服务状态</h2>
-                <div class="glass-card" id="statusInfo">
-                    <div class="status-loading">
-                        <div class="spinner"></div>
-                        <p>正在检查服务状态...</p>
-                    </div>
-                </div>
-            </section>
-        </main>
+        </div>
     </div>
-    <script src="app.js"></script>
+    <script src="js/common.js"></script>
 </body>
 </html>
