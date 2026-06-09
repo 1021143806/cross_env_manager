@@ -313,6 +313,14 @@ async def save_rules(req: RulesUpdateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/api/rules-toml")
+async def get_rules_toml():
+    """获取 rules.toml 原文"""
+    from .config import get_rules_toml as _get_rules_toml
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(_get_rules_toml())
+
+
 @router.get("/api/topology-config")
 async def get_topology_config():
     """获取拓扑图配置（分类+服务节点）"""

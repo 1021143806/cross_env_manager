@@ -6,6 +6,7 @@ postlook · FastAPI 应用入口
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from .routes import router
 
@@ -28,6 +29,29 @@ async def health():
     return {"status": "ok", "version": __version__}
 
 
+# ── 多页面路由（干净 URL）──
+_static = Path(__file__).parent / "static"
+
+
+@app.get("/logs")
+async def logs_page():
+    return FileResponse(_static / "logs.html")
+
+
+@app.get("/config")
+async def config_page():
+    return FileResponse(_static / "config.html")
+
+
+@app.get("/status")
+async def status_page():
+    return FileResponse(_static / "status.html")
+
+
+@app.get("/topology")
+async def topology_page():
+    return FileResponse(_static / "topology.html")
+
+
 # 挂载静态文件（必须在所有 API 路由之后）
-static_dir = Path(__file__).parent / "static"
-app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+app.mount("/", StaticFiles(directory=_static, html=True), name="static")

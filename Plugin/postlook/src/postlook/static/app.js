@@ -664,11 +664,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }, 40);
 
-            // 节点点击事件
-            cy.on('tap', '.service', function(evt) { var n=evt.target; showTopoDetail(n); });
-            cy.on('tap', function(evt) { if(evt.target===cy) closeTopoDetail(); });
         }
         });
+
+        // 节点点击事件（在 ready 回调之外注册，确保不被错过）
+        cy.on('tap', '.service', function(evt) { showTopoDetail(evt.target); });
+        cy.on('tap', function(evt) { if(evt.target===cy) closeTopoDetail(); });
 
         // 左侧图层
         var layersDiv = document.getElementById('topoLayers');
@@ -712,51 +713,57 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     function showTopoDetail(node) {
-        var el = document.getElementById('topoDetail');
-        var name = document.getElementById('topoDetailName');
-        var body = document.getElementById('topoDetailBody');
-        if (!el || !name || !body) return;
-        el.style.display = 'flex';
-        var label = node.data('label'), logDir = node.data('logDir'), logFile = node.data('logFile'), desc = node.data('desc')||'', sizeMB = node.data('sizeMB')||0;
-        name.textContent = label + (desc ? ' — ' + desc : '');
-        var html = '<div style="margin-bottom:8px;color:var(--text-tertiary);font-size:0.75rem">路径: '+logDir+' | 主日志: '+(logFile||'—')+' | '+(sizeMB?sizeMB.toFixed(1)+' MB':'')+'</div>';
-        html += '<div style="margin-bottom:4px;font-weight:600;font-size:0.8rem">日志文件</div>';
-        html += '<div id="topoFileList" style="margin-bottom:10px">加载中...</div>';
-        html += '<div style="font-weight:600;font-size:0.8rem">最新预览</div>';
-        html += '<div class="log-preview" id="topoLogPreview">加载中...</div>';
-        html += '<div style="margin-top:10px;display:flex;gap:6px">';
-        if (logFile) html += '<button class="file-actions" style=\"padding:4px 12px\" onclick=\"window.open(\'/api/download?path='+encodeURIComponent(logDir+'/'+logFile)+'\')\">⬇ 下载</button>';
-        html += '<button class="file-actions" style=\"padding:4px 12px\" onclick=\"closeTopoDetail()\">关闭</button></div>';
-        body.innerHTML = html;
+        try {
+            var el = document.getElementById('topoDetail');
+            var name = document.getElementById('topoDetailName');
+            var body = document.getElementById('topoDetailBody');
+            if (!el || !name || !body) { console.warn('topoDetail DOM missing'); return; }
+            el.style.display = 'flex';
+            var label = node.data('label'), logDir = node.data('logDir'), logFile = node.data('logFile'), desc = node.data('desc')||'', sizeMB = node.data('sizeMB')||0;
+            name.textContent = label + (desc ? ' — ' + desc : '');
+            var html = '<div style="margin-bottom:8px;color:var(--text-tertiary);font-size:0.75rem">路径: '+(logDir||'—')+' | 主日志: '+(logFile||'—')+' | '+(sizeMB?sizeMB.toFixed(1)+' MB':'')+'</div>';
+            html += '<div style="margin-bottom:4px;font-weight:600;font-size:0.8rem">日志文件</div>';
+            html += '<div id="topoFileList" style="margin-bottom:10px">加载中...</div>';
+            html += '<div style="font-weight:600;font-size:0.8rem">最新预览</div>';
+            html += '<div class="log-preview" id="topoLogPreview">加载中...</div>';
+            html += '<div style="margin-top:10px;display:flex;gap:6px">';
+            if (logFile) html += '<button class="file-actions" style=\"padding:4px 12px\" onclick=\"window.open(\'/api/download?path='+encodeURIComponent((logDir||'')+'/'+logFile)+'\')\">⬇ 下载</button>';
+            html += '<button class="file-actions" style=\"padding:4px 12px\" onclick=\"closeTopoDetail()\">关闭</button></div>';
+            body.innerHTML = html;
 
-        // 加载文件列表
-        fetch('/api/files').then(function(r){return r.json();}).then(function(data){
-            var fl = document.getElementById('topoFileList');
-            if (!fl) return;
-            var items = '';
-            for (var i=0;i<data.directories.length;i++){
-                var d=data.directories[i];
-                if (d.path===logDir||d.path.indexOf(logDir+'/')===0){
-                    for (var j=0;j<Math.min(d.files.length,10);j++){
-                        var f=d.files[j], sz=f.size<1024?f.size+'B':f.size<1048576?(f.size/1024).toFixed(1)+'KB':(f.size/1048576).toFixed(1)+'MB';
-                        items += '<div class="file-row"><span class="file-name" title="'+f.path+'">'+f.name+'</span><span class="file-size">'+sz+'</span><div class="file-actions"><button onclick="window.open(\'/api/download?path='+encodeURIComponent(f.path)+'\')">⬇</button><button onclick="viewTopoLog(\''+encodeURIComponent(f.path)+'\')">👁</button></div></div>';
+            // 加载文件列表
+            fetch('/api/files').then(function(r){return r.json();}).then(function(data){
+                var fl = document.getElementById('topoFileList');
+                if (!fl) return;
+                var items = '';
+                if (data.directories && logDir) {
+                    for (var i=0;i<data.directories.length;i++){
+                        var d=data.directories[i];
+                        if (d.path===logDir||d.path.indexOf(logDir+'/')===0){
+                            for (var j=0;j<Math.min(d.files.length,10);j++){
+                                var f=d.files[j], sz=f.size<1024?f.size+'B':f.size<1048576?(f.size/1024).toFixed(1)+'KB':(f.size/1048576).toFixed(1)+'MB';
+                                items += '<div class="file-row"><span class="file-name" title="'+f.path+'">'+f.name+'</span><span class="file-size">'+sz+'</span><div class="file-actions"><button onclick="window.open(\'/api/download?path='+encodeURIComponent(f.path)+'\')">⬇</button><button onclick="viewTopoLog(\''+encodeURIComponent(f.path)+'\')">👁</button></div></div>';
+                            }
+                            break;
+                        }
                     }
-                    break;
                 }
-            }
-            fl.innerHTML = items || '暂无文件';
-        }).catch(function(){ var fl=document.getElementById('topoFileList'); if(fl)fl.innerHTML='加载失败'; });
+                fl.innerHTML = items || '暂无文件';
+            }).catch(function(){ var fl=document.getElementById('topoFileList'); if(fl)fl.innerHTML='加载失败'; });
 
-        // 加载日志预览
-        if (logFile) {
-            fetch('/api/logs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({folder:logDir,pattern:logFile,tail:true,line_start:1,line_end:60,recent_files:1})})
-                .then(function(r){return r.json();}).then(function(data){
-                    var lp = document.getElementById('topoLogPreview');
-                    if (!lp) return;
-                    var lines = '';
-                    if (data.results) for (var i=0;i<data.results.length;i++){ var c=data.results[i].content,cls=/ERROR|error|Error/.test(c)?'error':/WARN|warn/.test(c)?'warn':''; lines += '<div class="log-line '+cls+'" style="font-size:0.68rem;white-space:nowrap;line-height:1.3">'+c+'</div>'; }
-                    lp.innerHTML = lines || '暂无日志';
-                }).catch(function(){ var lp=document.getElementById('topoLogPreview'); if(lp)lp.innerHTML='加载失败'; });
+            // 加载日志预览
+            if (logFile && logDir) {
+                fetch('/api/logs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({folder:logDir,pattern:logFile,tail:true,line_start:1,line_end:60,recent_files:1})})
+                    .then(function(r){return r.json();}).then(function(data){
+                        var lp = document.getElementById('topoLogPreview');
+                        if (!lp) return;
+                        var lines = '';
+                        if (data.results) for (var i=0;i<data.results.length;i++){ var c=data.results[i].content,cls=/ERROR|error|Error/.test(c)?'error':/WARN|warn/.test(c)?'warn':''; lines += '<div class="log-line '+cls+'" style="font-size:0.68rem;white-space:nowrap;line-height:1.3">'+escapeHtml(c)+'</div>'; }
+                        lp.innerHTML = lines || '暂无日志';
+                    }).catch(function(){ var lp=document.getElementById('topoLogPreview'); if(lp)lp.innerHTML='加载失败'; });
+            }
+        } catch(e) {
+            console.error('showTopoDetail error:', e);
         }
     }
 
