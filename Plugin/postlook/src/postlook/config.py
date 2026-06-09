@@ -1,6 +1,6 @@
 """
 postlook · 配置模块
-从 config/app.toml 或 config/env.toml 加载配置，支持热更新
+从 config/app.toml（或 env.toml）+ config/rules.toml 加载配置，支持热更新
 """
 
 import os
@@ -12,6 +12,8 @@ from typing import List, Optional, Dict, Any
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 CONFIG_PATH_APP = PROJECT_ROOT / "config" / "app.toml"
 CONFIG_PATH_ENV = PROJECT_ROOT / "config" / "env.toml"
+RULES_PATH = PROJECT_ROOT / "config" / "rules.toml"
+RULES_TEMPLATE_PATH = PROJECT_ROOT / "config" / "template" / "rules.toml"
 
 # 线程锁
 _lock = threading.Lock()
@@ -42,8 +44,8 @@ def _get_config_path() -> Path:
     return CONFIG_PATH_ENV
 
 
-def _load_toml() -> dict:
-    """加载 TOML 配置文件"""
+def _load_toml_file(path: Path) -> dict:
+    """加载指定 TOML 文件"""
     try:
         import tomllib  # Python 3.11+
     except ImportError:
@@ -52,21 +54,29 @@ def _load_toml() -> dict:
         except ImportError:
             return {}
 
-    config_path = _get_config_path()
-    if config_path.exists():
-        with open(config_path, "rb") as f:
+    if path.exists():
+        with open(path, "rb") as f:
             return tomllib.load(f)
     return {}
 
 
+def reload_rules():
+    """重新加载 rules.toml → 更新 _cached_rules"""
+    global _cached_rules
+    with _lock:
+        cfg = _load_toml_file(RULES_PATH)
+        _cached_rules.clear()
+        _cached_rules.extend(cfg.get("rule", []))
+
+
 def reload_config():
-    """热更新：重新加载配置并更新全局变量"""
+    """热更新：重新加载主配置并更新全局变量"""
     global SERVER_HOST, SERVER_PORT, ROOT_DIRS
     global MAX_LINES, DEFAULT_LINES, DEFAULT_RECENT_FILES, DEFAULT_THEME
     global MAX_DOWNLOAD_SIZE, DEFAULT_DOWNLOAD_SIZE
 
     with _lock:
-        cfg = _load_toml()
+        cfg = _load_toml_file(_get_config_path())
 
         # server
         server = cfg.get("server", {})
@@ -99,10 +109,7 @@ def reload_config():
         ui = cfg.get("ui", {})
         DEFAULT_THEME = ui.get("theme", "dark")
 
-        # ---- 扩展配置 ----
-        _cached_rules.clear()
-        _cached_rules.extend(cfg.get("rule", []))
-
+        # ---- 拓扑 & 目录元数据（主配置）----
         topo = cfg.get("topology", {})
         _cached_topo_categories.clear()
         _cached_topo_categories.extend(topo.get("category", []))
@@ -112,11 +119,14 @@ def reload_config():
         _cached_dirs_meta.clear()
         _cached_dirs_meta.extend(cfg.get("dir", []))
 
+    # 单独加载规则文件
+    reload_rules()
+
 
 # ---- 公开获取器 ----
 
 def get_rules() -> List[Dict[str, Any]]:
-    """获取快捷查询规则列表"""
+    """获取所有规则（含着色/注解/快捷查询）"""
     return list(_cached_rules)
 
 
@@ -134,7 +144,7 @@ def get_dirs_meta() -> List[Dict[str, Any]]:
 
 
 def get_config_toml() -> str:
-    """读取原始 TOML 配置文件内容，不存在时返回模板"""
+    """读取主配置 TOML 原文，不存在时返回模板"""
     config_path = _get_config_path()
     if config_path.exists():
         with open(config_path, "r", encoding="utf-8") as f:
@@ -143,7 +153,7 @@ def get_config_toml() -> str:
             return content
 
     # 回退到模板
-    template_path = PROJECT_ROOT / "config" / "template" / "env.toml"
+    template_path = PROJECT_ROOT / "config" / "template" / "app.toml"
     if template_path.exists():
         with open(template_path, "r", encoding="utf-8") as f:
             return f.read()
@@ -164,13 +174,37 @@ theme = "dark"
 """
 
 
+def get_rules_toml() -> str:
+    """读取 rules.toml 原文，不存在时返回模板"""
+    if RULES_PATH.exists():
+        with open(RULES_PATH, "r", encoding="utf-8") as f:
+            content = f.read()
+        if content.strip():
+            return content
+
+    # 回退到模板
+    if RULES_TEMPLATE_PATH.exists():
+        with open(RULES_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+            return f.read()
+
+    return "# rules.toml\n"
+
+
 def save_config_toml(content: str):
-    """保存 TOML 配置并热更新"""
+    """保存主配置并热更新"""
     config_path = _get_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w", encoding="utf-8") as f:
         f.write(content)
     reload_config()
+
+
+def save_rules_toml(content: str):
+    """保存 rules.toml 并热更新（独立热更）"""
+    RULES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(RULES_PATH, "w", encoding="utf-8") as f:
+        f.write(content)
+    reload_rules()
 
 
 # 初始加载

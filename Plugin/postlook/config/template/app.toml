@@ -1,6 +1,7 @@
 # ============================================================
-# postlook 统一配置文件 (v0.3.0)
-# 合并原有的 server/logs/ui 配置 + 规则/拓扑/目录元数据
+# postlook 主配置文件 (v0.3.0)
+# server/logs/ui/拓扑/目录元数据
+# 规则配置请编辑 rules.toml
 # ============================================================
 
 [server]
@@ -34,51 +35,7 @@ max_download_size = 200
 [ui]
 theme = "dark"
 
-# ============================================================
-# 快捷查询规则（左侧栏按钮，点击一键填表查询）
-# ============================================================
-[[rule]]
-name = "Gateway 错误"
-folder = "/main/app/gateway/logs"
-pattern = "GATEWAY.log"
-keyword = "ERROR|Exception"
-desc = "网关所有异常日志"
-
-[[rule]]
-name = "系统 OOM"
-folder = "/var/log"
-pattern = "messages*"
-keyword = "oom_kill|Out of memory|Killed process"
-desc = "查找 OOM Killer 记录"
-
-[[rule]]
-name = "SSH 登录记录"
-folder = "/var/log"
-pattern = "secure*"
-keyword = "Accepted|Failed"
-desc = "SSH 登录成功/失败"
-
-[[rule]]
-name = "定时任务"
-folder = "/var/log"
-pattern = "cron*"
-keyword = "CMD"
-desc = "cron 定时任务执行记录"
-
-[[rule]]
-name = "MariaDB 慢查询"
-folder = "/main/server/mysql"
-pattern = "slow-sql"
-line_start = 1
-line_end = 200
-desc = "慢查询日志，定位锁等待/全表扫描"
-
-[[rule]]
-name = "Nacos 错误"
-folder = "/main/server/nacos/logs"
-pattern = "nacos.log"
-keyword = "ERROR|Exception"
-desc = "Nacos 服务注册/配置异常"
+# 规则配置请编辑 rules.toml（支持独立热更新）
 
 # ============================================================
 # 拓扑图配置

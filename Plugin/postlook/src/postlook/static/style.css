@@ -434,6 +434,19 @@ body {
     color: var(--success);
 }
 
+/* 规则注解徽标 */
+.rule-annotation {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0 5px;
+    border-radius: 4px;
+    margin-right: 4px;
+    white-space: nowrap;
+    vertical-align: middle;
+    line-height: 1.6;
+}
+
 /* 日志表格 */
 .log-table {
     background: var(--glass-bg);

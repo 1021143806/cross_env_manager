@@ -289,10 +289,28 @@ async def download_file(path: str = Query(..., description="要下载的文件�
 
 @router.get("/api/rules")
 async def get_rules():
-    """获取快捷查询规则列表"""
+    """获取所有规则（着色 + 注解 + 快捷查询）"""
     from .config import get_rules as _get_rules
     rules = _get_rules()
     return {"rules": rules, "count": len(rules)}
+
+
+class RulesUpdateRequest(BaseModel):
+    """POST /api/rules 请求体"""
+    content: str = Field(..., description="TOML 规则配置内容")
+
+
+@router.post("/api/rules")
+async def save_rules(req: RulesUpdateRequest):
+    """保存 rules.toml 并热更新（着色/注解规则即时生效）"""
+    from .config import save_rules_toml
+    try:
+        save_rules_toml(req.content)
+        return {"status": "ok", "message": "规则配置已保存并热更新生效"}
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=f"无法写入规则文件: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/api/topology-config")

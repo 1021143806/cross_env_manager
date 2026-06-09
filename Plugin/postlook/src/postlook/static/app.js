@@ -16,6 +16,9 @@ document.addEventListener('DOMContentLoaded', () => {
     var TOPO_DATA = null;
     var TOPO_LOADING = false;
 
+    // 规则缓存（预编译的着色/注解规则）
+    var _compiledRules = [];
+
     function buildTopoData(categories, services) {
         var cats = {};
         categories.forEach(function(c) { cats[c.id] = c; });
@@ -230,12 +233,15 @@ document.addEventListener('DOMContentLoaded', () => {
         html += '<div class="log-table">';
         data.results.forEach(function(item) {
             var content = escapeHtml(item.content);
-            var highlightedContent = data.keyword ? highlightKeyword(content, data.keyword) : content;
+            // ① 先按搜索关键字高亮
+            var rendered = data.keyword ? highlightKeyword(content, data.keyword) : content;
+            // ② 再按规则着色 + 注解
+            rendered = applyRulesAndAnnotations(rendered, item.file);
 
             html += '<div class="log-row">' +
                 '<span class="log-row-line">' + item.line + '</span>' +
                 '<span class="log-row-file">' + escapeHtml(item.file) + '</span>' +
-                '<span class="log-row-content">' + highlightedContent + '</span>' +
+                '<span class="log-row-content">' + rendered + '</span>' +
                 '</div>';
         });
         html += '</div>';
@@ -260,6 +266,72 @@ document.addEventListener('DOMContentLoaded', () => {
         var escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         var regex = new RegExp('(' + escaped + ')', 'gi');
         return text.replace(regex, '<span class="highlight">$1</span>');
+    }
+
+    /**
+     * 对日志行应用规则着色 + 注解
+     * @param {string} content - 已 escapeHtml 的日志内容
+     * @param {string} file - 文件名（用于 file 过滤）
+     * @returns {string} 渲染后的 HTML
+     */
+    function applyRulesAndAnnotations(content, file) {
+        if (!_compiledRules || _compiledRules.length === 0) return content;
+
+        var annotations = [];
+        var matched = false;
+
+        _compiledRules.forEach(function(rule) {
+            // file 过滤：如果规则指定了 file，当前行文件名必须匹配
+            if (rule.filePattern && file && !rule.filePattern.test(file)) return;
+
+            var matchInfo = null;
+            if (rule.type === 'hex') {
+                // 归一化：去空格、转小写
+                var normalizedContent = content.replace(/\s/g, '').toLowerCase();
+                var normalizedMatch = rule.normalizedHex;
+                if (normalizedContent.indexOf(normalizedMatch) !== -1) {
+                    matchInfo = { index: normalizedContent.indexOf(normalizedMatch), length: normalizedMatch.length };
+                }
+            } else if (rule.type === 'regex') {
+                var m = rule.compiledRegex.exec(content);
+                if (m) {
+                    matchInfo = { index: m.index, length: m[0].length };
+                }
+            } else if (rule.type === 'keyword') {
+                if (rule.compiledRegex.test(content)) {
+                    var k = content.match(rule.compiledRegex);
+                    if (k) {
+                        matchInfo = { index: k.index, length: k[0].length };
+                    }
+                }
+            }
+
+            if (matchInfo) {
+                // 着色：包裹 16px 宽的色条到整行前面
+                var style = 'color:' + (rule.color || 'inherit') + ';' +
+                    (rule.background ? 'background:' + rule.background + ';' : '') +
+                    (rule.bold ? 'font-weight:700;' : '');
+                content = '<span style="border-left:3px solid ' + (rule.color || 'transparent') + ';padding-left:6px;' + style + '">' +
+                    content + '</span>';
+
+                // 注解：添加 annotation 徽标
+                if (rule.annotation) {
+                    annotations.push(
+                        '<span class="rule-annotation" style="background:' + (rule.color || '#818cf8') + '20;color:' +
+                        (rule.color || '#818cf8') + ';border:1px solid ' + (rule.color || '#818cf8') + '40">' +
+                        rule.annotation + '</span>'
+                    );
+                }
+                matched = true;
+            }
+        });
+
+        // 有注解时拼在内容前方
+        if (annotations.length > 0) {
+            content = annotations.join(' ') + ' ' + content;
+        }
+
+        return content;
     }
 
     // ============================================================
@@ -591,11 +663,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     n.style('height', n.data('weight') * (1 + Math.sin(p) * 0.04));
                 });
             }, 40);
+
+            // 节点点击事件
+            cy.on('tap', '.service', function(evt) { var n=evt.target; showTopoDetail(n); });
+            cy.on('tap', function(evt) { if(evt.target===cy) closeTopoDetail(); });
         }
         });
-
-        cy.on('tap', '.service', function(evt) { var n=evt.target; showTopoDetail(n); });
-        cy.on('tap', function(evt) { if(evt.target===cy) closeTopoDetail(); });
 
         // 左侧图层
         var layersDiv = document.getElementById('topoLayers');
@@ -703,32 +776,77 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ============================================================
-    // 9. 快捷规则加载（侧栏按钮）
+    // 9. 规则加载（侧栏按钮 + 着色/注解缓存）
     // ============================================================
+    function compileRule(rule) {
+        var compiled = {};
+        // 复制标量字段
+        compiled.type = rule.type || 'keyword';
+        compiled.color = rule.color || null;
+        compiled.background = rule.background || null;
+        compiled.bold = rule.bold || false;
+        compiled.annotation = rule.annotation || null;
+        compiled.folder = rule.folder || null;
+        compiled.pattern = rule.pattern || null;
+        compiled.match = rule.match || '';
+        compiled.name = rule.name || '';
+
+        // 编译 file 过滤器
+        if (rule.file) {
+            compiled.filePattern = new RegExp(rule.file.replace(/\*/g, '.*').replace(/\?/g, '.'), 'i');
+        } else {
+            compiled.filePattern = null;
+        }
+
+        // 按 type 编译匹配模式
+        if (compiled.type === 'hex') {
+            // 16 进制：去空格，转小写，存归一化字符串
+            compiled.normalizedHex = rule.match.replace(/\s+/g, '').toLowerCase();
+        } else if (compiled.type === 'regex') {
+            compiled.compiledRegex = new RegExp(rule.match, 'gi');
+        } else {
+            // keyword：按 | 分隔，编译正则
+            compiled.compiledRegex = new RegExp('(' + rule.match.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+        }
+        return compiled;
+    }
+
     function loadRules() {
         fetch('/api/rules').then(function(r){return r.json();}).then(function(data){
             var container = document.getElementById('rulesContainer');
             if (!container) return;
             var rules = data.rules || [];
-            if (rules.length === 0) {
+
+            // 预编译所有规则（着色/注解）
+            _compiledRules = [];
+            rules.forEach(function(rule) {
+                _compiledRules.push(compileRule(rule));
+            });
+
+            // 过滤出有 folder 的快捷查询规则，渲染侧栏按钮
+            var queryRules = rules.filter(function(r){ return r.folder; });
+            if (queryRules.length === 0) {
                 container.innerHTML = '<div style="font-size:0.75rem;color:var(--text-tertiary);padding:4px">无规则</div>';
                 return;
             }
             var html = '';
-            rules.forEach(function(rule, idx) {
-                html += '<button class="sb-btn rule-btn" title="'+(rule.desc||'')+'" data-rule-idx="'+idx+'">'+(rule.name||'?')+'</button>';
+            queryRules.forEach(function(rule, idx) {
+                // 用原始 rules 索引引用
+                var origIdx = rules.indexOf(rule);
+                html += '<button class="sb-btn rule-btn" title="'+(rule.desc||'')+'" data-rule-idx="'+origIdx+'">'+(rule.name||'?')+'</button>';
             });
             container.innerHTML = html;
             // 委托事件处理
             container.querySelectorAll('.rule-btn').forEach(function(btn) {
                 btn.addEventListener('click', function() {
-                    var idx = this.getAttribute('data-rule-idx');
-                    var rule = rules[parseInt(idx)];
+                    var idx = parseInt(this.getAttribute('data-rule-idx'));
+                    var rule = rules[idx];
                     if (!rule) return;
                     var form = document.getElementById('logForm');
                     if (rule.folder) document.getElementById('folder').value = rule.folder;
                     if (rule.pattern) document.getElementById('pattern').value = rule.pattern;
-                    if (rule.keyword) document.getElementById('keyword').value = rule.keyword;
+                    // 规则匹配关键词作为默认关键字
+                    if (rule.match) document.getElementById('keyword').value = rule.match;
                     if (rule.line_start) document.getElementById('line_start').value = rule.line_start;
                     if (rule.line_end) document.getElementById('line_end').value = rule.line_end;
                     document.querySelector('.topbar-tab[data-panel="logs"]').click();
