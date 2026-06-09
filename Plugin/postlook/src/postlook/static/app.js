@@ -12,50 +12,66 @@ document.addEventListener('DOMContentLoaded', () => {
     var cy = null;
     var topoInited = false;
 
-    var TOPO_DATA = (function() {
-        var cats = {
-            apps: { id: 'cat-apps', label: '应用系统', color: '#0abde3' },
-            planner: { id: 'cat-planner', label: '路径规划', color: '#e94560' },
-            middleware: { id: 'cat-middleware', label: '中间件', color: '#f39c12' },
-            system: { id: 'cat-system', label: '系统日志', color: '#10ac84' },
-            database: { id: 'cat-database', label: '数据库', color: '#9b59b6' }
-        };
-        var svcs = [
-            { id:'gateway',label:'gateway',cat:'apps',logDir:'/main/app/gateway/logs',logFile:'GATEWAY.log',size:48.8,desc:'API 网关 / 鉴权 / 路由'},
-            { id:'bms',label:'BMS',cat:'apps',logDir:'/main/app/bms/logs',logFile:'BMS.log',size:96.9,desc:'业务管理 / 地图'},
-            { id:'rdms',label:'RDMS',cat:'apps',logDir:'/main/app/rdms/logs',logFile:'RDMS.log',size:118,desc:'资源调度'},
-            { id:'pms',label:'PMS',cat:'apps',logDir:'/main/app/pms/logs',logFile:'PMS.log',size:43.2,desc:'任务管理'},
-            { id:'sps',label:'SPS',cat:'apps',logDir:'/main/app/sps/logs',logFile:'SPS.log',size:30,desc:'路径服务'},
-            { id:'tps',label:'TPS',cat:'apps',logDir:'/main/app/tps/logs',logFile:'TPS.log',size:27.4,desc:'任务处理'},
-            { id:'gws',label:'GWS',cat:'apps',logDir:'/main/app/gws/logs',logFile:'GWS.log',size:31.3,desc:'网关 WebSocket'},
-            { id:'ics',label:'ICS',cat:'apps',logDir:'/main/app/ics/logs',logFile:'ICS.log',size:19.3,desc:'交叉控制'},
-            { id:'revent',label:'REVENT',cat:'apps',logDir:'/main/app/revent/logs',logFile:'REVENT.log',size:12.8,desc:'事件上报'},
-            { id:'wdcs',label:'WDCS',cat:'apps',logDir:'/main/app/wdcs/logs',logFile:'WDCS.log',size:11,desc:'仓库数据采集'},
-            { id:'rtpsa',label:'rtpsa-all',cat:'planner',logDir:'/main/app/rtpsa-2,3,4,5,6/logs',logFile:'rtps.log',size:0,desc:'任务分配 (C++)'},
-            { id:'rtpsp2',label:'rtpsp-2',cat:'planner',logDir:'/main/app/rtpsp-2/logs',logFile:'rtps.log',size:0,desc:'路径规划 2'},
-            { id:'rtpsp3',label:'rtpsp-3',cat:'planner',logDir:'/main/app/rtpsp-3/logs',logFile:'rtps.log',size:0,desc:'路径规划 3'},
-            { id:'nacos',label:'Nacos',cat:'middleware',logDir:'/main/server/nacos/logs',logFile:'nacos.log',size:14.2,desc:'服务注册/配置'},
-            { id:'messages',label:'messages',cat:'system',logDir:'/var/log',logFile:'messages',size:4,desc:'系统消息(内核/OOM/sshd)'},
-            { id:'secure',label:'secure',cat:'system',logDir:'/var/log',logFile:'secure',size:5.1,desc:'安全认证(SSH登录)'},
-            { id:'cron',label:'cron',cat:'system',logDir:'/var/log',logFile:'cron',size:1.3,desc:'定时任务'},
-            { id:'mariadb',label:'MariaDB',cat:'database',logDir:'/main/server/mysql',logFile:'mysql_error.log',size:0.3,desc:'MariaDB 8.4.8'}
-        ];
-        var nodes = [{data:{id:'server',label:'postlook v3\n10.76.2.4',type:'server',weight:100},classes:'server'}];
-        var edges = [];
-        for (var k in cats) { var c=cats[k]; nodes.push({data:{id:c.id,label:c.label,type:'category',cat:k,weight:60},classes:'category '+k}); edges.push({data:{source:'server',target:c.id}}); }
-        for (var i=0;i<svcs.length;i++){ var s=svcs[i],sz=Math.max(20,Math.min(50,(s.size||0.1)*0.35+18)); nodes.push({data:{id:s.id,label:s.label,type:'service',cat:s.cat,desc:s.desc,logDir:s.logDir,logFile:s.logFile,sizeMB:s.size,weight:sz},classes:'service '+s.cat}); edges.push({data:{source:cats[s.cat].id,target:s.id}}); }
-        return {nodes:nodes,edges:edges,services:svcs,categories:cats};
-    })();
+    // 拓扑数据：优先从 API 加载，失败时用内置兜底
+    var TOPO_DATA = null;
+    var TOPO_LOADING = false;
 
-    function calcRadialLayout() {
+    function buildTopoData(categories, services) {
+        var cats = {};
+        categories.forEach(function(c) { cats[c.id] = c; });
+        var nodes = [{data:{id:'server',label:'postlook\n'+window.location.hostname,type:'server',weight:100},classes:'server'}];
+        var edges = [];
+        for (var k in cats) {
+            var c = cats[k];
+            nodes.push({data:{id:c.id,label:c.label,type:'category',cat:k,weight:60},classes:'category '+k});
+            edges.push({data:{source:'server',target:c.id}});
+        }
+        for (var i=0;i<services.length;i++) {
+            var s = services[i];
+            var sz = Math.max(20, Math.min(50, (s.size_mb || 0.1) * 0.35 + 18));
+            nodes.push({data:{id:s.id,label:s.name||s.id,type:'service',cat:s.category,desc:s.desc||'',logDir:s.log_dir||'',logFile:s.log_file||'',sizeMB:s.size_mb||0,weight:sz},classes:'service '+s.category});
+            if (cats[s.category]) edges.push({data:{source:cats[s.category].id,target:s.id}});
+        }
+        return {nodes:nodes,edges:edges,services:services,categories:cats};
+    }
+
+    function loadTopoData(callback) {
+        if (TOPO_DATA) return callback(TOPO_DATA);
+        if (TOPO_LOADING) { setTimeout(function(){ loadTopoData(callback); }, 200); return; }
+        TOPO_LOADING = true;
+        fetch('/api/topology-config').then(function(r){return r.json();}).then(function(data){
+            TOPO_DATA = buildTopoData(data.categories || [], data.services || []);
+            callback(TOPO_DATA);
+        }).catch(function(){
+            // 兜底数据
+            var cats = [
+                {id:'apps',label:'应用系统',color:'#0abde3'},
+                {id:'planner',label:'路径规划',color:'#f87171'},
+                {id:'middleware',label:'中间件',color:'#fbbf24'},
+                {id:'system',label:'系统日志',color:'#4ade80'},
+                {id:'database',label:'数据库',color:'#a855f7'}
+            ];
+            var svcs = [
+                {id:'gateway',name:'Gateway',category:'apps',log_dir:'/main/app/gateway/logs',log_file:'GATEWAY.log',size_mb:48},
+                {id:'bms',name:'BMS',category:'apps',log_dir:'/main/app/bms/logs',log_file:'BMS.log',size_mb:96},
+                {id:'nacos',name:'Nacos',category:'middleware',log_dir:'/main/server/nacos/logs',log_file:'nacos.log',size_mb:14},
+                {id:'messages',name:'messages',category:'system',log_dir:'/var/log',log_file:'messages',size_mb:4},
+                {id:'mariadb',name:'MariaDB',category:'database',log_dir:'/main/server/mysql',log_file:'slow-sql',size_mb:1}
+            ];
+            TOPO_DATA = buildTopoData(cats, svcs);
+            callback(TOPO_DATA);
+        });
+    }
+
+    function calcRadialLayout(topoData) {
         var pos = {};
-        var cats = Object.keys(TOPO_DATA.categories);
+        var cats = Object.keys(topoData.categories);
         for (var i = 0; i < cats.length; i++) {
-            var cat = TOPO_DATA.categories[cats[i]];
+            var cat = topoData.categories[cats[i]];
             var a = (2 * Math.PI * i) / cats.length - Math.PI / 2;
             var cx = Math.cos(a) * 260, cy = Math.sin(a) * 260;
             pos[cat.id] = { x: cx, y: cy };
-            var svcs = TOPO_DATA.services.filter(function(s) { return s.cat === cats[i]; });
+            var svcs = topoData.services.filter(function(s) { return s.category === cats[i]; });
             var svcLen = svcs.length;
             var arc = Math.min(3.5, Math.max(0.4, svcLen * 0.13));
             var dist = 110 + Math.max(0, svcLen - 8) * 8;
@@ -518,38 +534,39 @@ document.addEventListener('DOMContentLoaded', () => {
         var container = document.getElementById('cy');
         if (!container) return;
 
+        var statusEl = document.getElementById('topoStatus');
+        if (statusEl) statusEl.textContent = '加载配置中...';
+
+        loadTopoData(function(data) {
+            if (!data || !data.nodes) return;
+            _initTopoWithData(container, data);
+        });
+    }
+
+    function _initTopoWithData(container, data) {
         cy = cytoscape({
-            container: container,
-            elements: { nodes: TOPO_DATA.nodes, edges: TOPO_DATA.edges },
+        container: container,
+            elements: { nodes: data.nodes, edges: data.edges },
             style: [
-                { selector: '.server', style: { 'background-color':'#1a1040','label':'data(label)','color':'#e0e0f0','font-size':'13px','text-valign':'center','text-halign':'center','width':110,'height':110,'border-width':3,'border-color':'#818cf8','text-wrap':'wrap','text-max-width':'70px','underlay-color':'#818cf8','underlay-opacity':0.12,'underlay-padding':8 } },
-                { selector: '.category', style: { 'background-color':'rgba(15,15,50,0.9)','label':'data(label)','color':'#c0c0e0','font-size':'12px','font-weight':'bold','text-valign':'center','text-halign':'center','width':75,'height':75,'border-width':2,'underlay-opacity':0.08,'underlay-padding':6 } },
-                { selector: '.apps', style: { 'border-color':'#0abde3','underlay-color':'#0abde3' } },
-                { selector: '.planner', style: { 'border-color':'#f87171','underlay-color':'#f87171' } },
-                { selector: '.middleware', style: { 'border-color':'#fbbf24','underlay-color':'#fbbf24' } },
-                { selector: '.system', style: { 'border-color':'#4ade80','underlay-color':'#4ade80' } },
-                { selector: '.database', style: { 'border-color':'#a855f7','underlay-color':'#a855f7' } },
-                { selector: '.service', style: { 'background-color':'rgba(20,20,50,0.85)','label':'data(label)','color':'#c8c8e0','font-size':'10px','text-valign':'center','text-halign':'center','width':'data(weight)','height':'data(weight)','border-width':1.5,'underlay-opacity':0.06,'underlay-padding':4 } },
-                { selector: '.service:selected', style: { 'border-width':3,'border-color':'#fff','underlay-opacity':0.25 } },
+                { selector: '.server', style: { 'shape':'ellipse','background-color':'#818cf8','background-opacity':0.2,'label':'data(label)','color':'#e0e0f0','font-size':'13px','font-weight':'bold','text-valign':'center','text-halign':'center','width':110,'height':110,'border-width':2,'border-color':'#818cf8','text-wrap':'wrap','text-max-width':'80px' } },
+                { selector: '.category', style: { 'shape':'ellipse','label':'data(label)','color':'#c0c0e0','font-size':'12px','font-weight':'bold','text-valign':'center','text-halign':'center','width':75,'height':75,'border-width':2,'border-color':'#a0a0c0' } },
+                { selector: '.apps', style: { 'background-color':'#0abde3','background-opacity':0.18,'border-color':'#0abde3' } },
+                { selector: '.planner', style: { 'background-color':'#f87171','background-opacity':0.18,'border-color':'#f87171' } },
+                { selector: '.middleware', style: { 'background-color':'#fbbf24','background-opacity':0.18,'border-color':'#fbbf24' } },
+                { selector: '.system', style: { 'background-color':'#4ade80','background-opacity':0.18,'border-color':'#4ade80' } },
+                { selector: '.database', style: { 'background-color':'#a855f7','background-opacity':0.18,'border-color':'#a855f7' } },
+                { selector: '.service', style: { 'shape':'ellipse','label':'data(label)','color':'#e8e0f0','font-size':'10px','text-valign':'center','text-halign':'center','width':'data(weight)','height':'data(weight)','border-width':2 } },
+                { selector: '.service:selected', style: { 'border-width':3,'border-color':'#fff' } },
                 { selector: 'edge', style: { 'width':1.2,'line-color':'rgba(129,140,248,0.35)','curve-style':'bezier','opacity':0.7,'line-dash-pattern':[4,8],'line-dash-offset':0 } }
             ],
-            layout: { name:'preset', positions: calcRadialLayout(), animate:true, animationDuration:800 },
+            layout: { name:'preset', positions: calcRadialLayout(data), animate:true, animationDuration:800 },
             wheelSensitivity: 0.3, userZoomingEnabled: true, userPanningEnabled: true, minZoom: 0.15, maxZoom: 3,
-            // 开启节点拖拽
-            autoungrabify: false, autounselectify: false
-        });
-
-        // 立即更新状态
-        document.getElementById('topoStatus').textContent = (TOPO_DATA.services.length + 5) + ' 节点就绪';
-
-        cy.on('tap', '.service', function(evt) { var n=evt.target; showTopoDetail(n); });
-        cy.on('tap', function(evt) { if(evt.target===cy) closeTopoDetail(); });
-
-            cy.on('ready', function() {
-            document.getElementById('topoStatus').textContent = (TOPO_DATA.services.length + 5) + ' 节点 · 拖拽可移动 · 滚轮缩放';
+            autoungrabify: false, autounselectify: false,
+            ready: function() {
+            document.getElementById('topoStatus').textContent = (data.services.length + 5) + ' 节点 · 滚轮缩放';
             setTimeout(function(){ cy.resize(); cy.fit(undefined, 40); }, 150);
 
-            // 动态悬浮 + 回弹
+            // 节点动态悬浮
             var floatPhases = {}, floatTime = 0, basePos = {};
             cy.nodes().forEach(function(n) { basePos[n.id()] = { x: n.position('x'), y: n.position('y') }; floatPhases[n.id()] = Math.random() * Math.PI * 2; });
 
@@ -574,31 +591,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     n.style('height', n.data('weight') * (1 + Math.sin(p) * 0.04));
                 });
             }, 40);
-
-            // 边流动动画
-            var dashOffset = 0;
-            cy.edges().forEach(function(e){ e.style('line-dash-pattern', [4,8]); e.style('line-dash-offset', 0); });
-            setInterval(function(){
-                dashOffset = (dashOffset - 0.5) % 12;
-                cy.edges().forEach(function(e){ e.style('line-dash-offset', dashOffset); });
-            }, 80);
-
-            // 服务器节点脉动
-            var pulsePhase = 0;
-            setInterval(function(){
-                pulsePhase += 0.1;
-                var glow = 0.06 + Math.sin(pulsePhase) * 0.06;
-                cy.getElementById('server').style('underlay-opacity', glow);
-            }, 60);
+        }
         });
+
+        cy.on('tap', '.service', function(evt) { var n=evt.target; showTopoDetail(n); });
+        cy.on('tap', function(evt) { if(evt.target===cy) closeTopoDetail(); });
 
         // 左侧图层
         var layersDiv = document.getElementById('topoLayers');
         if (layersDiv) {
             var html = '<div class="sb-labels">';
-            for (var k in TOPO_DATA.categories) {
-                var c = TOPO_DATA.categories[k];
-                var count = TOPO_DATA.services.filter(function(s){return s.cat===k;}).length;
+            for (var k in data.categories) {
+                var c = data.categories[k];
+                var count = data.services.filter(function(s){return s.category===k;}).length;
                 html += '<label class="sb-label"><input type="checkbox" checked data-cat="'+k+'" onchange="toggleLayer(\''+k+'\',this.checked)"> <span class="sb-legend-dot" style="background:'+c.color+'"></span> '+c.label+' <span class="count">'+count+'</span></label>';
             }
             html += '</div>';
@@ -608,8 +613,8 @@ document.addEventListener('DOMContentLoaded', () => {
         var legendDiv = document.querySelector('.sb-legend');
         if (legendDiv) {
             var html = '';
-            for (var k in TOPO_DATA.categories) {
-                var c = TOPO_DATA.categories[k];
+            for (var k in data.categories) {
+                var c = data.categories[k];
                 html += '<div class="sb-legend-item"><span class="sb-legend-dot" style="background:'+c.color+'"></span>'+c.label+'</div>';
             }
             legendDiv.innerHTML = html;
@@ -690,10 +695,52 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateTopoTheme(theme) {
         if (!cy) return;
-        var bg = theme === 'dark' ? '#1a1a2e' : '#f0f0f5';
-        cy.style().selector('.service').style('background-color', theme==='dark'?'#1a1a3e':'#e8e8f0').update();
-        cy.style().selector('.category').style('background-color', theme==='dark'?'#0f3460':'#d0d0e0').update();
-        cy.style().selector('.server').style('background-color', theme==='dark'?'#16213e':'#c0c0d0').update();
+        var serverText = theme === 'dark' ? '#e0e0f0' : '#2a2a4e';
+        var serverBorder = theme === 'dark' ? '#818cf8' : '#6366f1';
+        cy.style().selector('.server').style('color', serverText).style('border-color', serverBorder).update();
+        cy.style().selector('.category').style('color', theme==='dark'?'#c0c0e0':'#3a3a5a').update();
+        cy.style().selector('.service').style('color', theme==='dark'?'#e8e0f0':'#4a4a6a').update();
     }
 
+    // ============================================================
+    // 9. 快捷规则加载（侧栏按钮）
+    // ============================================================
+    function loadRules() {
+        fetch('/api/rules').then(function(r){return r.json();}).then(function(data){
+            var container = document.getElementById('rulesContainer');
+            if (!container) return;
+            var rules = data.rules || [];
+            if (rules.length === 0) {
+                container.innerHTML = '<div style="font-size:0.75rem;color:var(--text-tertiary);padding:4px">无规则</div>';
+                return;
+            }
+            var html = '';
+            rules.forEach(function(rule, idx) {
+                html += '<button class="sb-btn rule-btn" title="'+(rule.desc||'')+'" data-rule-idx="'+idx+'">'+(rule.name||'?')+'</button>';
+            });
+            container.innerHTML = html;
+            // 委托事件处理
+            container.querySelectorAll('.rule-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var idx = this.getAttribute('data-rule-idx');
+                    var rule = rules[parseInt(idx)];
+                    if (!rule) return;
+                    var form = document.getElementById('logForm');
+                    if (rule.folder) document.getElementById('folder').value = rule.folder;
+                    if (rule.pattern) document.getElementById('pattern').value = rule.pattern;
+                    if (rule.keyword) document.getElementById('keyword').value = rule.keyword;
+                    if (rule.line_start) document.getElementById('line_start').value = rule.line_start;
+                    if (rule.line_end) document.getElementById('line_end').value = rule.line_end;
+                    document.querySelector('.topbar-tab[data-panel="logs"]').click();
+                    setTimeout(function() { 
+                        form.dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
+                    }, 150);
+                });
+            });
+        }).catch(function(){
+            var c = document.getElementById('rulesContainer');
+            if (c) c.innerHTML = '<div style="font-size:0.75rem;color:var(--text-tertiary);padding:4px">规则加载失败</div>';
+        });
+    }
+    loadRules();
 });

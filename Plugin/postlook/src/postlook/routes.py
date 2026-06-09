@@ -285,6 +285,35 @@ async def download_file(path: str = Query(..., description="要下载的文件�
     )
 
 
+# ---- 扩展配置 API (v0.3.0) ----
+
+@router.get("/api/rules")
+async def get_rules():
+    """获取快捷查询规则列表"""
+    from .config import get_rules as _get_rules
+    rules = _get_rules()
+    return {"rules": rules, "count": len(rules)}
+
+
+@router.get("/api/topology-config")
+async def get_topology_config():
+    """获取拓扑图配置（分类+服务节点）"""
+    from .config import get_topology_config as _get_topo
+    return _get_topo()
+
+
+@router.get("/api/dirs-meta")
+async def get_dirs_meta():
+    """获取日志目录元数据"""
+    from .config import get_dirs_meta as _get_meta
+    meta = _get_meta()
+    # 转成 {path: info} 映射方便前端查找
+    meta_map = {}
+    for m in meta:
+        meta_map[m.get("path", "")] = m
+    return {"dirs": meta, "map": meta_map}
+
+
 @router.get("/api/help")
 async def api_help():
     """返回模块接口文档和使用说明"""

@@ -46,12 +46,9 @@
                 <!-- 日志查询侧栏 -->
                 <div class="sidebar-panel" id="sidebar-logs">
                     <div class="sb-section">
-                        <h4>快捷操作</h4>
-                        <div class="sb-buttons">
-                            <button class="sb-btn" onclick="document.getElementById('folder').value='/var/log/messages';document.getElementById('logForm').requestSubmit()">📋 系统日志</button>
-                            <button class="sb-btn" onclick="document.getElementById('folder').value='/main/app/gateway/logs';document.getElementById('logForm').requestSubmit()">🌐 Gateway</button>
-                            <button class="sb-btn" onclick="document.getElementById('keyword').value='ERROR';document.getElementById('logForm').requestSubmit()">❌ 查错误</button>
-                            <button class="sb-btn" onclick="document.getElementById('keyword').value='Exception';document.getElementById('logForm').requestSubmit()">⚠️ 查异常</button>
+                        <h4>快捷查询</h4>
+                        <div class="sb-buttons" id="rulesContainer">
+                            <div style="font-size:0.75rem;color:var(--text-tertiary);padding:4px">加载规则中...</div>
                         </div>
                     </div>
                 </div>

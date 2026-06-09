@@ -1,0 +1,325 @@
+# ============================================================
+# postlook 统一配置文件 (v0.3.0)
+# 合并原有的 server/logs/ui 配置 + 规则/拓扑/目录元数据
+# ============================================================
+
+[server]
+host = "0.0.0.0"
+port = 5011
+
+[logs]
+# 允许访问的日志根目录
+root_dirs = [
+    "/var/log",
+    "/main/log/app",
+    "/main/app/gateway/logs",
+    "/main/app/bms/logs",
+    "/main/app/rdms/logs",
+    "/main/app/sps/logs",
+    "/main/app/tps/logs",
+    "/main/app/ics/logs",
+    "/main/app/fms/logs",
+    "/main/app/revent/logs",
+    "/main/app/pms/logs",
+    "/main/app/cms/logs",
+    "/main/app/wdcs/logs",
+    "/main/server/nacos/logs",
+    "/main/server/mysql",
+]
+max_lines = 100
+default_lines = 50
+default_recent_files = 10
+max_download_size = 200
+
+[ui]
+theme = "dark"
+
+# ============================================================
+# 快捷查询规则（左侧栏按钮，点击一键填表查询）
+# ============================================================
+[[rule]]
+name = "Gateway 错误"
+folder = "/main/app/gateway/logs"
+pattern = "GATEWAY.log"
+keyword = "ERROR|Exception"
+desc = "网关所有异常日志"
+
+[[rule]]
+name = "系统 OOM"
+folder = "/var/log"
+pattern = "messages*"
+keyword = "oom_kill|Out of memory|Killed process"
+desc = "查找 OOM Killer 记录"
+
+[[rule]]
+name = "SSH 登录记录"
+folder = "/var/log"
+pattern = "secure*"
+keyword = "Accepted|Failed"
+desc = "SSH 登录成功/失败"
+
+[[rule]]
+name = "定时任务"
+folder = "/var/log"
+pattern = "cron*"
+keyword = "CMD"
+desc = "cron 定时任务执行记录"
+
+[[rule]]
+name = "MariaDB 慢查询"
+folder = "/main/server/mysql"
+pattern = "slow-sql"
+line_start = 1
+line_end = 200
+desc = "慢查询日志，定位锁等待/全表扫描"
+
+[[rule]]
+name = "Nacos 错误"
+folder = "/main/server/nacos/logs"
+pattern = "nacos.log"
+keyword = "ERROR|Exception"
+desc = "Nacos 服务注册/配置异常"
+
+# ============================================================
+# 拓扑图配置
+# ============================================================
+
+# -- 分类（环形布局中的一级节点） --
+[[topology.category]]
+id = "apps"
+label = "应用系统"
+color = "#0abde3"
+desc = "Java/Spring Boot 微服务"
+
+[[topology.category]]
+id = "planner"
+label = "路径规划"
+color = "#f87171"
+desc = "C++ RTPS 算法进程"
+
+[[topology.category]]
+id = "middleware"
+label = "中间件"
+color = "#fbbf24"
+desc = "Nacos / Filebeat / Redis"
+
+[[topology.category]]
+id = "system"
+label = "系统日志"
+color = "#4ade80"
+desc = "OS 内核 / 安全 / 定时任务"
+
+[[topology.category]]
+id = "database"
+label = "数据库"
+color = "#a855f7"
+desc = "MariaDB 8.4.8"
+
+# -- 服务节点（二级节点，挂在分类下） --
+[[topology.service]]
+id = "gateway"
+name = "Gateway"
+category = "apps"
+log_dir = "/main/app/gateway/logs"
+log_file = "GATEWAY.log"
+size_mb = 48.8
+desc = "API 网关 / 路由 / 鉴权"
+
+[[topology.service]]
+id = "bms"
+name = "BMS"
+category = "apps"
+log_dir = "/main/app/bms/logs"
+log_file = "BMS.log"
+size_mb = 96.9
+desc = "业务管理 / 订单 / 地图"
+
+[[topology.service]]
+id = "rdms"
+name = "RDMS"
+category = "apps"
+log_dir = "/main/app/rdms/logs"
+log_file = "RDMS.log"
+size_mb = 118.0
+desc = "机器人调度管理"
+
+[[topology.service]]
+id = "pms"
+name = "PMS"
+category = "apps"
+log_dir = "/main/app/pms/logs"
+log_file = "PMS.log"
+size_mb = 43.2
+desc = "任务管理"
+
+[[topology.service]]
+id = "sps"
+name = "SPS"
+category = "apps"
+log_dir = "/main/app/sps/logs"
+log_file = "SPS.log"
+size_mb = 30.0
+desc = "路径服务"
+
+[[topology.service]]
+id = "tps"
+name = "TPS"
+category = "apps"
+log_dir = "/main/app/tps/logs"
+log_file = "TPS.log"
+size_mb = 27.4
+desc = "任务处理"
+
+[[topology.service]]
+id = "ics"
+name = "ICS"
+category = "apps"
+log_dir = "/main/app/ics/logs"
+log_file = "ICS.log"
+size_mb = 19.3
+desc = "交叉控制"
+
+[[topology.service]]
+id = "revent"
+name = "REVENT"
+category = "apps"
+log_dir = "/main/app/revent/logs"
+log_file = "REVENT.log"
+size_mb = 12.8
+desc = "事件上报"
+
+[[topology.service]]
+id = "wdcs"
+name = "WDCS"
+category = "apps"
+log_dir = "/main/app/wdcs/logs"
+log_file = "WDCS.log"
+size_mb = 11.0
+desc = "仓库数据采集"
+
+[[topology.service]]
+id = "gws"
+name = "GWS"
+category = "apps"
+log_dir = "/main/app/gws/logs"
+log_file = "GWS.log"
+size_mb = 31.3
+desc = "WebSocket 网关"
+
+[[topology.service]]
+id = "fms"
+name = "FMS"
+category = "apps"
+log_dir = "/main/app/fms/logs"
+log_file = "FMS.log"
+size_mb = 5.0
+desc = "车队管理"
+
+[[topology.service]]
+id = "cms"
+name = "CMS"
+category = "apps"
+log_dir = "/main/app/cms/logs"
+log_file = "CMS.log"
+size_mb = 3.7
+desc = "配置管理"
+
+# -- 路径规划 --
+[[topology.service]]
+id = "rtpsa"
+name = "rtpsa"
+category = "planner"
+log_dir = "/main/app/rtpsa-2,3,4,5,6/logs"
+log_file = "rtps.log"
+desc = "任务分配 (C++)"
+
+[[topology.service]]
+id = "rtpsp-2"
+name = "rtpsp-2"
+category = "planner"
+log_dir = "/main/app/rtpsp-2/logs"
+log_file = "rtps.log"
+desc = "路径规划 (C++)"
+
+[[topology.service]]
+id = "rtpsp-3"
+name = "rtpsp-3"
+category = "planner"
+log_dir = "/main/app/rtpsp-3/logs"
+log_file = "rtps.log"
+desc = "路径规划 (C++)"
+
+# -- 中间件 --
+[[topology.service]]
+id = "nacos"
+name = "Nacos"
+category = "middleware"
+log_dir = "/main/server/nacos/logs"
+log_file = "nacos.log"
+size_mb = 14.2
+desc = "服务注册 / 配置中心"
+
+# -- 系统日志 --
+[[topology.service]]
+id = "messages"
+name = "messages"
+category = "system"
+log_dir = "/var/log"
+log_file = "messages"
+size_mb = 4.0
+desc = "系统消息 (内核/OOM/sshd)"
+
+[[topology.service]]
+id = "secure"
+name = "secure"
+category = "system"
+log_dir = "/var/log"
+log_file = "secure"
+size_mb = 5.1
+desc = "安全认证 (SSH 登录记录)"
+
+[[topology.service]]
+id = "cron"
+name = "cron"
+category = "system"
+log_dir = "/var/log"
+log_file = "cron"
+size_mb = 1.3
+desc = "定时任务执行记录"
+
+# -- 数据库 --
+[[topology.service]]
+id = "mariadb"
+name = "MariaDB"
+category = "database"
+log_dir = "/main/server/mysql"
+log_file = "slow-sql"
+size_mb = 1.5
+desc = "慢查询日志 (锁/扫描定位)"
+
+# ============================================================
+# 日志目录元数据（文件浏览器 + 拓扑详情面板显示备注）
+# ============================================================
+[[dir]]
+path = "/main/app/gateway/logs"
+name = "Gateway"
+desc = "API 网关，所有请求入口。关注 ERROR/Exception/recycle error"
+tags = ["java", "gateway", "核心"]
+
+[[dir]]
+path = "/var/log"
+name = "系统日志"
+desc = "OS 日志：messages(内核/OOM)、secure(SSH)、cron(定时任务)"
+tags = ["system", "os"]
+
+[[dir]]
+path = "/main/server/nacos/logs"
+name = "Nacos"
+desc = "服务注册与配置中心，关注 core-auth.log 和命名服务日志"
+tags = ["middleware", "java"]
+
+[[dir]]
+path = "/main/server/mysql"
+name = "MariaDB"
+desc = "数据库日志：slow-sql(慢查询)、error(启动/连接错误)"
+tags = ["database", "核心"]

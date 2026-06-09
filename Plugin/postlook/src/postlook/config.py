@@ -1,16 +1,17 @@
 """
 postlook · 配置模块
-从 config/env.toml 和环境变量加载配置，支持热更新
+从 config/app.toml 或 config/env.toml 加载配置，支持热更新
 """
 
 import os
 import threading
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 # 项目根目录
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-CONFIG_PATH = PROJECT_ROOT / "config" / "env.toml"
+CONFIG_PATH_APP = PROJECT_ROOT / "config" / "app.toml"
+CONFIG_PATH_ENV = PROJECT_ROOT / "config" / "env.toml"
 
 # 线程锁
 _lock = threading.Lock()
@@ -24,8 +25,21 @@ DEFAULT_LINES: int = 50
 DEFAULT_RECENT_FILES: int = 10
 MAX_RECENT_FILES: int = 50
 DEFAULT_THEME: str = "dark"
-MAX_DOWNLOAD_SIZE: int = 200 * 1024 * 1024  # 200MB bytes
-DEFAULT_DOWNLOAD_SIZE: int = 200  # 200MB for display
+MAX_DOWNLOAD_SIZE: int = 200 * 1024 * 1024
+DEFAULT_DOWNLOAD_SIZE: int = 200
+
+# ---- 扩展配置缓存 ----
+_cached_rules: List[Dict[str, Any]] = []
+_cached_topo_categories: List[Dict[str, Any]] = []
+_cached_topo_services: List[Dict[str, Any]] = []
+_cached_dirs_meta: List[Dict[str, Any]] = []
+
+
+def _get_config_path() -> Path:
+    """优先使用 app.toml，不存在时回退到 env.toml"""
+    if CONFIG_PATH_APP.exists():
+        return CONFIG_PATH_APP
+    return CONFIG_PATH_ENV
 
 
 def _load_toml() -> dict:
@@ -38,8 +52,9 @@ def _load_toml() -> dict:
         except ImportError:
             return {}
 
-    if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, "rb") as f:
+    config_path = _get_config_path()
+    if config_path.exists():
+        with open(config_path, "rb") as f:
             return tomllib.load(f)
     return {}
 
@@ -84,11 +99,45 @@ def reload_config():
         ui = cfg.get("ui", {})
         DEFAULT_THEME = ui.get("theme", "dark")
 
+        # ---- 扩展配置 ----
+        _cached_rules.clear()
+        _cached_rules.extend(cfg.get("rule", []))
+
+        topo = cfg.get("topology", {})
+        _cached_topo_categories.clear()
+        _cached_topo_categories.extend(topo.get("category", []))
+        _cached_topo_services.clear()
+        _cached_topo_services.extend(topo.get("service", []))
+
+        _cached_dirs_meta.clear()
+        _cached_dirs_meta.extend(cfg.get("dir", []))
+
+
+# ---- 公开获取器 ----
+
+def get_rules() -> List[Dict[str, Any]]:
+    """获取快捷查询规则列表"""
+    return list(_cached_rules)
+
+
+def get_topology_config() -> Dict[str, Any]:
+    """获取拓扑图配置"""
+    return {
+        "categories": list(_cached_topo_categories),
+        "services": list(_cached_topo_services),
+    }
+
+
+def get_dirs_meta() -> List[Dict[str, Any]]:
+    """获取日志目录元数据列表"""
+    return list(_cached_dirs_meta)
+
 
 def get_config_toml() -> str:
     """读取原始 TOML 配置文件内容，不存在时返回模板"""
-    if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+    config_path = _get_config_path()
+    if config_path.exists():
+        with open(config_path, "r", encoding="utf-8") as f:
             content = f.read()
         if content.strip():
             return content
@@ -117,10 +166,10 @@ theme = "dark"
 
 def save_config_toml(content: str):
     """保存 TOML 配置并热更新"""
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+    config_path = _get_config_path()
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path, "w", encoding="utf-8") as f:
         f.write(content)
-    # 热更新
     reload_config()
 
 

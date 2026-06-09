@@ -874,6 +874,7 @@ body {
 #panel-topology {
     position: absolute; top: 0; left: 0; right: 0; bottom: 0;
     padding: 0; overflow: hidden; display: none !important;
+    background: transparent !important;
 }
 #panel-topology.active { display: block !important; }
 /* 拓扑激活时去掉内容区的 padding，防止面板周围出现方框留白 */
