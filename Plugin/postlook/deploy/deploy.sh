@@ -117,4 +117,16 @@ echo "  重启服务:   supervisorctl restart $PROJECT_NAME"
 echo "  停止服务:   supervisorctl stop $PROJECT_NAME"
 echo "  查看日志:   tail -f $LOG_PATH/${PROJECT_NAME}.log"
 echo ""
+echo "首次部署后配置初始化（热更新白名单）:"
+echo "  curl -X POST http://localhost:\$APP_PORT/api/config \\"
+echo '    -H "Content-Type: application/json" \'
+echo '    -d @- << JSON'
+echo '  {"content": "[server]\nhost = \"0.0.0.0\"\nport = 5011\n\n[logs]\nroot_dirs = [\"/var/log\", \"/main/app/ics/logs\", \"/main/app/tps/logs\"]\nmax_lines = 100\ndefault_lines = 50\ndefault_recent_files = 10\n\n[ui]\ntheme = \"dark\"\n"}'
+echo "  JSON"
+echo ""
+echo "如果服务未通过 Supervisor 运行（直接启动模式）:"
+echo "  pkill -f 'uvicorn.*postlook'  # 杀掉直接启动的进程"
+echo "  sudo supervisorctl restart $PROJECT_NAME  # 转由 Supervisor 管理"
+echo "  supervisorctl status $PROJECT_NAME       # 确认状态为 RUNNING"
+echo ""
 hr

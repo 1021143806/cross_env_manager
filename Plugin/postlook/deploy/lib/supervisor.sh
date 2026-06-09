@@ -203,24 +203,42 @@ start_service() {
         log_info "执行 supervisorctl update..."
         supervisorctl update 2>&1 | head -5 || log_warn "配置更新失败（非致命）"
 
-        log_info "启动服务: $PROJECT_NAME"
-        supervisorctl start "$PROJECT_NAME" 2>&1 || {
-            log_warn "启动失败，尝试重启..."
-            supervisorctl restart "$PROJECT_NAME" 2>&1
-        }
-
-        sleep "${START_WAIT:-3}"
-
+        # update 后 supervisor 已自动启动程序，无需再 start
+        # 检查当前状态
         local sv_status
         sv_status=$(supervisorctl status "$PROJECT_NAME" 2>/dev/null)
+
         if echo "$sv_status" | grep -q "RUNNING"; then
             log_ok "服务已在 Supervisor 中运行"
             echo "$sv_status"
-        else
-            log_warn "服务状态异常: $sv_status"
-            log_warn "尝试直接启动..."
-            _direct_start
+            return 0
         fi
+
+        # 未运行则尝试 start（首次部署时 reread+update 可能只是 added 而未启动）
+        if echo "$sv_status" | grep -q "STOPPED\|EXITED\|FATAL"; then
+            log_info "启动服务: $PROJECT_NAME"
+            supervisorctl start "$PROJECT_NAME" 2>&1 || true
+        fi
+
+        # 等待启动，最多重试 6 次（每次 3s，共 18s）
+        local wait_sec="${START_WAIT:-3}"
+        local retries=6
+        log_info "等待服务启动（最长 $((wait_sec * retries)) 秒）..."
+        for i in $(seq 1 "$retries"); do
+            sleep "$wait_sec"
+            sv_status=$(supervisorctl status "$PROJECT_NAME" 2>/dev/null)
+            if echo "$sv_status" | grep -q "RUNNING"; then
+                log_ok "服务已在 Supervisor 中运行"
+                echo "$sv_status"
+                return 0
+            fi
+            log_info "  状态检查 #${i}: $(echo "$sv_status" | awk '{print $2}')"
+        done
+
+        # 重试耗尽仍未 RUNNING
+        log_warn "Supervisor 启动超时，当前状态: $(echo "$sv_status" | awk '{print $2}')"
+        log_warn "请手动排查: supervisorctl status $PROJECT_NAME"
+        log_warn "查看日志: tail -50 ${LOG_PATH:-/main/log/app}/${PROJECT_NAME}.log"
     else
         log_info "Supervisor 不可用，使用直接启动方式..."
         _direct_start
