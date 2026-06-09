@@ -6,24 +6,96 @@ document.addEventListener('DOMContentLoaded', function() {
     var logResults = document.getElementById('logResults');
     var queryLoading = false;
 
+    // ── 搜索历史 ──
+    var STORAGE_KEY = 'postlook-search-history';
+    var MAX_HISTORY = 15;
+    var folderInput = document.getElementById('folder');
+
+    function loadHistory() {
+        try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { return []; }
+    }
+
+    function saveHistory(h) {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(h.slice(0, MAX_HISTORY))); } catch(e) {}
+    }
+
+    function addHistory(folder, keyword) {
+        var h = loadHistory();
+        // 去重（同 folder+keyword 的移到最前）
+        var idx = h.findIndex(function(e) { return e.folder === folder && e.keyword === keyword; });
+        if (idx !== -1) h.splice(idx, 1);
+        h.unshift({ folder: folder, keyword: keyword || '', time: Date.now() });
+        saveHistory(h);
+        renderHistoryDropdown(h);
+    }
+
+    function renderHistoryDropdown(h) {
+        var el = document.getElementById('searchHistoryDropdown');
+        if (!el) return;
+        if (h.length === 0) { el.style.display = 'none'; return; }
+        var html = '';
+        var shown = {};
+        h.forEach(function(e) {
+            if (shown[e.folder]) return;
+            shown[e.folder] = true;
+            html += '<div class="history-item" data-folder="' + e.folder.replace(/"/g,'&quot;') + '" data-keyword="' + (e.keyword||'').replace(/"/g,'&quot;') + '">' +
+                '<span class="history-path">' + escapeHtml(e.folder) + '</span>' +
+                (e.keyword ? '<span class="history-keyword">' + escapeHtml(e.keyword) + '</span>' : '') +
+                '</div>';
+        });
+        el.innerHTML = html;
+        el.style.display = html ? 'block' : 'none';
+    }
+
+    // 显示/隐藏历史下拉
+    folderInput.addEventListener('focus', function() {
+        var h = loadHistory();
+        renderHistoryDropdown(h);
+    });
+    folderInput.addEventListener('blur', function() {
+        setTimeout(function() {
+            var el = document.getElementById('searchHistoryDropdown');
+            if (el) el.style.display = 'none';
+        }, 200);
+    });
+    // 点击历史项
+    document.addEventListener('click', function(e) {
+        var item = e.target.closest('.history-item');
+        if (!item) return;
+        var folder = item.getAttribute('data-folder');
+        var keyword = item.getAttribute('data-keyword');
+        if (folder) document.getElementById('folder').value = folder;
+        if (keyword) document.getElementById('keyword').value = keyword;
+        document.getElementById('searchHistoryDropdown').style.display = 'none';
+        // 自动提交
+        setTimeout(function() {
+            logForm.dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
+        }, 150);
+    });
+
     // 表单提交
     logForm.addEventListener('submit', function(e) {
         e.preventDefault();
         if (queryLoading) return;
-        queryLoading = true;
 
         var formData = new FormData(logForm);
+        var folder = formData.get('folder');
+        var keyword = formData.get('keyword') || '';
         var payload = {
-            folder: formData.get('folder'),
+            folder: folder,
             pattern: formData.get('pattern') || '*.log',
-            keyword: formData.get('keyword') || null,
+            keyword: keyword || null,
             line_start: parseInt(formData.get('line_start')) || 1,
             line_end: parseInt(formData.get('line_end')) || 100,
             tail: formData.get('tail') === 'true',
             recent_files: parseInt(formData.get('recent_files')) || 10
         };
 
+        // 保存搜索历史
+        if (folder) addHistory(folder, keyword);
+
         // 加载状态
+        queryLoading = true;
         logResults.innerHTML = '<div class="results-placeholder"><div class="spinner"></div><p>查询中...</p></div>';
 
         fetch('/api/logs', {

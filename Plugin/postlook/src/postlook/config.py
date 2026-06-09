@@ -36,6 +36,47 @@ _cached_topo_categories: List[Dict[str, Any]] = []
 _cached_topo_services: List[Dict[str, Any]] = []
 _cached_dirs_meta: List[Dict[str, Any]] = []
 
+# ── 内置规则（随代码发布，始终可用）──
+# rules.toml 中同名规则可覆盖内置规则
+_BUILTIN_RULES: List[Dict[str, Any]] = [
+    # ── 十六进制报文着色 + 注解 ──
+    # 富阳梯博士电梯协议 — 召梯指令
+    {"name":"电梯召梯到1楼","type":"hex","match":"AB 66 00 00 04 02 01 00 01 F8 03","file":"WDCS*.log","color":"#34d399","annotation":"【召梯到1楼】"},
+    {"name":"电梯召梯到2楼","type":"hex","match":"AB 66 00 00 04 02 01 00 02 F7 03","file":"WDCS*.log","color":"#34d399","annotation":"【召梯到2楼】"},
+    {"name":"电梯召梯到3楼","type":"hex","match":"AB 66 00 00 04 02 01 00 03 F6 03","file":"WDCS*.log","color":"#34d399","annotation":"【召梯到3楼】"},
+    {"name":"电梯召梯到4楼","type":"hex","match":"AB 66 00 00 04 02 01 00 04 F5 03","file":"WDCS*.log","color":"#34d399","annotation":"【召梯到4楼】"},
+    {"name":"电梯召梯到5楼","type":"hex","match":"AB 66 00 00 04 02 01 00 05 F4 03","file":"WDCS*.log","color":"#34d399","annotation":"【召梯到5楼】"},
+    {"name":"电梯召梯到6楼","type":"hex","match":"AB 66 00 00 04 02 01 00 06 F3 03","file":"WDCS*.log","color":"#34d399","annotation":"【召梯到6楼】"},
+    {"name":"电梯召梯到7楼","type":"hex","match":"AB 66 00 00 04 02 01 00 07 F2 03","file":"WDCS*.log","color":"#34d399","annotation":"【召梯到7楼】"},
+    {"name":"电梯召梯到8楼","type":"hex","match":"AB 66 00 00 04 02 01 00 08 F1 03","file":"WDCS*.log","color":"#34d399","annotation":"【召梯到8楼】"},
+    # 电梯 — 状态查询
+    {"name":"获取电梯状态","type":"hex","match":"AB 66 00 00 03 01 00 FF FD 03","file":"WDCS*.log","color":"#818cf8","annotation":"【获取电梯状态】"},
+    # 电梯 — 具体状态返回
+    {"name":"电梯在1楼","type":"hex","match":"AB 66 00 00 05 81 00 00 01 68 11 03","file":"WDCS*.log","color":"#fbbf24","annotation":"【1楼 · 开门到位】"},
+    {"name":"电梯在2楼","type":"hex","match":"AB 66 00 00 05 81 00 00 02 01 77 03","file":"WDCS*.log","color":"#fbbf24","annotation":"【2楼 · 上行】"},
+    {"name":"电梯在3楼","type":"hex","match":"AB 66 00 00 05 81 00 00 03 6C 0B 03","file":"WDCS*.log","color":"#fbbf24","annotation":"【3楼 · 到达+开门】"},
+    {"name":"电梯状态返回","type":"regex","match":"ab 66 00 00 05 81 00 00 [0-9a-f]{2} [0-9a-f]{2} [0-9a-f]{2} 03","file":"WDCS*.log","color":"#fbbf24","annotation":"【电梯状态返回】"},
+    {"name":"电梯状态返回(1楼校准)","type":"hex","match":"AB 66 00 00 05 81 00 00 01 70 09 03","file":"WDCS*.log","color":"#fbbf24","annotation":"【1楼 · 校准状态】"},
+    {"name":"电梯状态返回(2楼楼层检测)","type":"hex","match":"AB 66 00 00 05 81 00 00 02 60 18 03","file":"WDCS*.log","color":"#fbbf24","annotation":"【2楼 · 楼层检测】"},
+    {"name":"电梯状态返回(3楼开门到位)","type":"hex","match":"AB 66 00 00 05 81 00 00 03 68 0f 03","file":"WDCS*.log","color":"#fbbf24","annotation":"【3楼 · 开门到位】"},
+    # 电梯 — 开门/关门
+    {"name":"开门报文","type":"hex","match":"AB 66 00 00 03 03 01 10 E9 03","file":"WDCS*.log","color":"#f472b6","annotation":"【开门】"},
+    {"name":"关门报文","type":"hex","match":"AB 66 00 00 03 04 01 10 E8 03","file":"WDCS*.log","color":"#f472b6","annotation":"【关门】"},
+    # ── 日志级别着色（全局）──
+    {"name":"错误/严重","type":"keyword","match":"ERROR|FATAL","color":"#ef4444","background":"rgba(239,68,68,0.10)","bold":True},
+    {"name":"警告","type":"keyword","match":"WARN","color":"#f59e0b","background":"rgba(245,158,11,0.08)"},
+    {"name":"异常","type":"keyword","match":"Exception","color":"#ef4444","background":"rgba(239,68,68,0.06)"},
+    # ── 内置快捷查询（侧栏按钮）──
+    {"name":"Gateway 错误","type":"keyword","match":"ERROR|Exception","folder":"/main/app/gateway/logs","pattern":"GATEWAY.log","color":"#ef4444","desc":"网关所有异常日志"},
+    {"name":"系统 OOM","type":"keyword","match":"oom_kill|Out of memory|Killed process","folder":"/var/log","pattern":"messages*","color":"#dc2626","bold":True,"desc":"查找 OOM Killer 记录"},
+    {"name":"MariaDB 慢查询","type":"regex","match":"Query_time: \\d+\\.\\d+","folder":"/main/server/mysql","pattern":"slow-sql","desc":"慢查询日志，定位锁等待/全表扫描"},
+    {"name":"Nacos 错误","type":"keyword","match":"ERROR|Exception","folder":"/main/server/nacos/logs","pattern":"nacos.log","color":"#ef4444","desc":"Nacos 服务注册/配置异常"},
+    {"name":"SSH 登录记录","type":"keyword","match":"Accepted|Failed","folder":"/var/log","pattern":"secure*","desc":"SSH 登录成功/失败"},
+    {"name":"定时任务","type":"keyword","match":"CMD","folder":"/var/log","pattern":"cron*","desc":"cron 定时任务执行记录"},
+    {"name":"WDCS 报文","type":"hex","match":"AB 66","color":"#06b6d4","desc":"WDCS 电梯 485 报文（通用色）"},
+    {"name":"WDCS 错误","type":"keyword","match":"ERROR|Exception","folder":"/main/app/wdcs/logs","pattern":"WDCS*.log","color":"#ef4444","desc":"WDCS 异常日志"},
+]
+
 
 def _get_config_path() -> Path:
     """优先使用 app.toml，不存在时回退到 env.toml"""
@@ -61,12 +102,38 @@ def _load_toml_file(path: Path) -> dict:
 
 
 def reload_rules():
-    """重新加载 rules.toml → 更新 _cached_rules"""
+    """重新加载 rules.toml，与内置规则合并 → 更新 _cached_rules
+    规则合并策略：
+      - 内置规则始终存在
+      - rules.toml 中同名（name）规则覆盖内置规则
+      - rules.toml 中新增规则追加到末尾
+    """
     global _cached_rules
     with _lock:
+        # 从内置规则副本开始
+        merged = list(_BUILTIN_RULES)
+
+        # 加载 rules.toml 自定义规则
         cfg = _load_toml_file(RULES_PATH)
+        custom_rules = cfg.get("rule", [])
+
+        # 按 name 建立内置规则索引（只记录位置，不复制）
+        builtin_names = {}
+        for i, r in enumerate(merged):
+            if r.get("name"):
+                builtin_names[r["name"]] = i
+
+        for cr in custom_rules:
+            name = cr.get("name")
+            if name and name in builtin_names:
+                # 同名覆盖：替换内置规则
+                merged[builtin_names[name]] = cr
+            else:
+                # 新增规则：追加到末尾
+                merged.append(cr)
+
         _cached_rules.clear()
-        _cached_rules.extend(cfg.get("rule", []))
+        _cached_rules.extend(merged)
 
 
 def reload_config():

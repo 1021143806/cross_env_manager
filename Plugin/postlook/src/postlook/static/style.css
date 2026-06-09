@@ -284,6 +284,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    position: relative;
 }
 
 .form-group label {
@@ -326,6 +327,38 @@ body {
     background-position: right 12px center;
     padding-right: 36px;
 }
+
+/* 搜索历史下拉 */
+.history-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: var(--bg-secondary);
+    border: 1px solid var(--glass-border);
+    border-radius: 0 0 var(--card-radius-sm) var(--card-radius-sm);
+    box-shadow: var(--shadow-lg);
+    max-height: 240px;
+    overflow-y: auto;
+    margin-top: -1px;
+}
+.history-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    border-bottom: 1px solid var(--glass-border);
+    transition: background 0.15s;
+}
+.history-item:last-child { border-bottom: none; }
+.history-item:hover { background: var(--accent-light); }
+.history-path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-family: monospace; font-size: 0.78rem; }
+.history-keyword { color: var(--text-tertiary); font-size: 0.72rem; flex-shrink: 0; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-item:before { content: '↻'; color: var(--text-tertiary); font-size: 0.7rem; opacity: 0.6; }
 
 .form-hint {
     font-size: 0.78rem;
