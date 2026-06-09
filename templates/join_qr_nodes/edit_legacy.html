@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}{% if node %}编辑节点{% else %}新增节点{% endif %}{% endblock %}
+
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-edit.png?v=1">
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .detail-card {
+        background: var(--detail-card-bg);
+        border-radius: 12px;
+        padding: 1.5rem;
+        border-left: 3px solid #0d6efd;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <a href="/join_qr_nodes" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left"></i> 返回列表
+            </a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-signpost text-info"></i>
+                {% if node %}编辑节点 #{{ node.id }}{% else %}新增节点{% endif %}
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="post" class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">地码值 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" name="qr_content"
+                           value="{{ node.qr_content if node else '' }}" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">区域ID <span class="text-danger">*</span></label>
+                    <input type="number" class="form-control" name="area_id"
+                           value="{{ node.area_id if node else '' }}" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">类型 <span class="text-danger">*</span></label>
+                    <select class="form-select" name="type" required>
+                        <option value="">请选择</option>
+                        <option value="cross" {% if node and node.type == 'cross' %}selected{% endif %}>跨环境</option>
+                        <option value="same" {% if node and node.type == 'same' %}selected{% endif %}>同环境</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">服务器IP</label>
+                    <input type="text" class="form-control" name="environment_ip"
+                           value="{{ node.environment_ip if node else '' }}"
+                           placeholder="例如: 10.68.2.32">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">对接区域</label>
+                    <input type="text" class="form-control" name="join_area"
+                           value="{{ node.join_area if node else '' }}"
+                           placeholder="区域ID">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">状态</label>
+                    <select class="form-select" name="enable">
+                        <option value="1" {% if not node or node.enable == 1 %}selected{% endif %}>启用</option>
+                        <option value="0" {% if node and node.enable == 0 %}selected{% endif %}>禁用</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">其他配置</label>
+                    <input type="text" class="form-control" name="other_config"
+                           value="{{ node.other_config if node else '' }}"
+                           placeholder="JSON格式的额外配置">
+                </div>
+                <div class="col-12">
+                    <label class="form-label">最后使用时间</label>
+                    <input type="datetime-local" class="form-control" name="last_using_time"
+                           value="{{ node.last_using_time[:16] if node and node.last_using_time else '' }}">
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle"></i> {% if node %}保存修改{% else %}添加{% endif %}
+                    </button>
+                    <a href="/join_qr_nodes" class="btn btn-outline-secondary ms-2">取消</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

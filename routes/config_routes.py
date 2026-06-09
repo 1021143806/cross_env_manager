@@ -73,13 +73,13 @@ def addtask_help():
 @config_bp.route('/config')
 @login_required
 def config_page():
-    return render_template('config_editor.html')
+    return render_template('addTask/config_editor.html')
 
 
 @config_bp.route('/addtask/config')
 @login_required
 def addtask_config():
-    return render_template('config_editor.html')
+    return render_template('addTask/config_editor.html')
 
 
 @config_bp.route('/addtask/config', methods=['POST'])

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}任务下发 - 帮助{% endblock %}
+{% block content %}
+<div class="container py-3">
+    <a href="/help" class="btn btn-outline-secondary btn-sm mb-3">&larr; 返回帮助中心</a>
+    <div class="card">
+        <div class="card-header">
+            <h4 class="mb-0"><i class="bi bi-send-check text-primary"></i> 任务下发说明</h4>
+        </div>
+        <div class="card-body">
+            <h5>跨环境任务下发</h5>
+            <p>将任务模板下发到指定环境的 RCS（Robot Control System）系统，支持单条下发和批量下发。</p>
+            <h5>操作步骤</h5>
+            <ol>
+                <li>在搜索框输入模板代码或ID查找任务模板</li>
+                <li>确认模板信息和目标服务器</li>
+                <li>点击"下发"按钮提交任务</li>
+                <li>在下发日志中查看任务执行状态</li>
+            </ol>
+            <h5>注意事项</h5>
+            <ul>
+                <li>下发前请确认目标服务器在线且 RCS 服务正常</li>
+                <li>跨环境下发需要管理员权限</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

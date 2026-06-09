@@ -1,0 +1,529 @@
+{% extends "base.html" %}
+{% block title %}CEM 系统配置{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-edit.png?v=1">
+{% endblock %}
+{% block extra_css %}
+<style>
+    .cfg-section {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 1.25rem;
+        overflow: hidden;
+    }
+    .cfg-section .section-header {
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .cfg-section .section-body {
+        padding: 1rem 1.25rem;
+    }
+    .cfg-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+    .cfg-field {
+        flex: 1 1 200px;
+        min-width: 160px;
+    }
+    .cfg-field label {
+        display: block;
+        font-size: 0.78rem;
+        font-weight: 600;
+        margin-bottom: 0.2rem;
+        opacity: 0.7;
+    }
+    .cfg-field input {
+        width: 100%;
+        padding: 0.45rem 0.6rem;
+        border-radius: 8px;
+        border: 1.5px solid var(--border-color);
+        background: var(--bg-card);
+        color: var(--text-primary);
+        font-size: 0.85rem;
+    }
+    .cfg-field input:focus {
+        border-color: #0d6efd;
+        outline: none;
+    }
+    .cfg-field .pwd-mask {
+        font-family: 'SF Mono', monospace;
+        letter-spacing: 2px;
+    }
+    .backup-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.4rem 0.6rem;
+        border-bottom: 1px solid var(--border-light);
+        font-size: 0.82rem;
+    }
+    .backup-item:last-child { border-bottom: none; }
+    .badge-ok { background-color: #198754; }
+    .status-dot {
+        display: inline-block;
+        width: 10px; height: 10px; border-radius: 50%;
+        margin-right: 4px;
+    }
+    .status-dot.green { background: #34d399; }
+    .status-dot.yellow { background: #fbbf24; }
+    .switch-tabs {
+        display: flex;
+        gap: 0;
+        margin-bottom: 1rem;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid var(--border-color);
+        width: fit-content;
+    }
+    .switch-tabs button {
+        padding: 0.4rem 1rem;
+        border: none;
+        background: transparent;
+        color: var(--text-primary);
+        font-size: 0.85rem;
+        cursor: pointer;
+        border-right: 1px solid var(--border-color);
+    }
+    .switch-tabs button:last-child { border-right: none; }
+    .switch-tabs button.active {
+        background: var(--accent-gradient);
+        color: white;
+    }
+    #rawEditor {
+        width: 100%;
+        min-height: 300px;
+        font-family: 'SF Mono', 'Courier New', monospace;
+        font-size: 0.82rem;
+        padding: 0.75rem;
+        border-radius: 8px;
+        border: 1.5px solid var(--border-color);
+        background: var(--bg-card);
+        color: var(--text-primary);
+        resize: vertical;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="mb-1"><i class="bi bi-gear-wide-connected text-info"></i> CEM 系统配置</h3>
+            <p class="text-muted small mb-0">管理系统级配置参数 — 修改后立即生效，建议先创建备份</p>
+        </div>
+        <div id="save-global-btn" style="display:none;">
+            <button class="btn btn-primary btn-sm" onclick="saveFormConfig()">
+                <i class="bi bi-check-circle me-1"></i>保存配置
+            </button>
+        </div>
+    </div>
+
+    <!-- 视图切换 -->
+    <div class="switch-tabs">
+        <button class="active" data-tab="form" onclick="switchTab('form')">
+            <i class="bi bi-layout-text-window me-1"></i>表单编辑
+        </button>
+        <button data-tab="raw" onclick="switchTab('raw')">
+            <i class="bi bi-code-slash me-1"></i>源文件编辑
+        </button>
+        <button data-tab="backup" onclick="switchTab('backup')">
+            <i class="bi bi-clock-history me-1"></i>备份管理
+        </button>
+        <button data-tab="status" onclick="switchTab('status')">
+            <i class="bi bi-heart-pulse me-1"></i>服务状态
+        </button>
+    </div>
+
+    <!-- ============ Tab 1: 表单编辑 ============ -->
+    <div id="tab-form" class="tab-content">
+        <!-- 数据库连接 -->
+        <div class="cfg-section">
+            <div class="section-header">
+                <span><i class="bi bi-database text-info me-2"></i>数据库连接</span>
+            </div>
+            <div class="section-body">
+                <div class="cfg-row">
+                    <div class="cfg-field">
+                        <label>主机地址</label>
+                        <input id="cfg-db-host" placeholder="127.0.0.1">
+                    </div>
+                    <div class="cfg-field">
+                        <label>端口</label>
+                        <input id="cfg-db-port" type="number" placeholder="3306">
+                    </div>
+                    <div class="cfg-field">
+                        <label>用户名</label>
+                        <input id="cfg-db-user" placeholder="root">
+                    </div>
+                </div>
+                <div class="cfg-row">
+                    <div class="cfg-field">
+                        <label>密码</label>
+                        <input id="cfg-db-password" type="password" placeholder="password">
+                        <small class="text-muted" style="font-size:0.7rem;cursor:pointer;" onclick="togglePwd('cfg-db-password')">👁 显示/隐藏</small>
+                    </div>
+                    <div class="cfg-field">
+                        <label>数据库名</label>
+                        <input id="cfg-db-name" placeholder="wms">
+                    </div>
+                    <div class="cfg-field">
+                        <label>字符集</label>
+                        <input id="cfg-db-charset" placeholder="utf8mb4">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 服务设置 -->
+        <div class="cfg-section">
+            <div class="section-header">
+                <span><i class="bi bi-server text-warning me-2"></i>服务设置</span>
+            </div>
+            <div class="section-body">
+                <div class="cfg-row">
+                    <div class="cfg-field">
+                        <label>Secret Key</label>
+                        <input id="cfg-flask-secret" type="password" placeholder="secret_key">
+                        <small class="text-muted" style="font-size:0.7rem;cursor:pointer;" onclick="togglePwd('cfg-flask-secret')">👁 显示/隐藏</small>
+                    </div>
+                    <div class="cfg-field">
+                        <label>监听地址</label>
+                        <input id="cfg-flask-host" placeholder="0.0.0.0">
+                    </div>
+                    <div class="cfg-field">
+                        <label>端口</label>
+                        <input id="cfg-flask-port" type="number" placeholder="5000">
+                    </div>
+                </div>
+                <div class="cfg-row">
+                    <div class="cfg-field">
+                        <label>
+                            <input id="cfg-flask-debug" type="checkbox" style="margin-right:4px;">
+                            Debug 模式
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 登录配置 -->
+        <div class="cfg-section">
+            <div class="section-header">
+                <span><i class="bi bi-shield-lock text-danger me-2"></i>登录配置</span>
+            </div>
+            <div class="section-body">
+                <div class="cfg-row">
+                    <div class="cfg-field">
+                        <label>管理员用户名</label>
+                        <input id="cfg-login-user" placeholder="admin">
+                    </div>
+                    <div class="cfg-field">
+                        <label>管理员密码</label>
+                        <input id="cfg-login-password" type="password" placeholder="admin123456">
+                        <small class="text-muted" style="font-size:0.7rem;cursor:pointer;" onclick="togglePwd('cfg-login-password')">👁 显示/隐藏</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ Tab 2: 源文件编辑 ============ -->
+    <div id="tab-raw" class="tab-content" style="display:none;">
+        <div class="cfg-section">
+            <div class="section-header">
+                <span><i class="bi bi-code-slash"></i> config/env.toml</span>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary" onclick="saveRawConfig()">
+                        <i class="bi bi-check-circle me-1"></i>保存
+                    </button>
+                </div>
+            </div>
+            <div class="section-body">
+                <p class="text-muted small mb-2">直接编辑 TOML 格式的系统配置文件，请确保格式正确。</p>
+                <textarea id="rawEditor" spellcheck="false"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ Tab 3: 备份管理 ============ -->
+    <div id="tab-backup" class="tab-content" style="display:none;">
+        <div class="cfg-section">
+            <div class="section-header">
+                <span><i class="bi bi-clock-history"></i> 配置备份</span>
+                <button class="btn btn-sm btn-outline-primary" onclick="createBackup()">
+                    <i class="bi bi-plus-circle me-1"></i>创建备份
+                </button>
+            </div>
+            <div class="section-body">
+                <div id="backup-list">
+                    <div class="text-muted text-center py-3">加载中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ Tab 4: 服务状态 ============ -->
+    <div id="tab-status" class="tab-content" style="display:none;">
+        <div class="cfg-section">
+            <div class="section-header">
+                <span><i class="bi bi-heart-pulse"></i> 服务状态</span>
+            </div>
+            <div class="section-body">
+                <div id="system-info">
+                    <div class="text-muted text-center py-3">加载中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 状态消息 -->
+    <div id="syscfg-status" class="mt-2"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ========== Tab 切换 ==========
+function switchTab(name) {
+    document.querySelectorAll('.switch-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+    document.getElementById('tab-' + name).style.display = 'block';
+    if (name === 'raw') loadRawConfig();
+    if (name === 'backup') loadBackups();
+    if (name === 'status') loadSystemInfo();
+}
+
+function togglePwd(id) {
+    const el = document.getElementById(id);
+    el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+// ========== 表单加载/保存 ==========
+async function loadFormConfig() {
+    try {
+        const res = await fetch('/api/system/config');
+        const data = await res.json();
+        if (!data.success) { showStatus('加载配置失败', 'danger'); return; }
+        const c = data.config;
+        const db = c.database || {};
+        document.getElementById('cfg-db-host').value = db.host || '';
+        document.getElementById('cfg-db-port').value = db.port || '';
+        document.getElementById('cfg-db-user').value = db.user || '';
+        document.getElementById('cfg-db-password').value = db.password || '';
+        document.getElementById('cfg-db-name').value = db.name || '';
+        document.getElementById('cfg-db-charset').value = db.charset || 'utf8mb4';
+        const fl = c.flask || {};
+        document.getElementById('cfg-flask-secret').value = fl.secret_key || '';
+        document.getElementById('cfg-flask-host').value = fl.host || '0.0.0.0';
+        document.getElementById('cfg-flask-port').value = fl.port || 5000;
+        document.getElementById('cfg-flask-debug').checked = !!fl.debug;
+        document.getElementById('cfg-login-user').value = fl.login_username || 'admin';
+        document.getElementById('cfg-login-password').value = fl.login_password || '';
+    } catch(e) {
+        showStatus('加载失败: ' + e.message, 'danger');
+    }
+}
+
+async function saveFormConfig() {
+    const config = {
+        database: {
+            host: document.getElementById('cfg-db-host').value,
+            port: parseInt(document.getElementById('cfg-db-port').value) || 3306,
+            user: document.getElementById('cfg-db-user').value,
+            password: document.getElementById('cfg-db-password').value,
+            name: document.getElementById('cfg-db-name').value,
+            charset: document.getElementById('cfg-db-charset').value || 'utf8mb4',
+        },
+        flask: {
+            secret_key: document.getElementById('cfg-flask-secret').value,
+            host: document.getElementById('cfg-flask-host').value || '0.0.0.0',
+            port: parseInt(document.getElementById('cfg-flask-port').value) || 5000,
+            debug: document.getElementById('cfg-flask-debug').checked,
+            login_username: document.getElementById('cfg-login-user').value,
+            login_password: document.getElementById('cfg-login-password').value,
+        }
+    };
+    try {
+        const res = await fetch('/api/system/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        });
+        const data = await res.json();
+        if (data.success) {
+            showStatus('✅ 配置已保存（部分参数需重启后生效）', 'success');
+        } else {
+            showStatus('❌ 保存失败: ' + (data.error || '未知错误'), 'danger');
+        }
+    } catch(e) {
+        showStatus('❌ 保存失败: ' + e.message, 'danger');
+    }
+}
+
+// ========== 源文件编辑 ==========
+async function loadRawConfig() {
+    try {
+        const res = await fetch('/api/system/config/raw');
+        const data = await res.json();
+        document.getElementById('rawEditor').value = data.success ? data.content : '加载失败';
+    } catch(e) {
+        document.getElementById('rawEditor').value = '加载失败: ' + e.message;
+    }
+}
+
+async function saveRawConfig() {
+    const content = document.getElementById('rawEditor').value;
+    try {
+        const res = await fetch('/api/system/config/raw', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({content})
+        });
+        const data = await res.json();
+        if (data.success) {
+            showStatus('✅ 配置已保存', 'success');
+        } else {
+            showStatus('❌ ' + (data.error || '保存失败'), 'danger');
+        }
+    } catch(e) {
+        showStatus('❌ ' + e.message, 'danger');
+    }
+}
+
+// ========== 备份管理 ==========
+async function loadBackups() {
+    const list = document.getElementById('backup-list');
+    try {
+        const res = await fetch('/api/system/config/backups');
+        const data = await res.json();
+        if (!data.success || !data.backups.length) {
+            list.innerHTML = '<div class="text-muted text-center py-3">暂无备份</div>';
+            return;
+        }
+        list.innerHTML = data.backups.map(b => {
+            const ts = new Date(b.timestamp).toLocaleString('zh-CN');
+            const size = (b.size / 1024).toFixed(1) + 'KB';
+            return `<div class="backup-item">
+                <div>
+                    <span class="badge bg-secondary me-2">${b.name.replace(/^env_/, '')}</span>
+                    <small class="text-muted">${ts} · ${size}</small>
+                </div>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-primary" onclick="restoreBackup('${b.name}')">恢复</button>
+                    <button class="btn btn-outline-danger" onclick="deleteBackup('${b.name}')">删除</button>
+                </div>
+            </div>`;
+        }).join('');
+    } catch(e) {
+        list.innerHTML = '<div class="text-danger text-center py-3">加载失败: ' + e.message + '</div>';
+    }
+}
+
+async function createBackup() {
+    try {
+        const res = await fetch('/api/system/config/backup', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            showStatus('✅ 备份已创建: ' + data.name, 'success');
+            loadBackups();
+        }
+    } catch(e) {
+        showStatus('❌ 创建备份失败: ' + e.message, 'danger');
+    }
+}
+
+async function restoreBackup(name) {
+    if (!confirm('确认恢复备份 "' + name + '"？当前配置将自动备份。')) return;
+    try {
+        const res = await fetch('/api/system/config/backup/' + encodeURIComponent(name) + '/restore', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            showStatus('✅ 配置已恢复', 'success');
+            loadFormConfig();
+            loadRawConfig();
+        } else {
+            showStatus('❌ ' + (data.error || '恢复失败'), 'danger');
+        }
+    } catch(e) {
+        showStatus('❌ ' + e.message, 'danger');
+    }
+}
+
+async function deleteBackup(name) {
+    if (!confirm('确定删除备份 "' + name + '" ？')) return;
+    try {
+        const res = await fetch('/api/system/config/backup/' + encodeURIComponent(name), { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+            showStatus('✅ 备份已删除', 'success');
+            loadBackups();
+        }
+    } catch(e) {
+        showStatus('❌ ' + e.message, 'danger');
+    }
+}
+
+// ========== 系统信息 ==========
+async function loadSystemInfo() {
+    const el = document.getElementById('system-info');
+    try {
+        const res = await fetch('/api/system/info');
+        const data = await res.json();
+        if (!data.success) { el.innerHTML = '<div class="text-danger">加载失败</div>'; return; }
+        const info = data.info;
+        const healthRes = await fetch('/actuator/health');
+        const healthOk = healthRes.ok;
+        el.innerHTML = `<div class="row g-3">
+            <div class="col-md-4">
+                <div class="cfg-field"><label>服务状态</label>
+                    <span class="${healthOk ? 'badge badge-ok' : 'badge bg-danger'}">${healthOk ? '运行中' : '异常'}</span>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="cfg-field"><label>Python 版本</label><div>${info.python_version}</div></div>
+            </div>
+            <div class="col-md-4">
+                <div class="cfg-field"><label>进程 PID</label><div>${info.pid}</div></div>
+            </div>
+            <div class="col-md-6">
+                <div class="cfg-field"><label>系统平台</label><div>${info.platform}</div></div>
+            </div>
+            <div class="col-md-6">
+                <div class="cfg-field"><label>工作目录</label><div style="font-size:0.78rem;word-break:break-all;">${info.cwd}</div></div>
+            </div>
+            <div class="col-12">
+                <div class="cfg-field"><label>配置文件路径</label>
+                    <div style="font-size:0.78rem;word-break:break-all;">
+                        ${info.env_file}
+                        <span class="badge ${info.env_exists ? 'bg-success' : 'bg-warning'}">${info.env_exists ? '存在' : '不存在'}</span>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    } catch(e) {
+        el.innerHTML = '<div class="text-danger">加载失败: ' + e.message + '</div>';
+    }
+}
+
+// ========== 状态提示 ==========
+function showStatus(msg, type) {
+    const el = document.getElementById('syscfg-status');
+    const cls = type === 'success' ? 'alert-success' : type === 'danger' ? 'alert-danger' : 'alert-info';
+    el.innerHTML = `<div class="alert ${cls} alert-dismissible fade show py-2">${msg}<button type="button" class="btn-close" data-bs-dismiss="alert" style="font-size:0.75rem;"></button></div>`;
+    setTimeout(() => { el.innerHTML = ''; }, 5000);
+}
+
+// ========== 初始化 ==========
+document.addEventListener('DOMContentLoaded', function() {
+    loadFormConfig();
+});
+</script>
+{% endblock %}

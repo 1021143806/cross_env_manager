@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}交接点节点详情{% endblock %}
+
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-edit.png?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="container py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <a href="/join_qr_nodes" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left"></i> 返回列表
+            </a>
+        </div>
+        <div>
+            <a href="/join_qr_nodes/{{ node.id }}/edit" class="btn btn-primary btn-sm">
+                <i class="bi bi-pencil"></i> 编辑
+            </a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-signpost text-info"></i> 节点详情 #{{ node.id }}</h5>
+        </div>
+        <div class="card-body">
+            <table class="table table-bordered">
+                <tr>
+                    <th style="width:150px;" class="text-muted">ID</th>
+                    <td>{{ node.id }}</td>
+                </tr>
+                <tr>
+                    <th class="text-muted">地码值</th>
+                    <td><code>{{ node.qr_content }}</code></td>
+                </tr>
+                <tr>
+                    <th class="text-muted">区域</th>
+                    <td>{{ node.area_id }}</td>
+                </tr>
+                <tr>
+                    <th class="text-muted">类型</th>
+                    <td>{{ node.type }}</td>
+                </tr>
+                <tr>
+                    <th class="text-muted">服务器IP</th>
+                    <td><span class="badge bg-secondary">{{ node.environment_ip }}</span></td>
+                </tr>
+                <tr>
+                    <th class="text-muted">状态</th>
+                    <td>
+                        {% if node.enable == 1 %}
+                        <span class="badge bg-success">启用</span>
+                        {% else %}
+                        <span class="badge bg-secondary">禁用</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <th class="text-muted">对接区域</th>
+                    <td>{{ node.join_area or '-' }}</td>
+                </tr>
+                <tr>
+                    <th class="text-muted">其他配置</th>
+                    <td><code>{{ node.other_config or '-' }}</code></td>
+                </tr>
+                <tr>
+                    <th class="text-muted">最后使用时间</th>
+                    <td>{{ node.last_using_time or '-' }}</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

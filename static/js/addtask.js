@@ -457,8 +457,12 @@
                 const configToggle = document.getElementById('config-toggle');
                 if (configToggle) {
                     configToggle.addEventListener('click', function() {
-                        // 登录后直接打开配置管理页面，无需二次密码验证
-                        window.open('/config', '_blank');
+                        // 切换到内联配置视图
+                        if (typeof switchToConfig === 'function') {
+                            switchToConfig();
+                        } else {
+                            window.open('/config', '_blank');
+                        }
                     });
                 }
                 

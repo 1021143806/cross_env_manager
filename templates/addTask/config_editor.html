@@ -1,19 +1,16 @@
-<!DOCTYPE html>
-<html lang="zh-CN" data-bs-theme="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" type="image/png" href="/static/img/agv/favicon-edit.png?v=1">
-    <title>AGV任务配置管理 - 可视化编辑器</title>
-    <link href="/static/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/static/vendor/bootstrap-icons/bootstrap-icons.min.css">
-    <script src="/static/vendor/d3/d3.v7.min.js"></script>
-    <link rel="stylesheet" href="/static/css/config_editor.css">
-</head>
-<body>
-    <div class="container">
-        <!-- 页头 -->
-        {% include 'components/config_editor_header.html' %}
+{% extends "base.html" %}
+{% block title %}AGV任务配置管理 - 可视化编辑器{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-edit.png?v=1">
+{% endblock %}
+{% block extra_css %}
+<script src="/static/vendor/d3/d3.v7.min.js"></script>
+<link rel="stylesheet" href="/static/css/config_editor.css">
+{% endblock %}
+{% block content %}
+<div class="container">
+    <!-- 页头 -->
+    {% include 'components/config_editor_header.html' %}
         
         <!-- 导航 -->
         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -171,14 +168,13 @@
         </div>
     </div>
 
-    <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-    <!-- 统一的主题管理器 -->
-    <script src="/static/js/theme-manager.js"></script>
-    <!-- gitgraph.js for Git-style backup visualization (放在底部避免影响其他功能) -->
-    <script src="/static/vendor/gitgraph/gitgraph.js"></script>
-    <script>
-        (function(){
-            "use strict";
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/vendor/gitgraph/gitgraph.js"></script>
+<script>
+    (function(){
+        "use strict";
 
             // ---------- 配置数据加载函数 ----------
             async function loadConfigFromFile() {
@@ -1875,5 +1871,4 @@ const config = ${formatted};`;
             init();
         })();
     </script>
-</body>
-</html>
+{% endblock %}

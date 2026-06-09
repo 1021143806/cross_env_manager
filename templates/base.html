@@ -634,7 +634,7 @@
                 <div class="sidebar-divider"></div>
                 <div class="sidebar-section-title">配置</div>
                 <ul class="sidebar-nav">
-                    <li><a href="/config" data-nav="addtask-config"><i class="bi bi-sliders"></i> 下发配置</a></li>
+                    <li><a href="/addtask#config" data-nav="addtask-config"><i class="bi bi-sliders"></i> 下发配置</a></li>
                 </ul>
                 <div class="sidebar-divider"></div>
                 <div class="sidebar-section-title">帮助</div>
@@ -660,6 +660,10 @@
             <div class="sidebar-section" data-sidebar-module="system" style="display:none;">
                 <div class="sidebar-section-title">系统</div>
                 <ul class="sidebar-nav">
+                    <li><a href="/system/config" data-nav="system-config"><i class="bi bi-gear-wide-connected"></i> 系统配置</a></li>
+                </ul>
+                <div class="sidebar-divider"></div>
+                <ul class="sidebar-nav">
                     <li><a href="/monitor" data-nav="monitor"><i class="bi bi-activity"></i> 系统监控</a></li>
                     <li><a href="/stats" data-nav="stats"><i class="bi bi-graph-up"></i> 数据统计</a></li>
                     <li><a href="/platform-switch" data-nav="platform-switch"><i class="bi bi-hdd-network"></i> 平台切换</a></li>
@@ -668,7 +672,6 @@
                 <div class="sidebar-section-title">其他</div>
                 <ul class="sidebar-nav">
                     <li><a href="/docs" data-nav="docs"><i class="bi bi-journal-text"></i> 文档中心</a></li>
-                    <li><a href="/config" data-nav="config"><i class="bi bi-gear"></i> 系统配置</a></li>
                 </ul>
             </div>
         </aside>
@@ -797,7 +800,7 @@
             else if (path.startsWith('/query')) activeModule = 'query';
             else if (path.startsWith('/monitor') || path.startsWith('/stats') ||
                      path.startsWith('/platform-switch') || path.startsWith('/docs') ||
-                     path.startsWith('/config')) activeModule = 'system';
+                     path.startsWith('/system/config') || path.startsWith('/config')) activeModule = 'system';
             else if (path.startsWith('/pair') || path.startsWith('/template/device-sync') ||
                      path.startsWith('/custom_table') || path.startsWith('/search') ||
                      path.startsWith('/template') || path.startsWith('/edit') ||
@@ -878,12 +881,17 @@
                     areaList.innerHTML = areas.map(a => {
                         const aid = a.areaId || '?';
                         const name = a.areaName || ('区域 ' + aid);
-                        const deviceCount = a.deviceCount || 0;
-                        const freeCount = a.freeCount || 0;
+                        // API 返回 currentCount（当前空闲车数），xmax 为区域上限
+                        const freeCount = a.currentCount || 0;
+                        const deviceCount = a.xmax || 0;
+                        const totalPending = (a.pending_devices || []).length;
                         const statusColor = freeCount > 0 ? '#34d399' : '#fbbf24';
+                        const pendingBadge = totalPending > 0
+                            ? ` <span style="font-size:10px;color:var(--monitor-blue);">⟳${totalPending}</span>`
+                            : '';
                         return `<li><a href="/dispatch/area/${aid}" data-nav="area-${aid}">
                             <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor};margin-right:2px;"></span>
-                            ${escapeHtmlSidebar(name)}
+                            ${escapeHtmlSidebar(name)}${pendingBadge}
                             <span class="badge-count">${freeCount}/${deviceCount}</span>
                         </a></li>`;
                     }).join('');
@@ -903,7 +911,7 @@
                     const items = areaList.querySelectorAll('li a .badge-count');
                     areas.forEach((a, i) => {
                         if (items[i]) {
-                            items[i].textContent = (a.freeCount || 0) + '/' + (a.deviceCount || 0);
+                            items[i].textContent = (a.currentCount || 0) + '/' + (a.xmax || 0);
                         }
                     });
                 }).catch(() => {});

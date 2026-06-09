@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}查询功能 - 帮助{% endblock %}
+{% block content %}
+<div class="container py-3">
+    <a href="/help" class="btn btn-outline-secondary btn-sm mb-3">&larr; 返回帮助中心</a>
+    <div class="card">
+        <div class="card-header">
+            <h4 class="mb-0"><i class="bi bi-search text-success"></i> 查询功能说明</h4>
+        </div>
+        <div class="card-body">
+            <h5>统一查询</h5>
+            <p>通过设备编号、订单ID等条件查询跨环境任务的执行状态和详细信息。</p>
+            <h5>支持查询条件</h5>
+            <ul>
+                <li><strong>设备编号</strong> — 按 AGV 设备编号查询任务</li>
+                <li><strong>订单ID</strong> — 按运输任务订单ID查询</li>
+                <li><strong>时间范围</strong> — 按创建时间筛选任务</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
