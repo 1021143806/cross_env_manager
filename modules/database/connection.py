@@ -17,7 +17,6 @@
 
 import pymysql
 from pymysql.cursors import DictCursor
-from dbutils.pooled_db import PooledDB
 import os
 import sys
 import threading
@@ -59,6 +58,7 @@ class DatabasePool:
         
         :param config: 数据库配置字典，包含 host, port, user, password, database, charset
         """
+        from dbutils.pooled_db import PooledDB
         self._config = config.copy()
         pool_config = {
             'creator': pymysql,
@@ -89,6 +89,7 @@ class DatabasePool:
     
     def init_second_pool(self, config):
         """初始化第二个连接池（用于生产库等不同数据库）"""
+        from dbutils.pooled_db import PooledDB
         self._config2 = config.copy()
         pool_config = {
             'creator': pymysql,
