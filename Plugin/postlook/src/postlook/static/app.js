@@ -534,10 +534,13 @@ document.addEventListener('DOMContentLoaded', () => {
             autoungrabify: false, autounselectify: false
         });
 
+        // 立即更新状态
+        document.getElementById('topoStatus').textContent = (TOPO_DATA.services.length + 5) + ' 节点就绪';
+
         cy.on('tap', '.service', function(evt) { var n=evt.target; showTopoDetail(n); });
         cy.on('tap', function(evt) { if(evt.target===cy) closeTopoDetail(); });
 
-        cy.on('ready', function() {
+            cy.on('ready', function() {
             document.getElementById('topoStatus').textContent = (TOPO_DATA.services.length + 5) + ' 节点 · 拖拽可移动 · 滚轮缩放';
             setTimeout(function(){ cy.resize(); cy.fit(undefined, 40); }, 150);
 
