@@ -37,6 +37,8 @@
     .server-info-card td { padding: 0.25rem 0.5rem; }
 
     .summary-table td, .summary-table th { font-size: 0.9rem; vertical-align: middle; }
+    /* 预览表格行的主题自适应样式 */
+    .preview-row td { background: var(--detail-card-bg); }
 
     .sync-section {
         background: var(--card-bg);
@@ -443,18 +445,18 @@ function updatePreview() {
     if (types.includes('model')) {
         const names = document.getElementById('modelNames').value;
         tbody.innerHTML +=
-            '<tr class="table-secondary"><td>' + (++step) + '</td><td>型号同步</td><td>agv_model → agv_model_init</td><td>型号: ' + (names || '-') + '</td></tr>';
+            '<tr class="preview-row"><td>' + (++step) + '</td><td>型号同步</td><td>agv_model → agv_model_init</td><td>型号: ' + (names || '-') + '</td></tr>';
     }
     if (types.includes('robot')) {
         const dtype = document.getElementById('deviceType').value;
         tbody.innerHTML +=
-            '<tr class="table-secondary"><td>' + (++step) + '</td><td>设备主表同步</td><td>agv_robot</td><td>类型: ' + dtype + '</td></tr>';
+            '<tr class="preview-row"><td>' + (++step) + '</td><td>设备主表同步</td><td>agv_robot</td><td>类型: ' + dtype + '</td></tr>';
     }
     if (types.includes('ext')) {
         const group = document.getElementById('groupName').value || '(未选)';
         const area = document.getElementById('targetArea').value;
         tbody.innerHTML +=
-            '<tr class="table-secondary"><td>' + (++step) + '</td><td>设备扩展表同步</td><td>agv_robot_ext</td><td>组: ' + group + ' → 区域: ' + area + '</td></tr>';
+            '<tr class="preview-row"><td>' + (++step) + '</td><td>设备扩展表同步</td><td>agv_robot_ext</td><td>组: ' + group + ' → 区域: ' + area + '</td></tr>';
     }
     if (!step) {
         tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">请至少启用一种同步类型</td></tr>';
@@ -592,7 +594,7 @@ function showResultSummary(summaryData) {
         }
     }
     if (totalS + totalK + totalF > 0) {
-        tbody.innerHTML += '<tr class="table-secondary"><th>合计</th><th class="text-success">' + totalS + '</th><th class="text-muted">' + totalK + '</th><th class="text-danger">' + totalF + '</th></tr>';
+        tbody.innerHTML += '<tr class="preview-row"><th>合计</th><th class="text-success">' + totalS + '</th><th class="text-muted">' + totalK + '</th><th class="text-danger">' + totalF + '</th></tr>';
     }
 }
 

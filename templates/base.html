@@ -879,12 +879,7 @@
             });
     });
 
-    // ========== 主题切换按钮 ==========
-    document.getElementById('themeToggleNav')?.addEventListener('click', function() {
-        if (typeof window.toggleTheme === 'function') {
-            window.toggleTheme();
-        }
-    });
+    // 主题切换由 theme-manager.js 自动处理，此处不再重复绑定
 </script>
 {% block extra_js %}{% endblock %}
 </body>
