@@ -26,7 +26,7 @@ class TemplateService:
     # ========== 搜索 ==========
     
     def search(self, search_term):
-        """搜索任务模板"""
+        """搜索任务模板（旧版全匹配，兼容保留）"""
         if not search_term:
             return None, '请输入搜索关键词'
         
@@ -52,6 +52,67 @@ class TemplateService:
             t['details'] = details or []
         
         return templates, None
+    
+    def search_paginated(self, search_term='', page=1, per_page=20, server=None, status=None, sort_by='id', sort_order='DESC'):
+        """分页搜索 + 筛选 + 排序，返回 {templates, total, servers, page, per_page, total_pages}"""
+        allowed_sort = {'id', 'model_process_code', 'model_process_name', 'target_points_ip', 'enable', 'area_id'}
+        if sort_by not in allowed_sort:
+            sort_by = 'id'
+        sort_order = 'ASC' if sort_order.upper() == 'ASC' else 'DESC'
+        
+        conditions = []
+        params = []
+        
+        if search_term:
+            if search_term.isdigit():
+                conditions.append("(id = %s OR model_process_code LIKE %s)")
+                params.extend([int(search_term), f'%{search_term}%'])
+            else:
+                conditions.append("(model_process_code LIKE %s OR model_process_name LIKE %s)")
+                params.extend([f'%{search_term}%', f'%{search_term}%'])
+        
+        if server:
+            conditions.append("target_points_ip = %s")
+            params.append(server)
+        
+        if status is not None and status in ('0', '1'):
+            conditions.append("enable = %s")
+            params.append(int(status))
+        
+        where_clause = (' WHERE ' + ' AND '.join(conditions)) if conditions else ''
+        
+        # 计数
+        count_sql = f"SELECT COUNT(*) as cnt FROM fy_cross_model_process{where_clause}"
+        count_result = execute_query(count_sql, params)
+        total = count_result[0]['cnt'] if count_result else 0
+        
+        # 分页
+        offset = (page - 1) * per_page
+        data_sql = f"SELECT * FROM fy_cross_model_process{where_clause} ORDER BY {sort_by} {sort_order} LIMIT %s OFFSET %s"
+        templates = execute_query(data_sql, params + [per_page, offset]) or []
+        
+        # 同时获取 detail 数量（不加载完整子任务）
+        for t in templates:
+            detail_count = execute_query(
+                "SELECT COUNT(*) as cnt FROM fy_cross_model_process_detail WHERE model_process_id = %s",
+                (t['id'],))
+            t['detail_count'] = detail_count[0]['cnt'] if detail_count else 0
+        
+        # 获取所有可用的 server 列表（用于筛选下拉）
+        servers_result = execute_query(
+            "SELECT DISTINCT target_points_ip FROM fy_cross_model_process WHERE target_points_ip IS NOT NULL AND target_points_ip != '' ORDER BY target_points_ip")
+        servers = [r['target_points_ip'] for r in servers_result] if servers_result else []
+        
+        total_pages = max(1, (total + per_page - 1) // per_page)
+        
+        return {
+            'templates': templates,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': total_pages,
+            'servers': servers,
+        }
     
     def search_suggestions(self, term):
         """搜索建议"""

@@ -21,7 +21,7 @@
             <div class="stat-change" id="statTotalChange"></div>
         </div>
     </div>
-    <div class="stat-card animate-in delay-2" onclick="window.location.href='/search?search_term=&filter=enable'">
+    <div class="stat-card animate-in delay-2" onclick="window.location.href='/search?status=1'">
         <div class="stat-icon green"><i class="bi bi-check-circle"></i></div>
         <div class="stat-info">
             <div class="stat-value" id="statEnabled">...</div>
@@ -179,7 +179,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         const totalTemplates = data.reduce((sum, s) => sum + (s.template_count || 0), 0);
         container.innerHTML = data.map(s => `
-            <div class="server-item" onclick="window.location.href='/search?search_term=${encodeURIComponent(s.server)}'">
+            <div class="server-item" onclick="window.location.href='/search?server=${encodeURIComponent(s.server)}'">
                 <div class="server-dot online"></div>
                 <div class="server-info">
                     <div class="server-ip">${escapeHtml(s.server)}</div>

@@ -65,7 +65,7 @@ def api_get_system_config():
     """获取系统配置（JSON）"""
     return jsonify({
         'success': True,
-        'config': _get_get_sys_config()().get_config(),
+        'config': _get_sys_config().get_config(),
     })
 
 

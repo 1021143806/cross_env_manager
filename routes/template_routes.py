@@ -51,20 +51,12 @@ def index():
 
 # ========== 搜索 ==========
 
-@template_bp.route('/search', methods=['GET', 'POST'])
+@template_bp.route('/search', methods=['GET'])
 @login_required
 def search():
-    if request.method == 'POST':
-        search_term = request.form.get('search_term', '').strip()
-    else:
-        search_term = request.args.get('search_term', '').strip()
-    
-    templates, error = _template_service.search(search_term)
-    if error:
-        flash(error, 'info' if '未找到' in error else 'warning')
-        return redirect(url_for('template.index'))
-    
-    return render_template('template/search_results.html', templates=templates, search_term=search_term)
+    """渲染模板搜索页面（前端渲染）"""
+    initial_q = request.args.get('search_term', '').strip()
+    return render_template('template/search.html', initial_q=initial_q)
 
 
 # ========== 查看模板 ==========
@@ -152,11 +144,45 @@ def copy_template(template_id):
 
 # ========== API 路由 ==========
 
+@template_bp.route('/api/search', methods=['GET'])
+@login_required
+def api_search():
+    """前端搜索 API，支持分页/筛选/排序"""
+    search_term = request.args.get('q', '').strip()
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 20))
+    server = request.args.get('server', '').strip() or None
+    status = request.args.get('status', '').strip() or None
+    sort_by = request.args.get('sort_by', 'id').strip()
+    sort_order = request.args.get('sort_order', 'DESC').strip()
+    
+    result = _template_service.search_paginated(
+        search_term=search_term,
+        page=page,
+        per_page=per_page,
+        server=server,
+        status=status,
+        sort_by=sort_by,
+        sort_order=sort_order
+    )
+    return jsonify({'success': True, 'data': result})
+
+
 @template_bp.route('/api/search_suggestions', methods=['GET'])
 @login_required
 def search_suggestions():
     term = request.args.get('term', '').strip()
     return jsonify(_template_service.search_suggestions(term))
+
+
+@template_bp.route('/api/template/<int:template_id>', methods=['GET'])
+@login_required
+def api_get_template(template_id):
+    """获取模板详情 JSON（供前端搜索详情面板使用）"""
+    template = _template_service.get_template(template_id)
+    if not template:
+        return jsonify({'success': False, 'message': '模板不存在'}), 404
+    return jsonify({'success': True, 'data': template})
 
 
 @template_bp.route('/api/template/<int:template_id>/details/add', methods=['POST'])

@@ -1,0 +1,786 @@
+{% extends "base.html" %}
+{% block title %}模板搜索{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ===== 布局 ===== */
+.search-layout {
+    display: flex;
+    gap: 0;
+    min-height: calc(100vh - 140px);
+}
+.search-table-wrap {
+    flex: 0 0 65%;
+    max-width: 65%;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-color);
+}
+.search-detail-wrap {
+    flex: 1;
+    min-width: 0;
+    position: sticky;
+    top: 70px;
+    align-self: flex-start;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+}
+
+/* ===== 顶部搜索栏 ===== */
+.search-header {
+    padding: 1rem 1.25rem 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--card-bg);
+}
+.search-header .input-group {
+    max-width: 560px;
+}
+.search-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+}
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.65rem;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    background: var(--detail-card-bg);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-decoration: none;
+}
+.chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.chip.active {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+}
+
+/* ===== 筛选行 ===== */
+.filter-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--card-bg);
+    flex-wrap: wrap;
+}
+.filter-row .form-select-sm {
+    width: auto;
+    min-width: 130px;
+    font-size: 0.8rem;
+    padding: 0.2rem 1.6rem 0.2rem 0.5rem;
+    background-color: var(--detail-card-bg);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+.filter-row .result-count {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-left: auto;
+}
+
+/* ===== 表格 ===== */
+.table-search {
+    margin-bottom: 0;
+    font-size: 0.85rem;
+}
+.table-search thead th {
+    position: sticky;
+    top: 0;
+    background: var(--detail-card-bg);
+    border-bottom: 2px solid var(--border-color);
+    padding: 0.55rem 0.6rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+}
+.table-search thead th:hover {
+    color: var(--accent);
+}
+.table-search thead th .sort-icon {
+    margin-left: 0.25rem;
+    font-size: 0.7rem;
+    opacity: 0.4;
+}
+.table-search thead th.sorted .sort-icon {
+    opacity: 1;
+    color: var(--accent);
+}
+.table-search td {
+    padding: 0.45rem 0.6rem;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border-color);
+}
+.table-search tbody tr {
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.table-search tbody tr:hover {
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.table-search tbody tr.active-row {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-left: 3px solid var(--accent);
+}
+.code-cell {
+    font-family: "SF Mono", "JetBrains Mono", monospace;
+    font-size: 0.8rem;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.server-badge {
+    font-size: 0.75rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    background: var(--detail-card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+/* ===== 分页 ===== */
+.pagination-wrap {
+    padding: 0.75rem 1.25rem;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--card-bg);
+    flex-shrink: 0;
+}
+.pagination-wrap .page-link {
+    font-size: 0.8rem;
+    padding: 0.3rem 0.65rem;
+    background: var(--detail-card-bg);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+.pagination-wrap .page-link:hover {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border-color: var(--accent);
+}
+.pagination-wrap .page-item.active .page-link {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+.pagination-wrap .page-item.disabled .page-link {
+    opacity: 0.4;
+}
+.per-page-select {
+    font-size: 0.78rem;
+    width: auto;
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.15rem 0.4rem;
+    background: var(--detail-card-bg);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+/* ===== 详情面板 ===== */
+.detail-panel {
+    padding: 1rem 1.25rem;
+}
+.detail-panel-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+.detail-panel-placeholder i {
+    font-size: 2.5rem;
+    margin-bottom: 0.75rem;
+    opacity: 0.4;
+}
+.detail-header {
+    margin-bottom: 1rem;
+}
+.detail-header h5 {
+    font-size: 1rem;
+    margin-bottom: 0.15rem;
+    word-break: break-all;
+}
+.detail-header .detail-code {
+    font-family: monospace;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+.detail-section {
+    margin-bottom: 1rem;
+}
+.detail-section h6 {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 0.4rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.detail-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem 0.8rem;
+    font-size: 0.8rem;
+}
+.detail-info-grid dt {
+    color: var(--text-muted);
+    font-weight: 400;
+}
+.detail-info-grid dd {
+    margin-bottom: 0;
+}
+.detail-subtask-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    font-size: 0.8rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.detail-subtask-item:last-child {
+    border-bottom: none;
+}
+.detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-color);
+}
+.detail-actions .btn {
+    font-size: 0.78rem;
+    padding: 0.25rem 0.6rem;
+}
+
+/* ===== 加载 / 空态 ===== */
+.loading-row td {
+    text-align: center;
+    padding: 3rem 0;
+    color: var(--text-muted);
+}
+.empty-state {
+    text-align: center;
+    padding: 4rem 1rem;
+    color: var(--text-muted);
+}
+.empty-state i {
+    font-size: 2.5rem;
+    opacity: 0.3;
+    margin-bottom: 0.75rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="search-header">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <div class="input-group input-group-sm">
+            <span class="input-group-text" style="background:var(--detail-card-bg);border-color:var(--border-color);">
+                <i class="bi bi-search"></i>
+            </span>
+            <input type="text" class="form-control" id="searchInput"
+                   placeholder="输入模板代码或名称，支持模糊搜索..."
+                   value="{{ initial_q }}"
+                   style="background:var(--detail-card-bg);border-color:var(--border-color);color:var(--text-primary);">
+            <button class="btn btn-primary btn-sm" id="searchBtn"><i class="bi bi-search"></i> 搜索</button>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" id="clearBtn" title="清空搜索条件">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+    <div class="search-chips" id="searchChips">
+        <a class="chip" data-q="HJBY"><i class="bi bi-tag"></i> HJBY</a>
+        <a class="chip" data-q="back"><i class="bi bi-arrow-return-left"></i> back</a>
+        <a class="chip" data-q="空车"><i class="bi bi-box-seam"></i> 空车回流</a>
+        <a class="chip" data-q="换电"><i class="bi bi-battery-charging"></i> 换电</a>
+        <a class="chip" data-q="A1"><i class="bi bi-building"></i> A1楼栋</a>
+    </div>
+</div>
+
+<div class="filter-row">
+    <select class="form-select form-select-sm" id="filterServer">
+        <option value="">全部服务器</option>
+    </select>
+    <select class="form-select form-select-sm" id="filterStatus">
+        <option value="">全部状态</option>
+        <option value="1">已启用</option>
+        <option value="0">已禁用</option>
+    </select>
+    <select class="form-select form-select-sm" id="filterSort">
+        <option value="id_desc">最新优先</option>
+        <option value="id_asc">最早优先</option>
+        <option value="model_process_code_asc">代码 A→Z</option>
+        <option value="model_process_code_desc">代码 Z→A</option>
+        <option value="target_points_ip_asc">服务器 A→Z</option>
+    </select>
+    <span class="result-count" id="resultCount"></span>
+</div>
+
+<div class="search-layout">
+    <!-- 左侧表格 -->
+    <div class="search-table-wrap">
+        <div style="flex:1;overflow-y:auto;">
+            <table class="table table-search">
+                <thead>
+                    <tr>
+                        <th style="width:50px;" data-sort="id">ID <i class="bi bi-arrow-down-up sort-icon"></i></th>
+                        <th style="width:35%;" data-sort="model_process_code">模板代码 <i class="bi bi-arrow-down-up sort-icon"></i></th>
+                        <th style="width:15%;" data-sort="model_process_name">名称 <i class="bi bi-arrow-down-up sort-icon"></i></th>
+                        <th style="width:15%;" data-sort="target_points_ip">服务器 <i class="bi bi-arrow-down-up sort-icon"></i></th>
+                        <th style="width:60px;" data-sort="enable">状态</th>
+                        <th style="width:50px;">子任务</th>
+                    </tr>
+                </thead>
+                <tbody id="searchResults">
+                    <tr class="loading-row"><td colspan="6"><div class="spinner-border spinner-border-sm me-2"></div>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <!-- 分页 -->
+        <div class="pagination-wrap">
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+                <nav><ul class="pagination pagination-sm mb-0" id="pagination"></ul></nav>
+            </div>
+            <div style="display:flex;align-items:center;gap:0.25rem;font-size:0.78rem;color:var(--text-muted);">
+                <span id="pageInfo"></span>
+                <select class="form-select per-page-select" id="perPageSelect">
+                    <option value="15">15</option>
+                    <option value="20" selected>20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+                <span>条/页</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧详情面板 -->
+    <div class="search-detail-wrap">
+        <div class="detail-panel" id="detailPanel">
+            <div class="detail-panel-placeholder">
+                <i class="bi bi-inbox"></i>
+                <p>点击左侧行查看模板详情</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+    let state = {
+        q: {{ initial_q | tojson }},
+        page: 1,
+        per_page: 20,
+        server: '',
+        status: '',
+        sort_by: 'id',
+        sort_order: 'DESC',
+    };
+    let templates = [];
+    let total = 0;
+    let totalPages = 0;
+    let servers = [];
+    let selectedId = null;
+
+    const $ = (s) => document.querySelector(s);
+    const $$ = (s) => document.querySelectorAll(s);
+    const searchInput = $('#searchInput');
+    const searchBtn = $('#searchBtn');
+    const clearBtn = $('#clearBtn');
+    const tbody = $('#searchResults');
+    const pagination = $('#pagination');
+    const pageInfo = $('#pageInfo');
+    const resultCount = $('#resultCount');
+    const detailPanel = $('#detailPanel');
+    const perPageSelect = $('#perPageSelect');
+    const filterServer = $('#filterServer');
+    const filterStatus = $('#filterStatus');
+    const filterSort = $('#filterSort');
+
+    // ===== 工具函数 =====
+    function esc(str) {
+        if (str == null) return '';
+        const d = document.createElement('div');
+        d.textContent = String(str);
+        return d.innerHTML;
+    }
+
+    function buildQuery() {
+        const params = new URLSearchParams();
+        if (state.q) params.set('q', state.q);
+        params.set('page', state.page);
+        params.set('per_page', state.per_page);
+        if (state.server) params.set('server', state.server);
+        if (state.status) params.set('status', state.status);
+        params.set('sort_by', state.sort_by);
+        params.set('sort_order', state.sort_order);
+        return params.toString();
+    }
+
+    function syncUrl() {
+        const params = new URLSearchParams();
+        if (state.q) params.set('search_term', state.q);
+        if (state.server) params.set('server', state.server);
+        if (state.status) params.set('status', state.status);
+        const url = '/search' + (params.toString() ? '?' + params.toString() : '');
+        window.history.replaceState(null, '', url);
+    }
+
+    function syncFilterUI() {
+        filterServer.value = state.server || '';
+        filterStatus.value = state.status || '';
+        // sync sort select
+        const sortKey = state.sort_by + '_' + state.sort_order.toLowerCase();
+        if ([...filterSort.options].some(o => o.value === sortKey)) {
+            filterSort.value = sortKey;
+        }
+        // chips
+        $$('#searchChips .chip').forEach(el => {
+            el.classList.toggle('active', el.dataset.q === state.q);
+        });
+        // search input
+        if (document.activeElement !== searchInput) {
+            searchInput.value = state.q;
+        }
+    }
+
+    // ===== API 请求 =====
+    async function fetchData() {
+        tbody.innerHTML = '<tr class="loading-row"><td colspan="6"><div class="spinner-border spinner-border-sm me-2"></div>搜索中...</td></tr>';
+        const url = '/api/search?' + buildQuery();
+        try {
+            const res = await fetch(url);
+            const json = await res.json();
+            if (!json.success) throw new Error(json.message || '请求失败');
+            const data = json.data;
+            templates = data.templates || [];
+            total = data.total || 0;
+            totalPages = data.total_pages || 1;
+            servers = data.servers || [];
+            renderTable();
+            renderPagination();
+            renderResultCount();
+            updateServerFilter();
+            syncUrl();
+            syncFilterUI();
+            // 如果之前选中的模板在当前页，重新选中
+            if (selectedId && templates.some(t => t.id === selectedId)) {
+                highlightRow(selectedId);
+                renderDetail(selectedId);
+            } else {
+                selectedId = null;
+                renderPlaceholder();
+            }
+        } catch (err) {
+            tbody.innerHTML = `<tr><td colspan="6" class="empty-state">
+                <i class="bi bi-exclamation-triangle"></i>
+                <p>搜索失败: ${esc(err.message)}</p>
+            </td></tr>`;
+        }
+    }
+
+    // ===== 渲染表格 =====
+    function renderTable() {
+        if (templates.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" class="empty-state">
+                <i class="bi bi-search"></i>
+                <p>没有找到匹配的模板</p>
+                <small style="color:var(--text-muted);">请尝试其他关键词或调整筛选条件</small>
+            </td></tr>`;
+            return;
+        }
+        tbody.innerHTML = templates.map(t => {
+            const isActive = selectedId === t.id;
+            const statusLabel = t.enable == 1 ? '已启用' : '已禁用';
+            const statusCls = t.enable == 1 ? 'bg-success' : 'bg-warning text-dark';
+            return `<tr class="${isActive ? 'active-row' : ''}" data-id="${t.id}">
+                <td style="font-size:0.78rem;color:var(--text-muted);">${t.id}</td>
+                <td><span class="code-cell" title="${esc(t.model_process_code)}">${esc(t.model_process_code)}</span></td>
+                <td style="font-size:0.78rem;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.model_process_name || '')}">${esc(t.model_process_name || '-')}</td>
+                <td><span class="server-badge">${esc(t.target_points_ip || '-')}</span></td>
+                <td><span class="badge ${statusCls}" style="font-size:0.7rem;padding:0.15rem 0.4rem;">${statusLabel}</span></td>
+                <td style="text-align:center;font-size:0.78rem;color:var(--text-muted);">${t.detail_count || 0}</td>
+            </tr>`;
+        }).join('');
+
+        // 行点击
+        tbody.querySelectorAll('tr[data-id]').forEach(tr => {
+            tr.addEventListener('click', () => {
+                const id = parseInt(tr.dataset.id);
+                selectedId = id;
+                highlightRow(id);
+                renderDetail(id);
+            });
+        });
+    }
+
+    function highlightRow(id) {
+        tbody.querySelectorAll('tr[data-id]').forEach(tr => {
+            tr.classList.toggle('active-row', parseInt(tr.dataset.id) === id);
+        });
+    }
+
+    // ===== 详情面板 =====
+    function renderPlaceholder() {
+        detailPanel.innerHTML = `<div class="detail-panel-placeholder">
+            <i class="bi bi-inbox"></i>
+            <p>点击左侧行查看模板详情</p>
+        </div>`;
+    }
+
+    async function renderDetail(id) {
+        detailPanel.innerHTML = `<div class="detail-panel-placeholder">
+            <div class="spinner-border spinner-border-sm me-2"></div>加载中...
+        </div>`;
+        try {
+            const res = await fetch('/api/template/' + id);
+            const json = await res.json();
+            if (!json.success) throw new Error(json.message || '获取失败');
+            const t = json.data;
+            const details = t.details || [];
+            const statusLabel = t.enable == 1 ? '已启用' : '已禁用';
+            const statusCls = t.enable == 1 ? 'bg-success' : 'bg-warning text-dark';
+            const capacityLabel = t.capacity === null ? '未设置' : (t.capacity == -1 ? '不限制' : t.capacity);
+
+            let html = `<div class="detail-header">
+                <div class="d-flex align-items-start justify-content-between">
+                    <div>
+                        <h5>${esc(t.model_process_code)}</h5>
+                        <div class="detail-code">${esc(t.model_process_name || '')}</div>
+                    </div>
+                    <span class="badge ${statusCls}" style="font-size:0.72rem;padding:0.2rem 0.5rem;">${statusLabel}</span>
+                </div>
+            </div>`;
+
+            html += `<div class="detail-section">
+                <h6>基本信息</h6>
+                <dl class="detail-info-grid">
+                    <dt>ID</dt><dd>${t.id}</dd>
+                    <dt>服务器</dt><dd>${esc(t.target_points_ip || '-')}</dd>
+                    <dt>区域ID</dt><dd>${t.area_id || '-'}</dd>
+                    <dt>容量</dt><dd>${capacityLabel}</dd>
+                    <dt>回调URL</dt><dd style="word-break:break-all;">${esc(t.request_url || '-')}</dd>
+                    <dt>目标点位</dt><dd>${esc(t.target_points || '-')}</dd>
+                    <dt>空车等待</dt><dd>${t.back_wait_time || 0}s</dd>
+                    <dt>最小电量</dt><dd>${t.min_power ?? '-'}</dd>
+                </dl>
+            </div>`;
+
+            if (details.length > 0) {
+                html += `<div class="detail-section">
+                    <h6>子任务 (${details.length})</h6>`;
+                details.forEach(d => {
+                    html += `<div class="detail-subtask-item">
+                        <span class="badge bg-secondary" style="font-size:0.65rem;flex-shrink:0;">#${d.task_seq}</span>
+                        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(d.template_name || d.template_code || '-')}</span>
+                        <span class="server-badge" style="font-size:0.7rem;">${esc(d.task_servicec || '-')}</span>
+                    </div>`;
+                });
+                html += `</div>`;
+            }
+
+            html += `<div class="detail-actions">
+                <a href="/template/${t.id}" class="btn btn-outline-primary btn-sm"><i class="bi bi-eye"></i> 查看</a>
+                <a href="/edit/${t.id}" class="btn btn-outline-warning btn-sm"><i class="bi bi-pencil"></i> 编辑</a>
+                <a href="/copy/${t.id}" class="btn btn-outline-success btn-sm"><i class="bi bi-copy"></i> 复制</a>
+                <button class="btn btn-outline-info btn-sm" onclick="alert(JSON.stringify(${JSON.stringify(t).replace(/</g,'\\u003c')}, null, 2))"><i class="bi bi-code-slash"></i> JSON</button>
+            </div>`;
+
+            detailPanel.innerHTML = html;
+        } catch (err) {
+            detailPanel.innerHTML = `<div class="detail-panel-placeholder">
+                <i class="bi bi-exclamation-triangle"></i>
+                <p style="color:var(--danger);">加载失败: ${esc(err.message)}</p>
+            </div>`;
+        }
+    }
+
+    // ===== 分页 =====
+    function renderPagination() {
+        if (totalPages <= 1) {
+            pagination.innerHTML = '';
+            pageInfo.textContent = '';
+            return;
+        }
+        const p = state.page;
+        let html = '';
+        // prev
+        html += `<li class="page-item ${p <= 1 ? 'disabled' : ''}">
+            <a class="page-link" data-page="${p - 1}" href="#">&laquo;</a></li>`;
+        // pages
+        const start = Math.max(1, p - 2);
+        const end = Math.min(totalPages, p + 2);
+        if (start > 1) {
+            html += `<li class="page-item"><a class="page-link" data-page="1" href="#">1</a></li>`;
+            if (start > 2) html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+        for (let i = start; i <= end; i++) {
+            html += `<li class="page-item ${i === p ? 'active' : ''}">
+                <a class="page-link" data-page="${i}" href="#">${i}</a></li>`;
+        }
+        if (end < totalPages) {
+            if (end < totalPages - 1) html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            html += `<li class="page-item"><a class="page-link" data-page="${totalPages}" href="#">${totalPages}</a></li>`;
+        }
+        // next
+        html += `<li class="page-item ${p >= totalPages ? 'disabled' : ''}">
+            <a class="page-link" data-page="${p + 1}" href="#">&raquo;</a></li>`;
+        pagination.innerHTML = html;
+        pageInfo.textContent = `第 ${p}/${totalPages} 页`;
+
+        pagination.querySelectorAll('.page-link[data-page]').forEach(a => {
+            a.addEventListener('click', (e) => {
+                e.preventDefault();
+                const pg = parseInt(a.dataset.page);
+                if (pg && pg !== state.page) {
+                    state.page = pg;
+                    fetchData();
+                }
+            });
+        });
+    }
+
+    function renderResultCount() {
+        resultCount.textContent = total > 0 ? `共 ${total} 条结果` : '';
+    }
+
+    // ===== 服务器筛选下拉 =====
+    function updateServerFilter() {
+        const current = filterServer.value;
+        filterServer.innerHTML = '<option value="">全部服务器</option>';
+        servers.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s;
+            opt.textContent = s;
+            if (s === current) opt.selected = true;
+            filterServer.appendChild(opt);
+        });
+    }
+
+    // ===== 事件绑定 =====
+    // 搜索
+    function doSearch() {
+        state.q = searchInput.value.trim();
+        state.page = 1;
+        fetchData();
+    }
+    searchBtn.addEventListener('click', doSearch);
+    searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+    clearBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        state.q = '';
+        state.page = 1;
+        state.server = '';
+        state.status = '';
+        state.sort_by = 'id';
+        state.sort_order = 'DESC';
+        syncFilterUI();
+        fetchData();
+    });
+
+    // 快捷标签
+    $$('#searchChips .chip').forEach(el => {
+        el.addEventListener('click', (e) => {
+            e.preventDefault();
+            const q = el.dataset.q;
+            searchInput.value = q;
+            state.q = q;
+            state.page = 1;
+            fetchData();
+        });
+    });
+
+    // 筛选器
+    filterServer.addEventListener('change', () => {
+        state.server = filterServer.value;
+        state.page = 1;
+        fetchData();
+    });
+    filterStatus.addEventListener('change', () => {
+        state.status = filterStatus.value;
+        state.page = 1;
+        fetchData();
+    });
+    filterSort.addEventListener('change', () => {
+        const val = filterSort.value;
+        const parts = val.split('_');
+        const len = parts.length;
+        state.sort_by = parts.slice(0, len - 1).join('_');
+        state.sort_order = parts[len - 1].toUpperCase();
+        state.page = 1;
+        fetchData();
+    });
+
+    // 每页条数
+    perPageSelect.addEventListener('change', () => {
+        state.per_page = parseInt(perPageSelect.value);
+        state.page = 1;
+        fetchData();
+    });
+
+    // 表头排序
+    document.querySelectorAll('.table-search thead th[data-sort]').forEach(th => {
+        th.addEventListener('click', () => {
+            const field = th.dataset.sort;
+            if (state.sort_by === field) {
+                state.sort_order = state.sort_order === 'ASC' ? 'DESC' : 'ASC';
+            } else {
+                state.sort_by = field;
+                state.sort_order = 'DESC';
+            }
+            state.page = 1;
+            // 更新sort图标
+            document.querySelectorAll('.table-search thead th[data-sort]').forEach(h => h.classList.remove('sorted'));
+            th.classList.add('sorted');
+            syncFilterUI();
+            fetchData();
+        });
+    });
+
+    // ===== 初始化 =====
+    function init() {
+        // 从 URL 恢复搜索词 + 筛选条件
+        const urlParams = new URLSearchParams(window.location.search);
+        const term = urlParams.get('search_term') || state.q;
+        if (term) {
+            state.q = term;
+            searchInput.value = term;
+        }
+        const serverParam = urlParams.get('server') || '';
+        if (serverParam) {
+            state.server = serverParam;
+        }
+        const statusParam = urlParams.get('status') || '';
+        if (statusParam) {
+            state.status = statusParam;
+        }
+        // 初始选中 id 排序表头
+        document.querySelector('.table-search thead th[data-sort="id"]').classList.add('sorted');
+        fetchData();
+    }
+    init();
+})();
+</script>
+{% endblock %}
