@@ -185,6 +185,60 @@
 所有服务的日志文件创建时间集中在同一时刻
 ```
 
+### 模式 6：业务校验拒绝（设备型号/配置不存在）
+
+**特征**：
+- 调用链中上游服务返回自定义错误码（如 2014）
+- 同参数下**全部失败**（不是偶发，不是超时/网络问题）
+- 服务自身日志无 ERROR/Exception，全是 INFO
+- 目标服务日志中，校验步骤的下一行日志缺失（关键信号）
+
+**案例 —— 下发任务失败 "执行任务所需设备型号不存在"：**
+
+```
+调用链：SWMS → ICS → TPS
+错误点：TPS CarryTaskValidator 校验失败
+```
+
+**关键日志模式：**
+```
+# 失败 — robotType 行缺失
+CarryTaskValidator - validate carry addTask orderId:X orderDetailId:Y
+（此处本该有 robotType:[...] 行，但缺失）
+OrderServiceImpl - [addOrder] result : {"code":2014, ...}
+
+# 成功 — 有完整链路
+CarryTaskValidator - validate carry addTask orderId:X orderDetailId:Y
+CarryTaskValidator - robotType:[RTA-C100-Q-2L-410-FY]
+CarryTaskValidator - carry addTask validate success
+```
+
+**排查技巧：**
+```
+① 先确认错误来自哪一层
+   → 该错误码/错误描述出现在哪个服务的 response 日志中
+   → 再看该服务调用了哪个下游服务，下游是否返回了该错误
+
+② 对比成功与失败的日志模式
+   → 成功的校验会打印出 robotType / validate success
+   → 失败的校验关键行缺失（缺失本身就是最有力的证据）
+
+③ 找到缺失行的位置，定位失败代码段
+   → robotType 行缺失 → robotType 解析阶段失败
+   → 常见原因：目标点缺少动作配置 / 货架缺少型号 / 模板缺少默认设备
+
+④ 确认是业务配置问题而非代码 bug
+   → 同参数 100% 失败 → 配置缺失
+   → 间歇性失败 → 并发/超时/资源
+```
+
+**验证：**
+```
+curl -X POST http://postlook:5011/api/logs \
+  -d '{"folder": "/main/app/tps/logs", "keyword": "CarryTaskValidator", "recent_files": 3}'
+# 对比 validate carry addTask 后是否有 robotType 行
+```
+
 ---
 
 ## 三、排查流程图
@@ -219,7 +273,107 @@
 
 ---
 
-## 四、排查后建议模板
+---
+
+## 五、跨系统调用链排查方法论
+
+### 核心原则
+
+> **错误发生在哪一层，日志就在哪一层找。不要在上游服务的日志里找下游的原因。**
+
+### 排查步骤
+
+```
+已知：A 调用 B，B 返回了错误码 E，A 把 E 透传给了调用方
+
+Step 1 — 确认错误源头
+   → 在 A 的日志中搜索 orderId/taskId，找到调用 B 的请求和响应
+   → 区分：是 A 自己生成的错误，还是 B 返回的错误
+   → 技巧：看 response 日志中的 cost time（耗时极短说明是校验拒绝，非超时）
+
+Step 2 — 定位到 B 的具体日志
+   → 将 A 的请求参数（orderId/detailId）带到 B 的日志中搜索
+   → B 可能有很多同名服务实例，注意 IP 和端口
+
+Step 3 — 在 B 中找到失败的具体代码位置
+   → 先找到 B 收到请求的日志行
+   → 再找到 B 返回错误的日志行
+   → 两条日志之间缺失的步骤就是失败点
+
+Step 4 — 对比分析法找根本原因
+   ┌─────────────────────────────────────────────┐
+   │ 同参数全失败 → 配置缺失（模板/点位/货架）  │
+   │ 有时成功有时失败 → 并发/资源/超时          │
+   │ 找一条成功的 request 做对比                │
+   │ 对比成功和失败的日志模式差异                │
+   │ 缺失的日志行往往就是失败的原因              │
+   └─────────────────────────────────────────────┘
+
+Step 5 — 验证根因
+   → 根据推测的根因，反向验证：检查对应配置是否存在
+   → 修复后重新发起同样的请求验证
+```
+
+### 实用技巧
+
+#### 1. 日志"缺失"比"存在"更有价值
+
+```
+成功日志模式（完整）：
+  step A → step B → step C → success
+
+失败日志模式（缺失）：
+  step A → （step B 缺失）→ error
+
+缺失行 → 定位到失败的精确代码段落
+```
+
+#### 2. 从 request 参数到下游日志的桥接
+
+不同系统的日志中，同一个业务实体的 ID 可能不同：
+
+```
+系统A（上游）          系统B（下游）
+orderId=131234566367 → orderId=993855746（TPS内部ID）
+                    → tgId=4399783（任务组ID）
+```
+
+排查方法：用能找到的**所有 ID 变体**在下游日志中搜索。
+
+#### 3. 耗时分析判断错误类型
+
+```
+耗时判断：
+  cost_time < 100ms → 业务校验拒绝（大概率配置问题）
+  cost_time > 1000ms → 外部调用超时 / 数据库慢查询
+  cost_time ~ 0ms → 缓存/本地校验快速拒绝
+```
+
+#### 4. postlook 多系统联查模板
+
+```bash
+# 一键查跨系统链路
+ORDER_ID="131234566367"
+
+# 1. 查 ICS 日志（调用方）
+curl -s -X POST http://<postlook-ics>/api/logs \
+  -d "{\"folder\": \"/main/app/ics/logs\", \"keyword\": \"$ORDER_ID\", \"recent_files\": 3}"
+
+# 2. 从 ICS 日志提取 TPS 返回的 detailId（如 993855746）
+DETAIL_ID="993855746"
+
+# 3. 查 TPS 日志（被调用方）
+curl -s -X POST http://<postlook-tps>/api/logs \
+  -d "{\"folder\": \"/main/app/tps/logs\", \"keyword\": \"$DETAIL_ID\", \"recent_files\": 3}"
+
+# 4. 查 TPS 的 CarryTaskValidator 校验详情
+curl -s -X POST http://<postlook-tps>/api/logs \
+  -d "{\"folder\": \"/main/app/tps/logs\", \"keyword\": \"CarryTaskValidator\", \"recent_files\": 3}"
+```
+
+---
+
+## 六、排查后建议模板
 
 每次排查完成后应产出的结果：
 
