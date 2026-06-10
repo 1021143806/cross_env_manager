@@ -15,8 +15,17 @@ _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 class SystemConfigService:
     """系统配置管理服务"""
 
+    # 默认路径（被实例化时 config_path 覆盖）
     ENV_PATH = os.path.join(_BASE_DIR, 'config', 'env.toml')
     BACKUP_DIR = os.path.join(_BASE_DIR, 'config', 'backups')
+
+    def __init__(self, config_path=None):
+        """若传入 config_path，则使用指定配置文件并调整备份目录"""
+        if config_path:
+            self.ENV_PATH = os.path.abspath(config_path)
+            # 备份目录跟随配置文件所在目录
+            config_dir = os.path.dirname(self.ENV_PATH)
+            self.BACKUP_DIR = os.path.join(config_dir, 'backups')
 
     # ==================== 读取 ====================
 

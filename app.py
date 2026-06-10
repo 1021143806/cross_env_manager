@@ -156,8 +156,19 @@ args = parse_arguments()
 # 加载配置
 config = load_config(args.config)
 
+# 解析实际使用的配置文件路径（供 SystemConfigService 使用）
+_config_file_path = args.config
+if not _config_file_path:
+    _config_file_path = os.getenv('CONFIG_PATH')
+if not _config_file_path:
+    _config_file_path = os.path.join(os.path.dirname(__file__), 'config', 'env.toml')
+# 转换为绝对路径
+_config_file_path = os.path.abspath(_config_file_path)
+
 # 初始化Flask应用
 app = Flask(__name__)
+# 存储实际配置文件路径，供系统配置模块使用
+app.config['CEM_CONFIG_PATH'] = _config_file_path
 
 # 从配置或环境变量获取Flask密钥
 # 注意：配置文件中flask配置在[flask]部分

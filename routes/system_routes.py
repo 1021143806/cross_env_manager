@@ -6,7 +6,7 @@
 
 from flask import Blueprint, render_template
 from functools import wraps
-from flask import session, redirect, url_for, request, jsonify
+from flask import session, redirect, url_for, request, jsonify, current_app
 import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -19,7 +19,9 @@ def _get_sys_config():
     global _sys_config_svc
     if _sys_config_svc is None:
         from services.system_config_service import SystemConfigService
-        _sys_config_svc = SystemConfigService()
+        # 使用启动时传入的实际配置文件路径
+        config_path = current_app.config.get('CEM_CONFIG_PATH')
+        _sys_config_svc = SystemConfigService(config_path=config_path)
     return _sys_config_svc
 
 
