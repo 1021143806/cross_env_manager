@@ -53,6 +53,13 @@ def addtask():
     return render_template('addTask/index.html')
 
 
+@config_bp.route('/addtask/config-view')
+@login_required
+def addtask_config_view():
+    """任务下发配置编辑 - 独立页面（与 /addtask 拆分，避免高亮冲突）"""
+    return render_template('addTask/index.html', show_config_view=True)
+
+
 @config_bp.route('/addtask/pad')
 @login_required
 def addtask_pad():

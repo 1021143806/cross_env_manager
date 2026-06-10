@@ -560,7 +560,7 @@
                     <li class="nav-item"><a href="/addtask" class="nav-link" data-nav="addtask"><i class="nav-icon bi bi-send-check"></i><p>任务下发</p></a></li>
 
                     <li class="nav-header">配置</li>
-                    <li class="nav-item"><a href="/addtask#config" class="nav-link" data-nav="addtask-config"><i class="nav-icon bi bi-sliders"></i><p>下发配置</p></a></li>
+                    <li class="nav-item"><a href="/addtask/config-view" class="nav-link" data-nav="addtask-config-view"><i class="nav-icon bi bi-sliders"></i><p>下发配置</p></a></li>
 
                     <li class="nav-header">帮助</li>
                     <li class="nav-item"><a href="/addtask/help" class="nav-link" data-nav="help"><i class="nav-icon bi bi-question-circle"></i><p>下发帮助</p></a></li>
@@ -736,31 +736,33 @@
         });
 
         // 根据当前 URL 激活侧边栏菜单项（含 hash 支持）
-        const sidebarLinks = document.querySelectorAll('.sidebar-menu a[data-nav], .sidebar-menu a[href]');
-        let bestMatch = null, bestLen = 0;
-        const matchPath = path + (window.location.hash || '');
+        (function updateActive() {
+            const sidebarLinks = document.querySelectorAll('.sidebar-menu a[href]');
+            const curPath = window.location.pathname;
+            const fullPath = curPath + (window.location.hash || '');
+            let bestMatch = null, bestLen = 0;
 
-        sidebarLinks.forEach(a => {
-            const href = a.getAttribute('href');
-            if (!href || href === '#') return;
-            const hrefPath = href.split('#')[0];
-            // 优先精确匹配（path + hash）
-            if (matchPath === href && href.length > bestLen) {
-                bestMatch = a;
-                bestLen = href.length;
+            sidebarLinks.forEach(a => {
+                const href = a.getAttribute('href');
+                if (!href || href === '#') return;
+                const hrefPath = href.split('#')[0];
+                // 优先精确匹配（path + hash）
+                if (fullPath === href && href.length > bestLen) {
+                    bestMatch = a;
+                    bestLen = href.length;
+                }
+                // 回退：按 path 前缀匹配（不含 hash）
+                if (curPath.startsWith(hrefPath) && hrefPath.length > bestLen) {
+                    bestMatch = a;
+                    bestLen = hrefPath.length;
+                }
+            });
+            if (bestMatch) {
+                // 清除所有 sidebar-menu 内的 active
+                document.querySelectorAll('.sidebar-menu .nav-link.active').forEach(a => a.classList.remove('active'));
+                bestMatch.classList.add('active');
             }
-            // 回退：按 path 前缀匹配
-            if (path.startsWith(hrefPath) && hrefPath.length > bestLen) {
-                bestMatch = a;
-                bestLen = hrefPath.length;
-            }
-        });
-        if (bestMatch) {
-            // 在同一 sidebar-menu 内取消所有 active
-            const parentMenu = bestMatch.closest('.sidebar-menu');
-            if (parentMenu) parentMenu.querySelectorAll('.nav-link').forEach(a => a.classList.remove('active'));
-            bestMatch.classList.add('active');
-        }
+        })();
     })();
 
     // ========== 调车侧边栏 - 动态加载区域列表 ==========
