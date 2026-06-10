@@ -146,6 +146,71 @@ def api_system_info():
     return jsonify({'success': True, 'info': _get_sys_config().get_system_info()})
 
 
+# ========== 数据库服务器切换 ==========
+
+@system_bp.route('/api/db/servers', methods=['GET'])
+@login_required
+def api_list_db_servers():
+    """列出可用的数据库服务器"""
+    try:
+        from modules.custom_table.config_loader import CustomTableConfig
+        loader = CustomTableConfig()
+        servers = []
+        for s in loader.get_servers():
+            servers.append({
+                'key': s.get('key'),
+                'name': s.get('name'),
+                'host': s.get('host'),
+                'port': s.get('port'),
+                'database': s.get('database'),
+            })
+        return jsonify({'success': True, 'servers': servers})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@system_bp.route('/api/db/current', methods=['GET'])
+@login_required
+def api_get_current_db():
+    """获取当前使用的服务器 key"""
+    return jsonify({
+        'success': True,
+        'key': session.get('active_db_server', ''),
+    })
+
+
+@system_bp.route('/api/db/switch', methods=['POST'])
+@login_required
+def api_switch_db():
+    """切换数据库服务器"""
+    data = request.get_json() or {}
+    server_key = data.get('key', '').strip()
+    
+    # 清除缓存，确保切换后读取新的数据
+    try:
+        from middleware.cache import cache
+        cache.clear()
+    except Exception:
+        pass
+    
+    if not server_key:
+        session.pop('active_db_server', None)
+        return jsonify({'success': True, 'message': '已恢复默认数据库'})
+    
+    # 验证服务器 key 是否存在
+    try:
+        from modules.custom_table.config_loader import CustomTableConfig
+        loader = CustomTableConfig()
+        server = loader.get_server(server_key)
+        if not server:
+            return jsonify({'success': False, 'error': f'服务器 "{server_key}" 不存在'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    
+    session['active_db_server'] = server_key
+    return jsonify({'success': True, 'message': f'已切换到 {server.get("name", server_key)}'})
+
+
 @system_bp.route('/test/version_tree')
 @login_required
 def test_version_tree():
