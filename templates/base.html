@@ -536,7 +536,6 @@
                     <li class="nav-header">调车控制</li>
                     <li class="nav-item"><a href="/dispatch" class="nav-link" data-nav="dispatch-dashboard"><i class="nav-icon bi bi-speedometer2"></i><p>调车看板</p></a></li>
                     <li class="nav-item"><a href="/dispatch/config" class="nav-link" data-nav="dispatch-config"><i class="nav-icon bi bi-sliders"></i><p>调车配置</p></a></li>
-                    <li class="nav-item"><a href="/dispatch/test" class="nav-link" data-nav="dispatch-test"><i class="nav-icon bi bi-joystick"></i><p>自动驾驶测试</p></a></li>
 
                     <li class="nav-header">区域总览 <span style="font-size:10px;font-weight:400;" id="areaRefreshHint"></span></li>
                     <div id="dispatchAreaList" style="padding:0 6px;">
@@ -551,6 +550,7 @@
                     </li>
 
                     <li class="nav-header">帮助</li>
+                    <li class="nav-item"><a href="/dispatch/test" class="nav-link" data-nav="dispatch-test"><i class="nav-icon bi bi-joystick"></i><p>自动驾驶测试</p></a></li>
                     <li class="nav-item"><a href="/docs/module/dispatch" class="nav-link" data-nav="help"><i class="nav-icon bi bi-question-circle"></i><p>调车帮助</p></a></li>
                 </ul>
 
@@ -786,22 +786,37 @@
                         areaList.innerHTML = '<li class="nav-item"><a class="nav-link disabled" style="font-style:italic;"><p>暂无区域数据</p></a></li>';
                         return;
                     }
-                    areaList.innerHTML = areas.map(a => {
-                        const aid = a.areaId || '?';
-                        const name = a.areaName || ('区域 ' + aid);
-                        const freeCount = a.currentCount || 0;
-                        const deviceCount = a.xmax || 0;
-                        const totalPending = (a.pending_devices || []).length;
-                        const statusColor = freeCount > 0 ? '#34d399' : '#fbbf24';
-                        const pendingBadge = totalPending > 0
-                            ? ` <span style="font-size:10px;color:var(--accent);">⟳${totalPending}</span>`
-                            : '';
-                        return `<li class="nav-item"><a href="/dispatch/area/${aid}" class="nav-link" data-nav="area-${aid}">
-                            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor};margin-right:4px;"></span>
-                            <p>${escapeHtmlSidebar(name)}${pendingBadge}</p>
-                            <span class="badge-count">${freeCount}/${deviceCount}</span>
-                        </a></li>`;
-                    }).join('');
+
+                    // 按 server IP 分组
+                    const groups = {};
+                    areas.forEach(a => {
+                        const svr = a.server || '(未分组)';
+                        if (!groups[svr]) groups[svr] = [];
+                        groups[svr].push(a);
+                    });
+
+                    let html = '';
+                    Object.keys(groups).sort().forEach(svr => {
+                        const list = groups[svr];
+                        const totalFree = list.reduce((s, a) => s + (a.currentCount || 0), 0);
+                        const totalMax = list.reduce((s, a) => s + (a.xmax || 0), 0);
+                        const areaCount = list.length;
+
+                        // 服务器 IP 作为可点击分组头，点击跳转到 /dispatch?server=IP
+                        html += `
+                        <li class="nav-item" style="margin:0 6px;">
+                            <a href="/dispatch?server=${encodeURIComponent(svr)}" class="nav-link" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;padding:4px 8px;opacity:0.85;" data-nav="server-${svr}">
+                                <i class="nav-icon bi bi-server" style="font-size:12px;"></i>
+                                <p>${escapeHtmlSidebar(svr)}  <span style="font-weight:400;opacity:0.6;">${areaCount}区域</span></p>
+                                <span class="badge-count">${totalFree}/${totalMax}</span>
+                            </a>
+                        </li>`;
+
+                        // 该服务器下的区域明细（纯展示，不可点击）
+                        // 用户只需要按服务器备注分组即可，不需要单个区域链接
+                    });
+
+                    areaList.innerHTML = html;
                 })
                 .catch(() => {
                     areaList.innerHTML = '<li class="nav-item"><a class="nav-link disabled" style="font-style:italic;"><p>加载失败</p></a></li>';

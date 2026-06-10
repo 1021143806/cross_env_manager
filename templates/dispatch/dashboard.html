@@ -1064,7 +1064,28 @@ function renderAreas(areas) {
         container.innerHTML = '<div class="text-center text-muted py-5">暂无区域数据</div>';
         return;
     }
-    let html = '<div class="row">';
+
+    // 支持 ?server=IP 筛选
+    const urlParams = new URLSearchParams(window.location.search);
+    const serverFilter = urlParams.get('server');
+    if (serverFilter) {
+        areas = areas.filter(a => (a.server || '') === serverFilter);
+        // 有筛选时添加"显示全部"提示
+    }
+
+    let html = '';
+    if (serverFilter) {
+        const count = areas.length;
+        html += `<div class="d-flex justify-content-between align-items-center mb-3">
+            <span class="text-muted" style="font-size:0.85rem;">
+                <i class="bi bi-server me-1"></i>筛选: <strong>${serverFilter}</strong> (${count} 区域)
+            </span>
+            <a href="/dispatch" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-x-lg"></i> 清除筛选
+            </a>
+        </div>`;
+    }
+    html += '<div class="row">';
     areas.forEach(area => {
         const dirBadge = getDirectionBadge(area);
         const incomingRows = renderTemplateRows(area.templates.incoming, area.region_key);
