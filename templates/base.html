@@ -196,7 +196,7 @@
             padding: 8px 12px !important;
             font-size: 13px !important;
             font-weight: 500 !important;
-            transition: all 0.15s ease !important;
+            transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
         }
         .sidebar-menu .nav-link:hover {
             background: var(--sidebar-hover-bg) !important;
@@ -207,6 +207,12 @@
             color: var(--sidebar-active-text) !important;
             font-weight: 600 !important;
             box-shadow: inset 3px 0 0 var(--accent) !important;
+            animation: sidebarSnapIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        }
+        @keyframes sidebarSnapIn {
+            0% { transform: translateX(-4px); opacity: 0.6; }
+            55% { transform: translateX(2px); }
+            100% { transform: translateX(0); opacity: 1; }
         }
         .sidebar-menu .nav-link .nav-icon {
             font-size: 15px !important;
@@ -478,6 +484,9 @@
                 <a class="module-tab" data-module="system" href="/monitor">
                     <i class="bi bi-gear"></i><span>系统管理</span>
                 </a>
+                <a class="module-tab" data-module="postlook" href="/postlook">
+                    <i class="bi bi-binoculars"></i><span>日志查看</span>
+                </a>
             </div>
 
             <!-- 右侧：用户信息等 -->
@@ -581,11 +590,19 @@
                     <li class="nav-item"><a href="/system/config" class="nav-link" data-nav="system-config"><i class="nav-icon bi bi-gear-wide-connected"></i><p>系统配置</p></a></li>
                     <li class="nav-item"><a href="/monitor" class="nav-link" data-nav="monitor"><i class="nav-icon bi bi-activity"></i><p>系统监控</p></a></li>
                     <li class="nav-item"><a href="/stats" class="nav-link" data-nav="stats"><i class="nav-icon bi bi-graph-up"></i><p>数据统计</p></a></li>
-                    <li class="nav-item"><a href="/postlook" class="nav-link" data-nav="postlook"><i class="nav-icon bi bi-binoculars"></i><p>日志查看</p></a></li>
                     <li class="nav-item"><a href="/platform-switch" class="nav-link" data-nav="platform-switch"><i class="nav-icon bi bi-hdd-network"></i><p>平台切换</p></a></li>
 
                     <li class="nav-header">其他</li>
                     <li class="nav-item"><a href="/docs" class="nav-link" data-nav="docs"><i class="nav-icon bi bi-journal-text"></i><p>文档中心</p></a></li>
+                </ul>
+
+                <!-- ===== 日志查看 (Postlook) ===== -->
+                <ul class="nav sidebar-menu flex-column" data-sidebar-module="postlook">
+                    <li class="nav-header">日志查看</li>
+                    <li class="nav-item"><a class="nav-link active" data-nav="postlook-logs" href="/postlook#logs"><i class="nav-icon bi bi-file-text"></i><p>日志查询</p></a></li>
+                    <li class="nav-item"><a class="nav-link" data-nav="postlook-config" href="/postlook#config"><i class="nav-icon bi bi-gear"></i><p>配置管理</p></a></li>
+                    <li class="nav-item"><a class="nav-link" data-nav="postlook-status" href="/postlook#status"><i class="nav-icon bi bi-activity"></i><p>服务状态</p></a></li>
+                    <li class="nav-item"><a class="nav-link" data-nav="postlook-topology" href="/postlook#topology"><i class="nav-icon bi bi-diagram-3"></i><p>拓扑</p></a></li>
                 </ul>
 
             </nav>
@@ -721,6 +738,7 @@
         else if (path.startsWith('/monitor') || path.startsWith('/stats') ||
                  path.startsWith('/platform-switch') || path.startsWith('/docs') ||
                  path.startsWith('/system/config') || path.startsWith('/config-editor')) activeModule = 'system';
+        else if (path.startsWith('/postlook')) activeModule = 'postlook';
         else if (path.startsWith('/pair') || path.startsWith('/template/device-sync') ||
                  path.startsWith('/custom_table') || path.startsWith('/search') ||
                  path.startsWith('/template') || path.startsWith('/edit') ||
