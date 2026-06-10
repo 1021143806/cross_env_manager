@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}帮助中心{% endblock %}
+{% block content %}
+<div class="container py-3">
+    <h2><i class="bi bi-question-circle text-info"></i> 帮助中心</h2>
+    <p class="text-muted">选择下方模块查看对应帮助文档</p>
+    <div class="row g-3 mt-2">
+        <div class="col-md-4">
+            <a href="/addtask/help" class="card text-decoration-none h-100">
+                <div class="card-body text-center py-4">
+                    <i class="bi bi-send-check display-5 text-primary"></i>
+                    <h5 class="mt-2">任务下发</h5>
+                    <p class="text-muted small mb-0">跨环境任务下发操作说明</p>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-4">
+            <a href="/query/help" class="card text-decoration-none h-100">
+                <div class="card-body text-center py-4">
+                    <i class="bi bi-search display-5 text-success"></i>
+                    <h5 class="mt-2">任务查询</h5>
+                    <p class="text-muted small mb-0">查询任务执行状态和详情</p>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-4">
+            <a href="/docs" class="card text-decoration-none h-100">
+                <div class="card-body text-center py-4">
+                    <i class="bi bi-journal-text display-5 text-warning"></i>
+                    <h5 class="mt-2">文档中心</h5>
+                    <p class="text-muted small mb-0">系统完整文档</p>
+                </div>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

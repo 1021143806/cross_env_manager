@@ -237,6 +237,29 @@ venv/bin/python3 test/???.py
 - **防抖**: 1秒内只能触发一次，频繁点击弹窗警告
 - **交互**: 饼图悬停显示状态名/数量/百分比，点击图例切换显示/隐藏，异常率红色高亮
 
+### 重要更新（2026-06-10）
+
+#### 模板搜索页面重构（方案二：AdminLTE 表格+详情面板）
+
+**改动了什么：**
+- `/search` 路由改为 GET-only，渲染 `template/search.html`（前端渲染）
+- 新增 `GET /api/search` 分页搜索 API（支持 q/page/per_page/server/status/sort_by/sort_order）
+- 新增 `GET /api/template/<id>` 获取单个模板 JSON
+- 新增 `template_service.search_paginated()` 服务方法
+
+**新页面布局：**
+- 顶部搜索栏 + 快捷标签（HJBY / back / 空车回流 / 换电 / A1楼栋）
+- 筛选行：服务器下拉 / 状态下拉 / 排序下拉 / 结果计数
+- 主区域左 65% 表格（可排序）+ 右 35% 详情面板（点击行加载）
+- 底部分页 + 每页条数切换
+
+**首页链接更新：**
+- 服务器列表项 `search_term=IP` → `server=IP`
+- 已启用模板统计卡 `filter=enable` → `status=1`
+
+**清除文件：** `search_results.html` 不再被引用（保留未删）
+**API 文档：** `doc/API.md` 已同步更新
+
 ### ds说
 - 2025-04-28: **Phase 1 架构优化完成**。引入 DBUtils 连接池（modules/database/connection.py 重构），新增 dao/ 层（BaseDAO + TemplateDAO + DetailDAO），新增 middleware/ 层（统一异常处理 AppError/NotFoundError/AuthError/ValidationError），app.py 启动时自动初始化连接池并注册异常处理器。新增依赖 DBUtils==3.1.2。
 - 2026-04-28: **Phase 2 架构优化完成**。创建 routes/ 蓝图层，将 app.py 中50+路由按功能拆分为8个蓝图文件。蓝图在 app.py 启动时自动注册，57条路由全部验证通过。

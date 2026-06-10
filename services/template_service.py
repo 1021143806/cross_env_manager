@@ -22,23 +22,34 @@ PROD_DB_CONFIG = {
 
 class TemplateService:
     """模板管理服务"""
+
+    def __init__(self, db_config=None):
+        """
+        :param db_config: 可选数据库配置 dict（host/port/user/password/database/charset），
+                          传 None 则使用默认连接池
+        """
+        self.db_config = db_config
+    
+    def _execute(self, query, params=None, fetch=True):
+        """使用当前 db_config 执行查询，若未设置则走默认连接池"""
+        return execute_query(query, params, fetch=fetch, config=self.db_config)
     
     # ========== 搜索 ==========
     
     def search(self, search_term):
-        """搜索任务模板"""
+        """搜索任务模板（旧版全匹配，兼容保留）"""
         if not search_term:
             return None, '请输入搜索关键词'
         
         if search_term.isdigit():
-            templates = execute_query(
+            templates = self._execute(
                 "SELECT * FROM fy_cross_model_process WHERE id = %s", (int(search_term),))
             if not templates or len(templates) == 0:
-                templates = execute_query(
+                templates = self._execute(
                     "SELECT * FROM fy_cross_model_process WHERE model_process_code LIKE %s ORDER BY id DESC",
                     (f'%{search_term}%',))
         else:
-            templates = execute_query(
+            templates = self._execute(
                 "SELECT * FROM fy_cross_model_process WHERE model_process_code LIKE %s ORDER BY id DESC",
                 (f'%{search_term}%',))
         
@@ -46,18 +57,79 @@ class TemplateService:
             return None, f'未找到包含 "{search_term}" 的任务模板'
         
         for t in templates:
-            details = execute_query(
+            details = self._execute(
                 "SELECT * FROM fy_cross_model_process_detail WHERE model_process_id = %s ORDER BY task_seq",
                 (t['id'],))
             t['details'] = details or []
         
         return templates, None
     
+    def search_paginated(self, search_term='', page=1, per_page=20, server=None, status=None, sort_by='id', sort_order='DESC'):
+        """分页搜索 + 筛选 + 排序，返回 {templates, total, servers, page, per_page, total_pages}"""
+        allowed_sort = {'id', 'model_process_code', 'model_process_name', 'target_points_ip', 'enable', 'area_id'}
+        if sort_by not in allowed_sort:
+            sort_by = 'id'
+        sort_order = 'ASC' if sort_order.upper() == 'ASC' else 'DESC'
+        
+        conditions = []
+        params = []
+        
+        if search_term:
+            if search_term.isdigit():
+                conditions.append("(id = %s OR model_process_code LIKE %s)")
+                params.extend([int(search_term), f'%{search_term}%'])
+            else:
+                conditions.append("(model_process_code LIKE %s OR model_process_name LIKE %s)")
+                params.extend([f'%{search_term}%', f'%{search_term}%'])
+        
+        if server:
+            conditions.append("target_points_ip = %s")
+            params.append(server)
+        
+        if status is not None and status in ('0', '1'):
+            conditions.append("enable = %s")
+            params.append(int(status))
+        
+        where_clause = (' WHERE ' + ' AND '.join(conditions)) if conditions else ''
+        
+        # 计数
+        count_sql = f"SELECT COUNT(*) as cnt FROM fy_cross_model_process{where_clause}"
+        count_result = self._execute(count_sql, params)
+        total = count_result[0]['cnt'] if count_result else 0
+        
+        # 分页
+        offset = (page - 1) * per_page
+        data_sql = f"SELECT * FROM fy_cross_model_process{where_clause} ORDER BY {sort_by} {sort_order} LIMIT %s OFFSET %s"
+        templates = self._execute(data_sql, params + [per_page, offset]) or []
+        
+        # 同时获取 detail 数量（不加载完整子任务）
+        for t in templates:
+            detail_count = self._execute(
+                "SELECT COUNT(*) as cnt FROM fy_cross_model_process_detail WHERE model_process_id = %s",
+                (t['id'],))
+            t['detail_count'] = detail_count[0]['cnt'] if detail_count else 0
+        
+        # 获取所有可用的 server 列表（用于筛选下拉）
+        servers_result = self._execute(
+            "SELECT DISTINCT target_points_ip FROM fy_cross_model_process WHERE target_points_ip IS NOT NULL AND target_points_ip != '' ORDER BY target_points_ip")
+        servers = [r['target_points_ip'] for r in servers_result] if servers_result else []
+        
+        total_pages = max(1, (total + per_page - 1) // per_page)
+        
+        return {
+            'templates': templates,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': total_pages,
+            'servers': servers,
+        }
+    
     def search_suggestions(self, term):
         """搜索建议"""
         if not term:
             return []
-        results = execute_query(
+        results = self._execute(
             "SELECT model_process_code, model_process_name FROM fy_cross_model_process "
             "WHERE model_process_code LIKE %s OR model_process_name LIKE %s LIMIT 10",
             (f'%{term}%', f'%{term}%'))
@@ -67,11 +139,11 @@ class TemplateService:
     
     def get_template(self, template_id):
         """获取模板详情（含子任务）"""
-        template = execute_query("SELECT * FROM fy_cross_model_process WHERE id = %s", (template_id,))
+        template = self._execute("SELECT * FROM fy_cross_model_process WHERE id = %s", (template_id,))
         if not template:
             return None
         template = template[0]
-        template['details'] = execute_query(
+        template['details'] = self._execute(
             "SELECT * FROM fy_cross_model_process_detail WHERE model_process_id = %s ORDER BY task_seq",
             (template_id,))
         return template
@@ -109,7 +181,7 @@ class TemplateService:
             form_data.get('check_area_name'),
             template_id
         )
-        return execute_query(update_query, params, fetch=False)
+        return self._execute(update_query, params, fetch=False)
     
     def update_details_batch(self, template_id, form_data):
         """批量更新子任务"""
@@ -129,7 +201,7 @@ class TemplateService:
                 task_seq = int(fields.get('task_seq', '0'))
                 need_third = 1 if str(fields.get('need_third_trigger', '0')) == '1' else 0
                 
-                result = execute_query(
+                result = self._execute(
                     """UPDATE fy_cross_model_process_detail
                     SET task_seq=%s, template_code=%s, template_name=%s, task_servicec=%s, task_path=%s, need_third_trigger=%s
                     WHERE id=%s AND model_process_id=%s""",
@@ -171,7 +243,7 @@ class TemplateService:
         
         need_third = 1 if form_data.get('need_third_trigger', '0').strip() == '1' else 0
         
-        return execute_query(
+        return self._execute(
             """UPDATE fy_cross_model_process_detail
             SET task_seq=%s, task_servicec=%s, template_code=%s, template_name=%s,
                 task_path=%s, backflow_template_code=%s, comeback_template_code=%s,
@@ -184,13 +256,13 @@ class TemplateService:
     
     def get_detail_model_id(self, detail_id):
         """获取子任务所属模板ID"""
-        result = execute_query(
+        result = self._execute(
             "SELECT model_process_id FROM fy_cross_model_process_detail WHERE id = %s", (detail_id,))
         return result[0]['model_process_id'] if result else None
     
     def add_detail(self, template_id, data):
         """添加子任务"""
-        max_result = execute_query(
+        max_result = self._execute(
             "SELECT MAX(task_seq) as max_seq FROM fy_cross_model_process_detail WHERE model_process_id = %s",
             (template_id,))
         new_seq = (max_result[0]['max_seq'] + 1) if max_result and max_result[0]['max_seq'] is not None else 1
@@ -216,7 +288,7 @@ class TemplateService:
         
         need_third = 1 if str(data.get('need_third_trigger', 0)) == '1' else 0
         
-        new_id = execute_query(
+        new_id = self._execute(
             """INSERT INTO fy_cross_model_process_detail
             (model_process_id, task_seq, task_servicec, template_code, template_name, task_path,
              backflow_template_code, comeback_template_code, back_wait_time, need_third_trigger)
@@ -228,18 +300,18 @@ class TemplateService:
             fetch=False)
         
         if new_id:
-            detail = execute_query("SELECT * FROM fy_cross_model_process_detail WHERE id = %s", (new_id,))
+            detail = self._execute("SELECT * FROM fy_cross_model_process_detail WHERE id = %s", (new_id,))
             return detail[0] if detail else None
         return None
     
     def delete_detail(self, template_id, detail_id):
         """删除子任务"""
-        verify = execute_query(
+        verify = self._execute(
             "SELECT id FROM fy_cross_model_process_detail WHERE id = %s AND model_process_id = %s",
             (detail_id, template_id))
         if not verify:
             return False, '子任务不存在或不属于该模板'
-        result = execute_query("DELETE FROM fy_cross_model_process_detail WHERE id = %s", (detail_id,), fetch=False)
+        result = self._execute("DELETE FROM fy_cross_model_process_detail WHERE id = %s", (detail_id,), fetch=False)
         return bool(result), None
     
     def reorder_details(self, template_id, order_list):
@@ -249,7 +321,7 @@ class TemplateService:
         
         detail_ids = [item['id'] for item in order_list]
         placeholders = ', '.join(['%s'] * len(detail_ids))
-        verify = execute_query(
+        verify = self._execute(
             f"SELECT COUNT(*) as count FROM fy_cross_model_process_detail WHERE id IN ({placeholders}) AND model_process_id = %s",
             detail_ids + [template_id])
         
@@ -258,7 +330,7 @@ class TemplateService:
         
         success = 0
         for item in order_list:
-            result = execute_query(
+            result = self._execute(
                 "UPDATE fy_cross_model_process_detail SET task_seq = %s WHERE id = %s AND model_process_id = %s",
                 (item['task_seq'], item['id'], template_id), fetch=False)
             if result:
@@ -274,7 +346,7 @@ class TemplateService:
         if not new_base_name:
             return None, '请输入新模板的基础名称'
         
-        original = execute_query("SELECT * FROM fy_cross_model_process WHERE id = %s", (template_id,))
+        original = self._execute("SELECT * FROM fy_cross_model_process WHERE id = %s", (template_id,))
         if not original:
             return None, '原模板不存在或无法访问'
         original = original[0]
@@ -288,7 +360,7 @@ class TemplateService:
                 return default
         
         temp_code = f"{new_base_name}_temp"
-        new_id = execute_query(
+        new_id = self._execute(
             """INSERT INTO fy_cross_model_process
             (model_process_code, model_process_name, enable, request_url, capacity,
              target_points, area_id, target_points_ip, backflow_template_code,
@@ -317,11 +389,11 @@ class TemplateService:
         original_name_clean = re.sub(r'_\d+$', '', original_name)
         new_name = f"{original_name_clean}_{new_id}"
         
-        execute_query("UPDATE fy_cross_model_process SET model_process_code=%s, model_process_name=%s WHERE id=%s",
+        self._execute("UPDATE fy_cross_model_process SET model_process_code=%s, model_process_name=%s WHERE id=%s",
                      (new_code, new_name, new_id), fetch=False)
         
         # 复制子任务
-        details = execute_query(
+        details = self._execute(
             "SELECT * FROM fy_cross_model_process_detail WHERE model_process_id = %s ORDER BY task_seq",
             (template_id,))
         if details:
@@ -342,7 +414,7 @@ class TemplateService:
                         return None
                     return value
                 
-                execute_query(
+                self._execute(
                     """INSERT INTO fy_cross_model_process_detail
                     (model_process_id, task_seq, task_servicec, template_code, template_name, task_path,
                      backflow_template_code, comeback_template_code, back_wait_time, need_third_trigger)

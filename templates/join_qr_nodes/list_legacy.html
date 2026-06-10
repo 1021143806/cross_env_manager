@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block title %}交接点节点管理{% endblock %}
+
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-edit.png?v=1">
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-card {
+        background: var(--detail-card-bg);
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        text-align: center;
+    }
+    .stat-card .stat-value { font-size: 1.5rem; font-weight: 700; }
+    .stat-card .stat-label { font-size: 0.75rem; opacity: 0.7; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2><i class="bi bi-signpost text-info"></i> 交接点节点管理</h2>
+        <p class="text-muted mb-0">管理跨环境交接点节点信息</p>
+    </div>
+    <div>
+        <a href="/join_qr_nodes/add" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-circle"></i> 新增节点
+        </a>
+        <a href="/" class="btn btn-outline-secondary btn-sm ms-1">
+            <i class="bi bi-house"></i>
+        </a>
+    </div>
+</div>
+
+<!-- 统计 -->
+{% if stats %}
+<div class="row g-2 mb-3">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-value text-info">{{ stats.total or 0 }}</div>
+            <div class="stat-label">总记录</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-value text-success">{{ stats.enabled or 0 }}</div>
+            <div class="stat-label">已启用</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-value text-secondary">{{ stats.disabled or 0 }}</div>
+            <div class="stat-label">已禁用</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-value text-warning">{{ stats.servers or 0 }}</div>
+            <div class="stat-label">服务器数</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- 搜索 -->
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-6">
+                <input type="text" class="form-control form-control-sm" id="searchInput" placeholder="搜索地码值、IP或区域...">
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-outline-primary btn-sm w-100" onclick="searchNodes()">
+                    <i class="bi bi-search"></i> 搜索
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 列表 -->
+{% if nodes %}
+<div class="table-responsive">
+    <table class="table table-modern" id="nodeTable">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>地码值</th>
+                <th>区域</th>
+                <th>类型</th>
+                <th>服务器IP</th>
+                <th>状态</th>
+                <th style="width:120px;">操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for node in nodes %}
+            <tr>
+                <td>{{ node.id }}</td>
+                <td><code>{{ node.qr_content }}</code></td>
+                <td>区域 {{ node.area_id }}</td>
+                <td>{{ node.type }}</td>
+                <td><span class="badge bg-secondary">{{ node.environment_ip }}</span></td>
+                <td>
+                    {% if node.enable == 1 %}
+                    <span class="badge bg-success">启用</span>
+                    {% else %}
+                    <span class="badge bg-secondary">禁用</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <a href="/join_qr_nodes/{{ node.id }}/edit" class="btn btn-outline-primary" title="编辑">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <button class="btn btn-outline-danger" onclick="deleteNode({{ node.id }})" title="删除">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<div class="text-muted mt-2 small">共 {{ nodes|length }} 条记录</div>
+{% else %}
+<div class="alert alert-info text-center py-5">
+    <i class="bi bi-inbox display-4 d-block mb-3"></i>
+    <h5>暂无数据</h5>
+    <p class="mb-3">点击"新增节点"添加交接点配置</p>
+</div>
+{% endif %}
+
+{% block extra_js %}
+<script>
+function searchNodes() {
+    const term = document.getElementById('searchInput').value.trim();
+    if (!term) { location.href = '/join_qr_nodes'; return; }
+    fetch('/join_qr_nodes/search?search_term=' + encodeURIComponent(term))
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                const tbody = document.querySelector('#nodeTable tbody');
+                if (!data.nodes || data.nodes.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">未找到匹配的记录</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.nodes.map(n => `
+                    <tr>
+                        <td>${n.id}</td>
+                        <td><code>${n.qr_content}</code></td>
+                        <td>区域 ${n.area_id}</td>
+                        <td>${n.type}</td>
+                        <td><span class="badge bg-secondary">${n.environment_ip}</span></td>
+                        <td>${n.enable == 1 ? '<span class="badge bg-success">启用</span>' : '<span class="badge bg-secondary">禁用</span>'}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="/join_qr_nodes/${n.id}/edit" class="btn btn-outline-primary" title="编辑"><i class="bi bi-pencil"></i></a>
+                                <button class="btn btn-outline-danger" onclick="deleteNode(${n.id})" title="删除"><i class="bi bi-trash"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        });
+}
+
+async function deleteNode(id) {
+    if (!confirm('确定要删除该记录吗？此操作不可恢复。')) return;
+    try {
+        const res = await fetch('/api/join_qr_nodes/' + id + '/delete', { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) location.reload();
+        else alert('删除失败: ' + (data.message || '未知错误'));
+    } catch (e) { alert('请求失败: ' + e.message); }
+}
+</script>
+{% endblock %}
+{% endblock %}

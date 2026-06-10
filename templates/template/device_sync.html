@@ -37,6 +37,8 @@
     .server-info-card td { padding: 0.25rem 0.5rem; }
 
     .summary-table td, .summary-table th { font-size: 0.9rem; vertical-align: middle; }
+    /* 预览表格行的主题自适应样式 */
+    .preview-row td { background: var(--detail-card-bg); }
 
     .sync-section {
         background: var(--card-bg);
@@ -97,33 +99,33 @@
             <div class="col-md-6">
                 <label class="form-label fw-bold"><i class="bi bi-database-fill-up text-primary"></i> 源服务器</label>
                 <div class="input-group mb-2">
-                    <select class="form-select" id="sourceIp">
-                        <option value="">-- 选择服务器 --</option>
+                    <input class="form-control" list="sourceIpList" id="sourceIp" placeholder="输入或选择服务器 IP" autocomplete="off">
+                    <datalist id="sourceIpList">
                         {% for s in servers %}
                         <option value="{{ s }}">{{ s }}</option>
                         {% endfor %}
-                    </select>
+                    </datalist>
                     <button class="btn btn-outline-primary" onclick="testConnection('source')" id="btnTestSource">
                         <i class="bi bi-plug"></i> 测试
                     </button>
                 </div>
-                <div class="form-text small mt-0">IP 从子任务模板 task_servicec 解析</div>
+                <div class="form-text small mt-0">从子任务模板 task_servicec 解析的 IP 列表可供参考选择，也支持手动输入</div>
                 <div class="server-info-card" id="sourceInfo" style="display:none;"></div>
             </div>
             <div class="col-md-6">
                 <label class="form-label fw-bold"><i class="bi bi-database-fill-down text-success"></i> 目标服务器</label>
                 <div class="input-group mb-2">
-                    <select class="form-select" id="targetIp">
-                        <option value="">-- 选择服务器 --</option>
+                    <input class="form-control" list="targetIpList" id="targetIp" placeholder="输入或选择服务器 IP" autocomplete="off">
+                    <datalist id="targetIpList">
                         {% for s in servers %}
                         <option value="{{ s }}">{{ s }}</option>
                         {% endfor %}
-                    </select>
+                    </datalist>
                     <button class="btn btn-outline-success" onclick="testConnection('target')" id="btnTestTarget">
                         <i class="bi bi-plug"></i> 测试
                     </button>
                 </div>
-                <div class="form-text small mt-0">设备数据将写入此服务器</div>
+                <div class="form-text small mt-0">设备数据将写入此服务器，支持手动输入</div>
                 <div class="server-info-card" id="targetInfo" style="display:none;"></div>
             </div>
         </div>
@@ -443,18 +445,18 @@ function updatePreview() {
     if (types.includes('model')) {
         const names = document.getElementById('modelNames').value;
         tbody.innerHTML +=
-            '<tr class="table-secondary"><td>' + (++step) + '</td><td>型号同步</td><td>agv_model → agv_model_init</td><td>型号: ' + (names || '-') + '</td></tr>';
+            '<tr class="preview-row"><td>' + (++step) + '</td><td>型号同步</td><td>agv_model → agv_model_init</td><td>型号: ' + (names || '-') + '</td></tr>';
     }
     if (types.includes('robot')) {
         const dtype = document.getElementById('deviceType').value;
         tbody.innerHTML +=
-            '<tr class="table-secondary"><td>' + (++step) + '</td><td>设备主表同步</td><td>agv_robot</td><td>类型: ' + dtype + '</td></tr>';
+            '<tr class="preview-row"><td>' + (++step) + '</td><td>设备主表同步</td><td>agv_robot</td><td>类型: ' + dtype + '</td></tr>';
     }
     if (types.includes('ext')) {
         const group = document.getElementById('groupName').value || '(未选)';
         const area = document.getElementById('targetArea').value;
         tbody.innerHTML +=
-            '<tr class="table-secondary"><td>' + (++step) + '</td><td>设备扩展表同步</td><td>agv_robot_ext</td><td>组: ' + group + ' → 区域: ' + area + '</td></tr>';
+            '<tr class="preview-row"><td>' + (++step) + '</td><td>设备扩展表同步</td><td>agv_robot_ext</td><td>组: ' + group + ' → 区域: ' + area + '</td></tr>';
     }
     if (!step) {
         tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">请至少启用一种同步类型</td></tr>';
@@ -592,7 +594,7 @@ function showResultSummary(summaryData) {
         }
     }
     if (totalS + totalK + totalF > 0) {
-        tbody.innerHTML += '<tr class="table-secondary"><th>合计</th><th class="text-success">' + totalS + '</th><th class="text-muted">' + totalK + '</th><th class="text-danger">' + totalF + '</th></tr>';
+        tbody.innerHTML += '<tr class="preview-row"><th>合计</th><th class="text-success">' + totalS + '</th><th class="text-muted">' + totalK + '</th><th class="text-danger">' + totalF + '</th></tr>';
     }
 }
 

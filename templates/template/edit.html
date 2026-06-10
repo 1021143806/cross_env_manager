@@ -16,14 +16,14 @@
         </p>
     </div>
     <div>
-        <a href="{{ url_for('view_template', template_id=template.id) }}" 
+        <a href="{{ url_for('template.view_template', template_id=template.id) }}" 
            class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left"></i> 返回详情
         </a>
     </div>
 </div>
 
-<form action="{{ url_for('edit_template', template_id=template.id) }}" method="post">
+<form action="{{ url_for('template.edit_template', template_id=template.id) }}" method="post">
     <!-- 模板基本信息 -->
     <div class="form-section">
         <h4><i class="bi bi-info-circle"></i> 模板基本信息</h4>
@@ -275,7 +275,7 @@ value="{{ detail.task_servicec|default('') }}">
                 <h5 class="modal-title">编辑子任务 #{{ detail.task_seq }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form action="{{ url_for('edit_detail', detail_id=detail.id) }}" method="post">
+            <form action="{{ url_for('template.edit_detail', detail_id=detail.id) }}" method="post">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label">任务顺序</label>

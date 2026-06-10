@@ -29,13 +29,15 @@ GET /
 
 ### 1.2 搜索模板
 ```
-GET/POST /search
+GET /search
 ```
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| search_term | string | 是 | 搜索关键词（模糊匹配模板代码和名称） |
+| search_term | string | 否 | 搜索关键词（模糊匹配模板代码和名称） |
+| server | string | 否 | 按服务器 IP 过滤 |
+| status | string | 否 | 按状态过滤：`1` 启用 / `0` 禁用 |
 
-返回 `search_results.html`，展示匹配的模板列表及子任务。
+返回 `template/search.html`（前端渲染，搜索 + 表格 + 详情面板）。
 
 ### 1.3 查看模板详情
 ```
@@ -199,6 +201,47 @@ GET/POST /join_qr_nodes/add
 
 ## 2. 模板管理 API
 
+### 2.0 分页搜索
+```
+GET /api/search
+```
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| q | string | 否 | 搜索关键词（模糊匹配代码和名称） |
+| page | int | 否 | 页码，默认 1 |
+| per_page | int | 否 | 每页条数，默认 20 |
+| server | string | 否 | 按服务器 IP 过滤 |
+| status | string | 否 | 按状态过滤：`1` 启用 / `0` 禁用 |
+| sort_by | string | 否 | 排序字段：`id` / `model_process_code` / `model_process_name` / `target_points_ip` / `enable` |
+| sort_order | string | 否 | 排序方向：`ASC` / `DESC`，默认 DESC |
+
+**响应示例:**
+```json
+{
+  "success": true,
+  "data": {
+    "templates": [
+      {
+        "id": 1,
+        "model_process_code": "HJBY_back...",
+        "model_process_name": "回流",
+        "target_points_ip": "10.68.2.32",
+        "enable": 1,
+        "area_id": 1,
+        "capacity": 10,
+        "detail_count": 3,
+        ...
+      }
+    ],
+    "total": 42,
+    "page": 1,
+    "per_page": 20,
+    "total_pages": 3,
+    "servers": ["10.68.2.31", "10.68.2.32"]
+  }
+}
+```
+
 ### 2.1 搜索建议
 ```
 GET /api/search_suggestions
@@ -217,7 +260,31 @@ GET /api/search_suggestions
 ]
 ```
 
-### 2.2 添加子任务
+### 2.2 获取模板详情 (JSON)
+```
+GET /api/template/<template_id>
+```
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| template_id | int | 是 | 模板ID（路径参数） |
+
+**响应示例:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "model_process_code": "...",
+    "model_process_name": "...",
+    "enable": 1,
+    "details": [
+      {"task_seq": 1, "template_code": "...", "template_name": "...", "task_servicec": "10.68.2.32"}
+    ]
+  }
+}
+```
+
+### 2.3 添加子任务
 ```
 POST /api/template/<template_id>/details/add
 ```
@@ -239,7 +306,7 @@ POST /api/template/<template_id>/details/add
 }
 ```
 
-### 2.3 删除子任务
+### 2.4 删除子任务
 ```
 DELETE /api/template/<template_id>/details/<detail_id>/delete
 ```
@@ -251,7 +318,7 @@ DELETE /api/template/<template_id>/details/<detail_id>/delete
 }
 ```
 
-### 2.4 子任务排序
+### 2.5 子任务排序
 ```
 POST /api/template/<template_id>/details/reorder
 ```

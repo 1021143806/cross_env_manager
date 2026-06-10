@@ -21,7 +21,7 @@
             <div class="stat-change" id="statTotalChange"></div>
         </div>
     </div>
-    <div class="stat-card animate-in delay-2" onclick="window.location.href='/search?search_term=&filter=enable'">
+    <div class="stat-card animate-in delay-2" onclick="window.location.href='/search?status=1'">
         <div class="stat-icon green"><i class="bi bi-check-circle"></i></div>
         <div class="stat-info">
             <div class="stat-value" id="statEnabled">...</div>
@@ -96,6 +96,12 @@
     <div class="panel animate-in delay-5">
         <div class="panel-header">
             <div class="panel-title"><i class="bi bi-hdd-rack"></i> 服务器配置总览</div>
+            <div class="d-flex align-items-center gap-2">
+                <select id="dbServerSelect" class="form-select form-select-sm" style="width:auto;min-width:140px;font-size:0.78rem;">
+                    <option value="">默认数据库</option>
+                </select>
+                <span id="dbSwitchStatus" style="font-size:0.75rem;color:var(--text-muted);"></span>
+            </div>
         </div>
         <div class="panel-body">
             <div class="server-list" id="serverList">
@@ -108,23 +114,107 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+#dbServerSelect {
+    background: var(--detail-card-bg);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+#dbServerSelect option {
+    background: var(--card-bg);
+    color: var(--text-primary);
+}
+</style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // 并行加载统计概览和服务器分组
-    Promise.all([
-        fetch('/api/stats/overview').then(r => r.json()),
-        fetch('/api/stats/templates_by_server').then(r => r.json()),
-        fetch('/api/pairs/list').then(r => r.json()).catch(() => ({ success: false }))
-    ]).then(([overview, servers, pairs]) => {
-        updateStats(overview, servers, pairs);
-        updateRecentTemplates(overview);
-        updateServerList(servers);
-    }).catch(err => {
-        console.error('Dashboard data load failed:', err);
-        document.querySelectorAll('#statsGrid .stat-value').forEach(el => {
-            if (el.textContent === '...') el.textContent = '-';
+    let currentDbKey = '';
+
+    // ===== 服务器切换 =====
+    async function initDbSelector() {
+        // 获取当前活跃服务器
+        try {
+            const cur = await (await fetch('/api/db/current')).json();
+            if (cur.success && cur.key) {
+                currentDbKey = cur.key;
+            }
+        } catch(_) {}
+        // 获取可用服务器列表
+        try {
+            const res = await (await fetch('/api/db/servers')).json();
+            if (res.success && res.servers) {
+                const sel = document.getElementById('dbServerSelect');
+                res.servers.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.key;
+                    opt.textContent = s.name + ' (' + s.host + ')';
+                    if (s.key === currentDbKey) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+                // 若无选中且默认无选项，置空
+                if (!currentDbKey) sel.value = '';
+                updateDbStatus();
+            }
+        } catch(_) {}
+        // 切换事件
+        document.getElementById('dbServerSelect').addEventListener('change', async function() {
+            const key = this.value;
+            const statusEl = document.getElementById('dbSwitchStatus');
+            statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+            try {
+                const res = await (await fetch('/api/db/switch', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({key: key})
+                })).json();
+                if (res.success) {
+                    currentDbKey = key;
+                    updateDbStatus();
+                    reloadDashboard();  // 切换后重新加载数据
+                } else {
+                    statusEl.textContent = '切换失败: ' + (res.error || '');
+                    statusEl.style.color = 'var(--danger)';
+                }
+            } catch(e) {
+                statusEl.textContent = '切换失败';
+                statusEl.style.color = 'var(--danger)';
+            }
         });
-    });
+    }
+
+    function updateDbStatus() {
+        const el = document.getElementById('dbSwitchStatus');
+        const sel = document.getElementById('dbServerSelect');
+        if (currentDbKey) {
+            const opt = sel.querySelector('option[value="' + currentDbKey + '"]');
+            el.textContent = '✓ ' + (opt ? opt.textContent : currentDbKey);
+            el.style.color = 'var(--success)';
+        } else {
+            el.textContent = '默认';
+            el.style.color = 'var(--text-muted)';
+        }
+    }
+
+    // ===== 加载数据 =====
+    function reloadDashboard() {
+        Promise.all([
+            fetch('/api/stats/overview').then(r => r.json()),
+            fetch('/api/stats/templates_by_server').then(r => r.json()),
+            fetch('/api/pairs/list').then(r => r.json()).catch(() => ({ success: false }))
+        ]).then(([overview, servers, pairs]) => {
+            updateStats(overview, servers, pairs);
+            updateRecentTemplates(overview);
+            updateServerList(servers);
+        }).catch(err => {
+            console.error('Dashboard data load failed:', err);
+        });
+    }
+
+    // 初始化服务器选择器
+    initDbSelector();
+
+    // 首次加载
+    reloadDashboard();
 
     function updateStats(overview, servers, pairs) {
         if (overview?.success && overview.data?.template_stats) {
@@ -179,7 +269,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         const totalTemplates = data.reduce((sum, s) => sum + (s.template_count || 0), 0);
         container.innerHTML = data.map(s => `
-            <div class="server-item" onclick="window.location.href='/search?search_term=${encodeURIComponent(s.server)}'">
+            <div class="server-item" onclick="window.location.href='/search?server=${encodeURIComponent(s.server)}'">
                 <div class="server-dot online"></div>
                 <div class="server-info">
                     <div class="server-ip">${escapeHtml(s.server)}</div>

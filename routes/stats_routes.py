@@ -11,7 +11,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from services.stats_service import StatsService
 
 stats_bp = Blueprint('stats', __name__)
-_stats_service = StatsService()
+
+
+def _get_stats_service():
+    """根据 session 中活跃的 DB 服务器创建 StatsService 实例"""
+    from modules.custom_table.config_loader import CustomTableConfig
+    server_key = session.get('active_db_server', '')
+    db_config = None
+    if server_key:
+        loader = CustomTableConfig()
+        db_config = loader.get_db_config(server_key)
+    return StatsService(db_config=db_config)
 
 
 def login_required(f):
@@ -35,7 +45,7 @@ def show_stats():
 @login_required
 def get_stats_overview():
     try:
-        data = _stats_service.get_overview()
+        data = _get_stats_service().get_overview()
         if data:
             return jsonify({'success': True, 'data': data})
         return jsonify({'success': False, 'message': '无法获取统计信息'}), 500
@@ -47,7 +57,7 @@ def get_stats_overview():
 @login_required
 def get_stats_distribution():
     try:
-        return jsonify({'success': True, 'data': _stats_service.get_distribution()})
+        return jsonify({'success': True, 'data': _get_stats_service().get_distribution()})
     except Exception as e:
         return jsonify({'success': False, 'message': f'服务器错误: {str(e)}'}), 500
 
@@ -56,7 +66,7 @@ def get_stats_distribution():
 @login_required
 def templates_by_server():
     try:
-        return jsonify({'success': True, 'data': _stats_service.get_templates_by_server()})
+        return jsonify({'success': True, 'data': _get_stats_service().get_templates_by_server()})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
@@ -65,7 +75,7 @@ def templates_by_server():
 @login_required
 def template_growth():
     try:
-        return jsonify({'success': True, 'data': _stats_service.get_template_growth()})
+        return jsonify({'success': True, 'data': _get_stats_service().get_template_growth()})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
@@ -74,7 +84,7 @@ def template_growth():
 @login_required
 def detailed_analysis():
     try:
-        return jsonify({'success': True, 'data': _stats_service.get_detailed_analysis()})
+        return jsonify({'success': True, 'data': _get_stats_service().get_detailed_analysis()})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
@@ -83,6 +93,6 @@ def detailed_analysis():
 @login_required
 def main_task_status():
     try:
-        return jsonify({'success': True, 'data': _stats_service.get_main_task_status()})
+        return jsonify({'success': True, 'data': _get_stats_service().get_main_task_status()})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500

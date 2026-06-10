@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # 应用版本号
-APP_VERSION = '2.4.0'
+APP_VERSION = '2.4.1'
 
 # Python 3.9兼容性修改：使用pymysql替代mysql.connector
 import pymysql
@@ -156,8 +156,19 @@ args = parse_arguments()
 # 加载配置
 config = load_config(args.config)
 
+# 解析实际使用的配置文件路径（供 SystemConfigService 使用）
+_config_file_path = args.config
+if not _config_file_path:
+    _config_file_path = os.getenv('CONFIG_PATH')
+if not _config_file_path:
+    _config_file_path = os.path.join(os.path.dirname(__file__), 'config', 'env.toml')
+# 转换为绝对路径
+_config_file_path = os.path.abspath(_config_file_path)
+
 # 初始化Flask应用
 app = Flask(__name__)
+# 存储实际配置文件路径，供系统配置模块使用
+app.config['CEM_CONFIG_PATH'] = _config_file_path
 
 # 从配置或环境变量获取Flask密钥
 # 注意：配置文件中flask配置在[flask]部分
@@ -429,13 +440,13 @@ def get_next_available_id():
     
     return result[0]['max_id'] + 1
 
-@app.route('/')
+# @app.route('/')
 @login_required
 def index():
     """主页 - 搜索页面"""
     return render_template('index.html')
 
-@app.route('/search', methods=['GET', 'POST'])
+# @app.route('/search', methods=['GET', 'POST'])
 @login_required
 def search():
     """搜索任务模板"""
@@ -491,7 +502,7 @@ def search():
                          templates=templates, 
                          search_term=search_term)
 
-@app.route('/template/<int:template_id>')
+# @app.route('/template/<int:template_id>')
 @login_required
 def view_template(template_id):
     """查看单个任务模板详情"""
@@ -517,7 +528,7 @@ def view_template(template_id):
                          template=template, 
                          details=details)
 
-@app.route('/edit/<int:template_id>', methods=['GET', 'POST'])
+# @app.route('/edit/<int:template_id>', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def edit_template(template_id):
@@ -679,7 +690,7 @@ def update_template_details(template_id, form_data):
     
     return updated_count
 
-@app.route('/edit_detail/<int:detail_id>', methods=['POST'])
+# @app.route('/edit_detail/<int:detail_id>', methods=['POST'])
 @login_required
 @admin_required
 def edit_detail(detail_id):
@@ -754,7 +765,7 @@ def edit_detail(detail_id):
     
     return redirect(url_for('index'))
 
-@app.route('/copy/<int:template_id>', methods=['GET', 'POST'])
+# @app.route('/copy/<int:template_id>', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def copy_template(template_id):
@@ -932,7 +943,7 @@ def copy_template(template_id):
             flash('模板复制失败', 'error')
             return redirect(url_for('copy_template', template_id=template_id))
 
-@app.route('/api/search_suggestions', methods=['GET'])
+# @app.route('/api/search_suggestions', methods=['GET'])
 @login_required
 def search_suggestions():
     """搜索建议API"""
@@ -959,7 +970,7 @@ def search_suggestions():
     
     return jsonify(suggestions)
 
-@app.route('/api/template/<int:template_id>/details/add', methods=['POST'])
+# @app.route('/api/template/<int:template_id>/details/add', methods=['POST'])
 @login_required
 @admin_required
 def add_detail(template_id):
@@ -1054,7 +1065,7 @@ def add_detail(template_id):
             'message': f'服务器错误: {str(e)}'
         }), 500
 
-@app.route('/api/template/<int:template_id>/details/<int:detail_id>/delete', methods=['DELETE'])
+# @app.route('/api/template/<int:template_id>/details/<int:detail_id>/delete', methods=['DELETE'])
 @login_required
 @admin_required
 def delete_detail(template_id, detail_id):
@@ -1094,7 +1105,7 @@ def delete_detail(template_id, detail_id):
             'message': f'服务器错误: {str(e)}'
         }), 500
 
-@app.route('/api/template/<int:template_id>/details/reorder', methods=['POST'])
+# @app.route('/api/template/<int:template_id>/details/reorder', methods=['POST'])
 @login_required
 @admin_required
 def reorder_details(template_id):
@@ -1157,7 +1168,7 @@ def reorder_details(template_id):
             'message': f'服务器错误: {str(e)}'
         }), 500
 
-@app.route('/docs')
+# @app.route('/docs')
 @login_required
 def show_docs():
     """显示本地README.md文档"""
@@ -1167,7 +1178,7 @@ def show_docs():
     except Exception as e:
         return f"无法加载文档: {str(e)}", 500
 
-@app.route('/docs/module/<name>')
+# @app.route('/docs/module/<name>')
 @login_required
 def docs_module(name):
     """加载指定模块的readme文档"""
@@ -1223,13 +1234,13 @@ def docs_module(name):
     except Exception as e:
         return f"无法加载文档: {str(e)}", 500
 
-@app.route('/stats')
+# @app.route('/stats')
 @login_required
 def show_stats():
     """显示统计页面"""
     return render_template('stats/index.html')
 
-@app.route('/api/stats/overview')
+# @app.route('/api/stats/overview')
 @login_required
 def get_stats_overview():
     """获取系统概览统计"""
@@ -1293,7 +1304,7 @@ def get_stats_overview():
             'message': f'服务器错误: {str(e)}'
         }), 500
 
-@app.route('/api/stats/distribution')
+# @app.route('/api/stats/distribution')
 @login_required
 def get_stats_distribution():
     """获取分布统计"""
@@ -1363,7 +1374,7 @@ def get_stats_distribution():
             'message': f'服务器错误: {str(e)}'
         }), 500
 
-@app.route('/api/stats/templates_by_server')
+# @app.route('/api/stats/templates_by_server')
 @login_required
 def get_templates_by_server():
     """按服务器分组获取模板信息"""
@@ -1399,7 +1410,7 @@ def get_templates_by_server():
             'message': f'服务器错误: {str(e)}'
         }), 500
 
-@app.route('/api/stats/template_growth')
+# @app.route('/api/stats/template_growth')
 @login_required
 def get_template_growth():
     """获取模板增长趋势（基于ID顺序）"""
@@ -1433,7 +1444,7 @@ def get_template_growth():
             'message': f'服务器错误: {str(e)}'
         }), 500
 
-@app.route('/api/task_group/<order_id>')
+# @app.route('/api/task_group/<order_id>')
 @login_required
 def get_task_group_info(order_id):
     """获取task_group和task_group_detail信息，支持本地和远程查询"""
@@ -1462,7 +1473,7 @@ def get_task_group_info(order_id):
             'message': f'服务器错误: {str(e)}'
         }), 500
 
-@app.route('/api/task/local_detail/<order_id>')
+# @app.route('/api/task/local_detail/<order_id>')
 @login_required
 def get_local_task_detail(order_id):
     """从本地数据库直接查询 fy_cross_task + fy_cross_task_detail 完整字段"""
@@ -1488,7 +1499,7 @@ def api_query_log():
     except:
         return jsonify({'logs': []})
 
-@app.route('/api/task/resend', methods=['POST'])
+# @app.route('/api/task/resend', methods=['POST'])
 @login_required
 def resend_task():
     """跨环境任务重发接口"""
@@ -1540,7 +1551,7 @@ def resend_task():
             'message': f'服务器错误: {str(e)}'
         }), 500
 
-@app.route('/api/task/force_complete', methods=['POST'])
+# @app.route('/api/task/force_complete', methods=['POST'])
 @login_required
 def force_complete_task():
     """跨环境任务异常完成接口（仅将子任务状态置为3）"""
@@ -1591,7 +1602,7 @@ def force_complete_task():
             'message': f'服务器错误: {str(e)}'
         }), 500
 
-@app.route('/api/stats/detailed_analysis')
+# @app.route('/api/stats/detailed_analysis')
 @login_required
 def get_detailed_analysis():
     """获取详细分析数据"""
@@ -1671,7 +1682,7 @@ def get_detailed_analysis():
             'message': f'服务器错误: {str(e)}'
         }), 500
 
-@app.route('/api/stats/main_task_status')
+# @app.route('/api/stats/main_task_status')
 @login_required
 def get_main_task_status():
     """获取当天大模板状态分布统计（含error_desc细分）"""
@@ -1770,7 +1781,7 @@ def get_main_task_status():
 # 查询功能路由
 # ============================================================================
 
-@app.route('/query')
+# @app.route('/query')
 @login_required
 def query_index():
     """查询功能主页"""
@@ -1790,18 +1801,18 @@ def list_join_qr_nodes():
     """显示所有join_qr_node_info记录"""
     if not QUERY_MODULES_AVAILABLE:
         flash('查询功能不可用', 'error')
-        return render_template('join_qr_nodes.html', nodes=[])
+        return render_template('join_qr_nodes/list_legacy.html', nodes=[])
     
     try:
         nodes = join_qr_node_query.get_all_join_qr_nodes()
         stats = join_qr_node_query.get_join_qr_node_stats()
         
-        return render_template('join_qr_nodes.html', 
+        return render_template('join_qr_nodes/list_legacy.html', 
                              nodes=nodes or [], 
                              stats=stats or {})
     except Exception as e:
         flash(f'查询失败: {str(e)}', 'error')
-        return render_template('join_qr_nodes.html', nodes=[], stats={})
+        return render_template('join_qr_nodes/list_legacy.html', nodes=[], stats={})
 
 @app.route('/join_qr_nodes/search')
 @login_required
@@ -1838,7 +1849,7 @@ def view_join_qr_node(node_id):
             flash(f'未找到ID为 {node_id} 的记录', 'error')
             return redirect(url_for('list_join_qr_nodes'))
         
-        return render_template('join_qr_node_detail.html', node=node)
+        return render_template('join_qr_nodes/detail.html', node=node)
     except Exception as e:
         flash(f'查询失败: {str(e)}', 'error')
         return redirect(url_for('list_join_qr_nodes'))
@@ -1882,7 +1893,7 @@ def edit_join_qr_node(node_id):
             flash(f'未找到ID为 {node_id} 的记录', 'error')
             return redirect(url_for('list_join_qr_nodes'))
         
-        return render_template('edit_join_qr_node.html', node=node)
+        return render_template('join_qr_nodes/edit_legacy.html', node=node)
     except Exception as e:
         flash(f'查询失败: {str(e)}', 'error')
         return redirect(url_for('list_join_qr_nodes'))
@@ -1918,7 +1929,7 @@ def add_join_qr_node():
         except Exception as e:
             flash(f'添加失败: {str(e)}', 'error')
     
-    return render_template('add_join_qr_node.html')
+    return render_template('join_qr_nodes/edit_legacy.html')
 
 @app.route('/api/join_qr_nodes/<int:node_id>/delete', methods=['DELETE'])
 @login_required
@@ -1950,22 +1961,13 @@ def get_join_qr_node_stats_api():
     except Exception as e:
         return jsonify({'success': False, 'message': f'获取统计信息失败: {str(e)}'}), 500
 
-@app.route('/addtask')
-@login_required
-def addtask():
-    """AGV任务下发页面（桌面版，带侧边栏布局）"""
-    return render_template('addTask/index.html')
+# @app.route('/addtask')
+# 已迁移至 config_bp 蓝图
 
+# @app.route('/addtask/pad')
+# 已迁移至 config_bp 蓝图
 
-@app.route('/addtask/pad')
-@login_required
-def addtask_pad():
-    """AGV任务下发页面（Pad/平板版，独立全宽布局）"""
-    return render_template('addTask/addtask.html', 
-                          logged_in=session.get('logged_in', False),
-                          username=session.get('username', ''))
-
-@app.route('/help')
+# @app.route('/help')
 @login_required
 def index_help():
     """提供首页的帮助文档"""
@@ -1981,7 +1983,7 @@ def index_help():
     except Exception as e:
         return f"无法加载帮助文档: {str(e)}", 500
 
-@app.route('/query/help')
+# @app.route('/query/help')
 @login_required
 def query_help():
     """提供查询页面的帮助文档"""
@@ -1997,154 +1999,11 @@ def query_help():
     except Exception as e:
         return f"无法加载帮助文档: {str(e)}", 500
 
-@app.route('/addtask/help')
-@login_required
-def addtask_help():
-    """提供addtask页面的帮助文档"""
-    try:
-        # 读取readme.md文件
-        readme_path = os.path.join(os.path.dirname(__file__), 'templates', 'addTask', 'readme.md')
-        with open(readme_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        # 预处理：将Mermaid代码块直接转换为HTML，避免markdown库转义其中的HTML实体
-        # markdown库的fenced_code扩展会对代码块内容做HTML实体转义（如 --> → --&gt;）
-        # 而Mermaid 10.9.5需要原始语法文本，因此先提取并直接输出为HTML
-        def mermaid_to_html(match):
-            code_content = match.group(1)
-            return f'<pre><code class="language-mermaid">{code_content}</code></pre>'
-        
-        content = re.sub(
-            r'```mermaid\n(.*?)```',
-            mermaid_to_html,
-            content,
-            flags=re.DOTALL
-        )
-        
-        # 将Markdown转换为HTML（使用与/docs相同的渲染逻辑）
-        import markdown
-        html_content = markdown.markdown(content, extensions=['fenced_code', 'tables'])
-        
-        return html_content, 200, {'Content-Type': 'text/html; charset=utf-8'}
-    except Exception as e:
-        return f"无法加载帮助文档: {str(e)}", 500
+# @app.route('/addtask/help')
+# 已迁移至 config_bp 蓝图
 
-@app.route('/config')
-@login_required
-@admin_required
-def config_editor():
-    """配置管理页面"""
-    return render_template('addTask/config_editor.html')
-
-@app.route('/addtask/config')
-@login_required
-@admin_required
-def get_addtask_config():
-    """获取当前配置"""
-    try:
-        config_path = os.path.join(os.path.dirname(__file__), 'static', 'js', 'config.js')
-        with open(config_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        # 直接返回文件内容，让前端处理JSON提取
-        return content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
-    except Exception as e:
-        return jsonify({'error': f'无法加载配置: {str(e)}'}), 500
-
-@app.route('/addtask/config', methods=['POST'])
-@login_required
-@admin_required
-def save_addtask_config():
-    """保存配置（支持版本控制和提交消息）"""
-    try:
-        new_config = request.json
-        config_path = os.path.join(os.path.dirname(__file__), 'static', 'js', 'config.js')
-        
-        # 提取提交消息（可选）
-        message = request.json.get('message', '').strip()
-        
-        # 读取当前配置文件以获取当前版本号
-        current_version = 0
-        parent_version = None
-        if os.path.exists(config_path):
-            with open(config_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-                # 尝试解析JSON来提取_version字段
-                import json
-                match = re.search(r'const config = ({.*?});', content, re.DOTALL)
-                if match:
-                    try:
-                        config_obj = json.loads(match.group(1))
-                        current_version = config_obj.get('_version', 0)
-                    except json.JSONDecodeError:
-                        pass
-        
-        # 检查客户端版本（导入时跳过版本检查）
-        client_version = request.json.get('_client_version')  # 可选字段
-        is_import = request.json.get('_is_import', False)  # 导入标志
-        force_overwrite = request.json.get('_force_overwrite', False)  # 强制覆盖标志
-        
-        if client_version is not None and not (is_import or force_overwrite):
-            if int(client_version) != current_version:
-                return jsonify({
-                    'success': False, 
-                    'error': '版本冲突',
-                    'message': f'当前配置文件版本为 {current_version}，您提交的版本为 {client_version}。请刷新页面后重试。',
-                    'current_version': current_version,
-                    'client_version': client_version
-                }), 409
-        
-        # 创建备份目录
-        backup_dir = os.path.join(os.path.dirname(config_path), 'backups')
-        os.makedirs(backup_dir, exist_ok=True)
-        
-        # 创建自动备份（带提交消息和父版本信息）
-        import datetime
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        backup_name = f"config_auto_{timestamp}.js"
-        backup_path = os.path.join(backup_dir, backup_name)
-        
-        # 备份当前配置（添加提交消息和父版本信息作为注释）
-        if os.path.exists(config_path):
-            with open(config_path, 'r', encoding='utf-8') as f:
-                current_content = f.read()
-            
-            # 添加提交消息和父版本信息作为注释
-            if message:
-                commit_line = f"// commit: {message}\n"
-            else:
-                commit_line = "// commit: (no message)\n"
-            
-            # 添加父版本信息
-            parent_line = f"// parent_version: {current_version}\n"
-            
-            content_with_comment = commit_line + parent_line + current_content
-            
-            with open(backup_path, 'w', encoding='utf-8') as f:
-                f.write(content_with_comment)
-        
-        # 设置新版本号（递增）
-        new_version = current_version + 1
-        # 确保新配置对象不包含_version字段（我们将添加自己的）
-        if '_version' in new_config:
-            del new_config['_version']
-        new_config['_version'] = new_version
-        
-        # 保存新配置
-        import json
-        config_content = f"const config = {json.dumps(new_config, indent=4, ensure_ascii=False)};"
-        with open(config_path, 'w', encoding='utf-8') as f:
-            f.write(config_content)
-        
-        return jsonify({
-            'success': True, 
-            'backup_name': backup_name,
-            'new_version': new_version,
-            'parent_version': current_version,
-            'message': message if message else '(no message)'
-        })
-    except Exception as e:
-        return jsonify({'error': f'保存配置失败: {str(e)}'}), 500
+# @app.route('/addtask/config')
+# 已迁移至 config_bp 蓝图 -> /api/config
 
 @app.route('/addtask/query', methods=['POST'])
 @login_required
@@ -2240,7 +2099,7 @@ def addtask_device_suggest():
                 devices.append({'deviceCode': dc, 'deviceNum': dn})
     return jsonify({'success': True, 'devices': devices})
 
-@app.route('/addtask/config/backups')
+# @app.route('/addtask/config/backups')
 @login_required
 @admin_required
 def list_backups():
@@ -2306,7 +2165,7 @@ def list_backups():
     except Exception as e:
         return jsonify({'error': f'无法列出备份: {str(e)}'}), 500
 
-@app.route('/addtask/config/backup', methods=['POST'])
+# @app.route('/addtask/config/backup', methods=['POST'])
 @login_required
 @admin_required
 def create_backup():
@@ -2358,7 +2217,7 @@ def create_backup():
     except Exception as e:
         return jsonify({'error': f'创建备份失败: {str(e)}'}), 500
 
-@app.route('/addtask/config/backup/<backup_name>')
+# @app.route('/addtask/config/backup/<backup_name>')
 @login_required
 @admin_required
 def get_backup(backup_name):
@@ -2375,7 +2234,7 @@ def get_backup(backup_name):
     except Exception as e:
         return jsonify({'error': f'无法读取备份: {str(e)}'}), 500
 
-@app.route('/addtask/config/backup/<backup_name>/restore', methods=['POST'])
+# @app.route('/addtask/config/backup/<backup_name>/restore', methods=['POST'])
 @login_required
 @admin_required
 def restore_backup(backup_name):
@@ -2399,7 +2258,7 @@ def restore_backup(backup_name):
     except Exception as e:
         return jsonify({'error': f'恢复备份失败: {str(e)}'}), 500
 
-@app.route('/addtask/config/backup/<backup_name>', methods=['DELETE'])
+# @app.route('/addtask/config/backup/<backup_name>', methods=['DELETE'])
 @login_required
 @admin_required
 def delete_backup(backup_name):
@@ -2417,12 +2276,12 @@ def delete_backup(backup_name):
 
 # ==================== 登录认证路由 ====================
 
-@app.route('/login')
+# @app.route('/login')
 def login_page():
     """登录页面"""
     return render_template('login.html')
 
-@app.route('/api/login', methods=['POST'])
+# @app.route('/api/login', methods=['POST'])
 def login():
     """用户登录（RCS账号 + 可选管理员提权）"""
     try:
@@ -2470,7 +2329,7 @@ def login():
     except Exception as e:
         return jsonify({'success': False, 'error': f'登录失败: {str(e)}'}), 500
 
-@app.route('/api/logout', methods=['POST'])
+# @app.route('/api/logout', methods=['POST'])
 def logout():
     """用户注销"""
     username = session.get('username', 'unknown')
@@ -2478,7 +2337,7 @@ def logout():
     session.clear()
     return jsonify({'success': True, 'message': '已注销'})
 
-@app.route('/api/auth/status')
+# @app.route('/api/auth/status')
 def auth_status():
     """获取认证状态"""
     return jsonify({
@@ -2488,12 +2347,12 @@ def auth_status():
         'login_time': session.get('login_time', '')
     })
 
-@app.route('/actuator/health')
+# @app.route('/actuator/health')
 def health_check():
     """健康检查接口 - 用于服务器监控"""
     return '1000', 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
-@app.route('/test/version_tree')
+# @app.route('/test/version_tree')
 @login_required
 def test_version_tree():
     """测试版本历史树状图页面"""
@@ -2508,9 +2367,9 @@ if __name__ == '__main__':
     # ========================================================================
     pool = None
     try:
-        from modules.database.connection import DatabasePool, get_db_config_from_toml
+        from modules.database.connection import DatabasePool, get_db_config
         pool = DatabasePool()
-        db_pool_config = get_db_config_from_toml(args.config)
+        db_pool_config = get_db_config(args.config)
         pool.init_pool(db_pool_config)
         print(f"[启动] 数据库连接池已初始化 (测试库)")
         
@@ -2549,6 +2408,18 @@ if __name__ == '__main__':
         print(f"[启动] 警告: 蓝图注册失败，使用原有路由: {e}")
         traceback.print_exc()
     
+    # ========================================================================
+    # 同步配置：JSON 源 → JS 兼容文件
+    # ========================================================================
+    try:
+        from services.config_service import ConfigService
+        svc = ConfigService()
+        config_obj = svc.load_config()
+        svc._sync_js_file(config_obj)
+        print(f"[启动] 配置文件已同步 (v{config_obj.get('_version', '?')})")
+    except Exception as e:
+        print(f"[启动] 警告: 配置同步失败: {e}")
+
     # ========================================================================
     # Phase 4 架构优化：初始化缓存
     # ========================================================================

@@ -1,0 +1,1008 @@
+{
+  "areas": {
+    "A1-1 PCBA": {
+      "tasks": {
+        "回空A1pcba1F去A2华昱欣3F": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "HJBY_31A1DZ1F_to_19A2HYX3F_back",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "空车A1pcba1F去A2华昱欣3F": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_31A1DZ1F_to_19A2HYX3F_go",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "空车A1pcba1F去A2华昱欣3F回": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_31A1DZ1F_to_19A2HYX3F_leave",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "空车A4电料2F去A1电装1F_240": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_A4DL2F_to_A1DZ1F_go",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "空车A4电料2F去A1电装1F回_241": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_A4DL2F_to_A1DZ1F_leave",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "送满A1pcba1F去A2华昱欣3F": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "HJBY_31A1DZ1F_to_19A2HYX3F_go",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "送满A1pcba1F去A2整机车间3F": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "capacity": 20,
+          "code": "HJBY_31A1DZ1F_to_19A2HYX3F_ZJ_go_529",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A1-2 电装工厂": {
+      "tasks": {
+        "A2电装送空到A4_202": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "A2DZSKDA4",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "A2电装送货到A3半成品回库_228": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "A2DZ_to_A3BCP_HK",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "A4电装送货到A2_201": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "A4DZSHDA2",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "A4电装送货到A2调空车_205": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "A4DZSHDA2DKC",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "去A4电料离A2电装2A4_216": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "QA4DLLA2DZ2",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "去A4电料离A2电装_204": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "QA4DLLA2DZ",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "智联账套纸箱(智联A2电装送货到A3半成品_231)": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "A2DZ_to_A3BCP_SH_ZL",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "样机-子账套(华消A2电装送货到A3半成品_232)": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "A2DZ_to_A3BCP_SH_HX",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "电装到华消空车叫料_466": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "DZtoHX-KCJL",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "电装到华消货架回库_467": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "DZtoHX-HJHK",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "离A4电料去A2电装2A4_215": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "LA4DLQA2DZ2",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "空车A1pcba1F去A2华消2F回_315": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_31A1DZ1F_to_19A2HX1F_leave",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "空车A1电装2F去A2华消1F_314": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_31A1DZ1F_to_19A2HX1F_go",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A2-1包材": {
+      "tasks": {
+        "19空车去31": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "Move19-31",
+          "requires_shelf": false,
+          "requires_task_path": true,
+          "task_path_options": [
+            {
+              "label": "43000878",
+              "value": "43000878"
+            },
+            {
+              "label": "43000879",
+              "value": "43000879"
+            }
+          ]
+        },
+        "31空车回19": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "ComeBackMove31-19",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "从19搬运货架去31": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "moveShelf19to31",
+          "requires_shelf": true,
+          "requires_task_path": true,
+          "task_path_options": [
+            {
+              "label": "43000878",
+              "value": "43000878"
+            },
+            {
+              "label": "43000879",
+              "value": "43000879"
+            }
+          ]
+        },
+        "货架从31回库到19": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "ComeBackMoveShelf31to19",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A2-2 PCBA 货架区": {
+      "tasks": {
+        "回空A1pcba1F去A2存储备料2F_296": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "HJBY_31A1DZ1F_to_17A2CC2F_back",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "空车A1pcba1F去A2存储备料2F_293": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_31A1DZ1F_to_17A2CC2F_go",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "空车A1pcba1F去A2存储备料2F回_294": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_31A1DZ1F_to_17A2CC2F_leave",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "空车A2存储备料2F去A2华昱欣3F_297": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_17A2CC2F_to_19A2HYX3F_go",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "空车A2存储备料2F去A2华昱欣3F回_298": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_17A2CC2F_to_19A2HYX3F_leave",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "送满A1pcba1F去A2存储备料2F_295": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "HJBY_31A1DZ1F_to_17A2CC2F_go",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A2-2 存储备料": {
+      "tasks": {
+        "249空车A2备料2F去A2华消注塑工厂1F（2.17_A2-2->2.19_A2-1）": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_17A2BL2F_to_19A2HXZS1F_go",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "250空车A2备料2F去A2华消注塑工厂1F回（2.17_A2-2<-2.19_A2-1）": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_17A2BL2F_to_19A2HXZS1F_back",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "B10座舱_送满17单板上架区2F到19华昱欣车间线头3F_397": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "xialiaoDA02-B10ZC",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "BMU电池_送满17单板上架区2F到19华昱欣车间线头3F_460": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "xialiaoDA02-BMUDC_460",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "NFC2_01线_送满17单板上架区2F到19华昱欣车间线头3F_NFC2_0_1line_488": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "xialiaoDA02_NFC2_0_1line_488",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "NFC线_送满17单板上架区2F到19华昱欣车间线头3F_393": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "xialiaoDA02-NFCline",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "TBOX_送满17单板上架区2F到19华昱欣车间线头3F_395": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "xialiaoDA02-TBOX",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "UWB_2线_送满17单板上架区2F到19华昱欣车间线头3F_UWB_2line_527": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "xialiaoDA02_UWB_2line_527",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "上架任务": {
+          "base_url": "http://10.68.2.17:7000/ics/taskOrder/addTask",
+          "code": "shangjiafangxia",
+          "requires_shelf": true,
+          "requires_task_path": true,
+          "task_path_options": [
+            {
+              "label": "（33254836）",
+              "value": "33254836"
+            },
+            {
+              "label": "（33254835）",
+              "value": "33254835"
+            }
+          ]
+        },
+        "上架回库任务": {
+          "base_url": "http://10.68.2.17:7000/ics/taskOrder/addTask",
+          "code": "shangjiafangxiahk",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "右域控制器_送满17单板上架区2F到19华昱欣车间线头3F_394": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "xialiaoDA02-YYKZQ",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "屏装线_送满17单板上架区2F到19华昱欣车间线头3F_392": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "xialiaoDA02-PZX",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "放大器_送满17单板上架区2F到19华昱欣车间线头3F_391": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "xialiaoDA02-FDQ",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "整车座椅_送满17单板上架区2F到19华昱欣车间线头3F_396": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "xialiaoDA02-ZCZY",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "智能天线_送满17单板上架区2F到19华昱欣车间线头3F_Smart_Antenna_490": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "xialiaoDA02_Smart_Antenna_490",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "老座舱_送满17单板上架区2F到19华昱欣车间线头3F_390": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "xialiaoDA02-LZC",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "货架回库_2.19->2.17_回空A2备料2F去A2华消3FDT01_252": {
+          "base_url": "http://10.68.2.17:7000/ics/taskOrder/addTask",
+          "code": "HJBY_17A2BL2F_to_19A2HXZS1F_back",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A2-2 存储备料(NOC 跨环境上架调试)": {
+      "tasks": {
+        "上架搬运_19新华消3F_to_172F_426": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "SHJBY_19XHX3F_to_17XHX2F_426",
+          "requires_shelf": true,
+          "requires_task_path": true,
+          "task_path_options": [
+            {
+              "label": "60001260",
+              "value": "60001260"
+            }
+          ]
+        },
+        "上架搬运放下_19新华消3F_to_172F_427": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "SJBYFX_19XHX3F_to_17XHX2F_427",
+          "requires_shelf": true,
+          "requires_task_path": true,
+          "task_path_options": [
+            {
+              "label": "60001260",
+              "value": "60001260"
+            }
+          ]
+        },
+        "下架搬运回库_19新华消3F_to_172F_428": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "XJBYHK_19XHX3F_to_17XHX2F_428",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "去空车_19新华消3F_to_172F_424": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_go_19XHX3F_to_17XHX2F_424",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "回空车_19新华消3F_to_172F_425": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_back_19XHX3F_to_17XHX2F_425",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A2-3 华昱欣-CZ01-LH001": {
+      "tasks": {
+        "去空车<-_17华昱欣备料2F_to_19华昱欣3F_372": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "kctoHYX",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "回空车->_17华昱欣备料2F_to_19华昱欣3F_373": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "kctoHYX-back",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "大型下料任务流程370": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "xialiaoCZ01-Large",
+          "requires_shelf": true,
+          "requires_task_path": true,
+          "task_path_options": [
+            {
+              "label": "行1列1",
+              "value": "60001299"
+            },
+            {
+              "label": "行2列1",
+              "value": "60001298"
+            },
+            {
+              "label": "行3列1",
+              "value": "60001297"
+            },
+            {
+              "label": "行2列2",
+              "value": "60001249"
+            },
+            {
+              "label": "行3列2",
+              "value": "60001248"
+            }
+          ]
+        },
+        "大型下料回库流程371": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "xialiaoCZ01Back-Large",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A2-3 华昱欣←→A2-2原华橙车间": {
+      "tasks": {
+        "去空车<-_17华昱欣备料2F_to_19华昱欣3F_372": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "kctoHYX",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "去空车<-_17原华橙车间2F_to_19华昱欣3F_417": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_go_17YHCCJ2F_to_19HYX3F",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "回空->_17原华橙车间2F_to_19华昱欣3F_420": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "HJBY_back17YHCCJ2F_to_19HYX3F",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "回空车->_17华昱欣备料2F_to_19华昱欣3F_373": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "kctoHYX-back",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "回空车->_17原华橙车间2F_to_19华昱欣3F_418": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_back_17YHCCJ2F_to_19HYX3F",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "送满<-_17原华橙车间2F_to_19华昱欣3F_419": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "HJBY_go_17YHCCJ2F_to_19HYX3F",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A2-3 华昱欣线体上架 ←→ A1-1月台": {
+      "tasks": {
+        "249空车A2备料2F去A2华消注塑工厂1F": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_17A2BL2F_to_19A2HXZS1F_go",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "250空车A2备料2F去A2华消注塑工厂1F回": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_17A2BL2F_to_19A2HXZS1F_back",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "上架搬运_零跑物料配送跨环境A1-1上料华昱欣线体_431": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "capacity": 0,
+          "code": "SHJBY_19XHX3F_to_36QCDZ1F_431",
+          "requires_shelf": true,
+          "requires_task_path": true,
+          "task_path_options": [
+            {
+              "label": "43000688点一",
+              "value": "43000688"
+            },
+            {
+              "label": "43000687点二",
+              "value": "43000687"
+            }
+          ]
+        },
+        "去空车_零跑物料配送跨环境A1-1上料华昱欣线体_429": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_go_19XHX3F_to_36QCDZ1F_429",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "回空车_零跑物料配送跨环境A1-1上料华昱欣线体_430": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_back_19XHX3F_to_36QCDZ1F_430",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "异常回库_零跑物料配送跨环境A1-1上料华昱欣线体_436": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "HK_19XHX3F_to_36QCDZ1F_436",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": [
+            {
+              "label": "43000688点一",
+              "value": "43000688"
+            },
+            {
+              "label": "43000687点二",
+              "value": "43000687"
+            }
+          ]
+        }
+      }
+    },
+    "A2-3 存储一部": {
+      "tasks": {
+        "垃圾搬运存储一部去19月台_back_525": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "XJBY31CCto191F_back_525",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "垃圾搬运存储一部去19月台_go_524": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "XJBY31CCto191F_go_524",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "垃圾搬运（带回库）存储一部去19月台_go_528": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "capacity": 10,
+          "code": "XJBYHK31CCto191F_go_528",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "调空车存储一部去19_1F_back_523": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K31CCto191F_back_523",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "调空车存储一部去19_1F_go_522": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K31CCto191F_go_522",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A2-3 存储备料&存储一部（调空车）": {
+      "tasks": {
+        "269空车A2备料去A2存储一部3F": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_17CCBL2F_to_31A2CC1B3F_go",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "270空车A2备料去A2存储一部3F回": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_17CCBL2F_to_31A2CC1B3F_back",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A3-2 半成品备料部": {
+      "tasks": {
+        "下架回库_27半成品3F_to_19华消F_452": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "XJHK_27BCP2F_to_19HX1F_452",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "下架搬运回库27半成品2F_to_31前端3F_423": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "XJBYHK_27BCP2F_to_31QD3F",
+          "requires_shelf": true,
+          "requires_task_path": true,
+          "task_path_options": [
+            {
+              "label": "前端一部",
+              "value": "22222591"
+            },
+            {
+              "label": "前端二部",
+              "value": "77882373"
+            },
+            {
+              "label": "前端三部",
+              "value": "99992246"
+            },
+            {
+              "label": "前端四部",
+              "value": "77882525"
+            }
+          ]
+        },
+        "下架搬运放下预占举升_27半成品3F_to_19华消F_451": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "SJBYFYJ_27BCP2F_to_19HX1F_451",
+          "requires_shelf": true,
+          "requires_task_path": true,
+          "task_path_options": [
+            {
+              "label": "左",
+              "value": "99992019"
+            },
+            {
+              "label": "右",
+              "value": "99992006"
+            }
+          ]
+        },
+        "去空车_27半成品2F_to_31前端3F_421": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_go_27BCP2F_to_31QD3F",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "去空车_27半成品3F_to_19华消1FA2-1_301": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_BCPtoHX_go",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "去空车_27半成品3F_to_19华消1FA3-1_449": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_go_27BCP2F_to_19HX1F_449",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "回空车_27半成品2F_to_31前端3F_422": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_back_27BCP2F_to_31QD3F",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "回空车_27半成品3F_to_19华消1FA2-1_302": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_BCPtoHX_back",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "回空车_27半成品3F_to_19华消1FA3-1_450": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_back_27BCP2F_to_19HX1F_450",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A3-2 点胶 & 行业货架区2": {
+      "tasks": {
+        "上架搬运_A3点胶2F去A3前端四部3F_五线_455": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "capacity": 10,
+          "code": "SJBY_32A3DJ2F_to_31A3QD4B3F_Line5_455",
+          "requires_shelf": true,
+          "requires_task_path": true,
+          "task_path_options": [
+            {
+              "label": "五线",
+              "value": "66000380"
+            }
+          ]
+        },
+        "上架搬运_A3点胶2F去A3前端四部3F_四线_454": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "capacity": 10,
+          "code": "SJBY_32A3DJ2F_to_31A3QD4B3F_Line4_454",
+          "requires_shelf": true,
+          "requires_task_path": true,
+          "task_path_options": [
+            {
+              "label": "四线 1",
+              "value": "66000358"
+            },
+            {
+              "label": "四线 2",
+              "value": "66000359"
+            }
+          ]
+        },
+        "去空车_32结构备料2F_to_32点胶备料2F_462": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_go_32JGBL2F_to_32DJBL2F_462",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "去空车_A3点胶2F去A3前端四部3F_443": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_go_32A3DJ2F_to_31A3QD4B3F_443",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "回空_A3点胶2F去A3前端四部3F_446": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "HJBY_back_32A3DJ2F_to_31A3QD4B3F_446",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "回空车_32结构备料2F_to_32点胶备料2F_463": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_back_32JGBL2F_to_32DJBL2F_463",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "回空车_A3点胶2F回A3前端四部3F_444": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_back_32A3DJ2F_to_31A3QD4B3F_444",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "货架搬运DJXB1到一部收料区_439": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "moveShelfToDJXB1ToDJXB2Q_439",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "货架搬运DJXB1到三部收料区_441": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "moveShelfToDJXB1ToDJthree_441",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "货架搬运DJXB1到二部收料区_440": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "moveShelfToDJXB1ToDJEBQ_440",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "货架搬运DJXB1到四部收料区_442": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "moveShelfToDJXB1ToDJQBQ_442",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "送满_A3点胶2F去A3前端四部3F_一线_445_457": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "HJBY_go_32A3DJ2F_to_31A3QD4B3F_1Line_445_457",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "送满_A3点胶2F去A3前端四部3F_二线_445_458": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "HJBY_go_32A3DJ2F_to_31A3QD4B3F_2Line_445_458",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "送满_A3点胶2F去A3前端四部3F_额外线_445_459": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "HJBY_go_32A3DJ2F_to_31A3QD4B3F_OtherLine_445_459",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A3-2 结构备料部": {
+      "tasks": {
+        "去空车_31前端二部（右99992321）3F_to_32前端备料2F_453": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_back_31QD3F_to_32QDBD2F_453",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "去空车_31前端点胶路径（左99990249）3F_to_32前端备料2F_461": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_back_31QD3F_to_32QDBD2F_461",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A3-2 行业备料 & 行业货架区2": {
+      "tasks": {
+        "空车27A3-2去32A3-2点胶回_510": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_27DJ2F_to_32DJ2F_back_510",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "空车27A3-2去32A3-2点胶来_509": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_27DJ2F_to_32DJ2F_509",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "空车跨环境去货架区2_159": {
+          "base_url": "http://10.68.2.27:7000/ics/taskOrder/addTask",
+          "code": "HJQ2go",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "空车跨环境离货架区2_160": {
+          "base_url": "http://10.68.2.27:7000/ics/taskOrder/addTask",
+          "code": "HJQ2leave",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "A4-1 A4物流&A4包材": {
+      "tasks": {
+        "去空车A4物流1F去A4包材1F_414": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_go_1A4WL2F_to_40A4BC1F",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "回空A4物流1F去A4包材1F_413": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "HJBY_back_1A4WL2F_to_40A4BC1F",
+          "requires_shelf": true,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "回空车A4物流1F去A4包材1F_415": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "K_back_1A4WL2F_to_40A4BC1F",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "送满A4物流1F去A4包材1F_412": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "code": "HJBY_go_1A4WL2F_to_40A4BC1F",
+          "requires_shelf": true,
+          "requires_task_path": true,
+          "task_path_options": [
+            {
+              "label": "包材区域A",
+              "value": "60000374"
+            },
+            {
+              "label": "包材区域B",
+              "value": "60000373"
+            },
+            {
+              "label": "包材区域C",
+              "value": "60000372"
+            }
+          ]
+        }
+      }
+    },
+    "A4-2 行业备料部": {
+      "tasks": {
+        "空车跨环境去行业一部_399": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "capacity": 10,
+          "code": "EmptyCarstoHY1",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "空车跨环境去行业车间_334": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "capacity": 10,
+          "code": "EmptyCarstoHY",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        },
+        "空车跨环境去行业车间_回_335": {
+          "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+          "capacity": 10,
+          "code": "EmptyCarstoHY_back",
+          "requires_shelf": false,
+          "requires_task_path": false,
+          "task_path_options": []
+        }
+      }
+    },
+    "test": {
+      "tasks": {
+        "新任务": {
+          "base_url": "http://127.0.0.1:7000",
+          "code": "222",
+          "requires_shelf": true,
+          "requires_task_path": true,
+          "task_path_options": [
+            {
+              "label": "123123111",
+              "value": "112321"
+            }
+          ],
+          "capacity": 10
+        }
+      }
+    }
+  },
+  "general": {
+    "footer_text": "任务下发系统 © 2025 | 运营 AGV 组提供技术支持",
+    "title": "AGV 跨环境任务下发系统 v1.5.1.4"
+  },
+  "_version": 4
+}

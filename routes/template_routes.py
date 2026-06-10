@@ -14,8 +14,18 @@ from services.device_sync_service import DeviceSyncService
 from middleware.cache import cache
 
 template_bp = Blueprint('template', __name__)
-_template_service = TemplateService()
 _device_sync_service = DeviceSyncService()
+
+
+def _get_template_service():
+    """根据 session 中活跃的 DB 服务器创建 TemplateService 实例"""
+    from modules.custom_table.config_loader import CustomTableConfig
+    server_key = session.get('active_db_server', '')
+    db_config = None
+    if server_key:
+        loader = CustomTableConfig()
+        db_config = loader.get_db_config(server_key)
+    return TemplateService(db_config=db_config)
 
 
 def login_required(f):
@@ -51,20 +61,12 @@ def index():
 
 # ========== 搜索 ==========
 
-@template_bp.route('/search', methods=['GET', 'POST'])
+@template_bp.route('/search', methods=['GET'])
 @login_required
 def search():
-    if request.method == 'POST':
-        search_term = request.form.get('search_term', '').strip()
-    else:
-        search_term = request.args.get('search_term', '').strip()
-    
-    templates, error = _template_service.search(search_term)
-    if error:
-        flash(error, 'info' if '未找到' in error else 'warning')
-        return redirect(url_for('template.index'))
-    
-    return render_template('template/search_results.html', templates=templates, search_term=search_term)
+    """渲染模板搜索页面（前端渲染）"""
+    initial_q = request.args.get('search_term', '').strip()
+    return render_template('template/search.html', initial_q=initial_q)
 
 
 # ========== 查看模板 ==========
@@ -72,7 +74,7 @@ def search():
 @template_bp.route('/template/<int:template_id>')
 @login_required
 def view_template(template_id):
-    template = _template_service.get_template(template_id)
+    template = _get_template_service().get_template(template_id)
     if not template:
         flash('任务模板不存在', 'error')
         return redirect(url_for('template.index'))
@@ -87,7 +89,7 @@ def view_template(template_id):
 @admin_required
 def edit_template(template_id):
     if request.method == 'GET':
-        template = _template_service.get_template(template_id)
+        template = _get_template_service().get_template(template_id)
         if not template:
             flash('任务模板不存在', 'error')
             return redirect(url_for('template.index'))
@@ -96,14 +98,13 @@ def edit_template(template_id):
     
     else:
         form_data = request.form
-        result = _template_service.update_template(template_id, form_data)
+        result = _get_template_service().update_template(template_id, form_data)
         if result is not None:
             flash('任务模板更新成功', 'success')
-            updated = _template_service.update_details_batch(template_id, form_data)
+            updated = _get_template_service().update_details_batch(template_id, form_data)
             if updated > 0:
                 flash(f'成功更新 {updated} 个子任务', 'success')
-            cache.delete_memoized(_template_service.get_template, template_id)
-            cache.clear()  # 清除统计缓存
+            cache.clear()  # 清除全部缓存（包括统计）
         else:
             flash('任务模板更新失败', 'error')
         return redirect(url_for('template.view_template', template_id=template_id))
@@ -115,13 +116,13 @@ def edit_template(template_id):
 @login_required
 @admin_required
 def edit_detail(detail_id):
-    result = _template_service.update_detail(detail_id, request.form)
+    result = _get_template_service().update_detail(detail_id, request.form)
     if result is not None:
         flash('子任务更新成功', 'success')
     else:
         flash('子任务更新失败', 'error')
     
-    model_id = _template_service.get_detail_model_id(detail_id)
+    model_id = _get_template_service().get_detail_model_id(detail_id)
     if model_id:
         return redirect(url_for('template.view_template', template_id=model_id))
     return redirect(url_for('template.index'))
@@ -134,7 +135,7 @@ def edit_detail(detail_id):
 @admin_required
 def copy_template(template_id):
     if request.method == 'GET':
-        template = _template_service.get_template(template_id)
+        template = _get_template_service().get_template(template_id)
         if not template:
             flash('任务模板不存在', 'error')
             return redirect(url_for('template.index'))
@@ -142,7 +143,7 @@ def copy_template(template_id):
         return render_template('template/copy.html', template=template, details=details)
     
     else:
-        result, error = _template_service.copy_template(template_id, request.form)
+        result, error = _get_template_service().copy_template(template_id, request.form)
         if error:
             flash(error, 'error')
             return redirect(url_for('template.copy_template', template_id=template_id))
@@ -152,11 +153,45 @@ def copy_template(template_id):
 
 # ========== API 路由 ==========
 
+@template_bp.route('/api/search', methods=['GET'])
+@login_required
+def api_search():
+    """前端搜索 API，支持分页/筛选/排序"""
+    search_term = request.args.get('q', '').strip()
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 20))
+    server = request.args.get('server', '').strip() or None
+    status = request.args.get('status', '').strip() or None
+    sort_by = request.args.get('sort_by', 'id').strip()
+    sort_order = request.args.get('sort_order', 'DESC').strip()
+    
+    result = _get_template_service().search_paginated(
+        search_term=search_term,
+        page=page,
+        per_page=per_page,
+        server=server,
+        status=status,
+        sort_by=sort_by,
+        sort_order=sort_order
+    )
+    return jsonify({'success': True, 'data': result})
+
+
 @template_bp.route('/api/search_suggestions', methods=['GET'])
 @login_required
 def search_suggestions():
     term = request.args.get('term', '').strip()
-    return jsonify(_template_service.search_suggestions(term))
+    return jsonify(_get_template_service().search_suggestions(term))
+
+
+@template_bp.route('/api/template/<int:template_id>', methods=['GET'])
+@login_required
+def api_get_template(template_id):
+    """获取模板详情 JSON（供前端搜索详情面板使用）"""
+    template = _get_template_service().get_template(template_id)
+    if not template:
+        return jsonify({'success': False, 'message': '模板不存在'}), 404
+    return jsonify({'success': True, 'data': template})
 
 
 @template_bp.route('/api/template/<int:template_id>/details/add', methods=['POST'])
@@ -164,7 +199,7 @@ def search_suggestions():
 @admin_required
 def add_detail(template_id):
     try:
-        detail = _template_service.add_detail(template_id, request.get_json())
+        detail = _get_template_service().add_detail(template_id, request.get_json())
         if detail:
             return jsonify({'success': True, 'message': '子任务添加成功', 'detail': detail})
         return jsonify({'success': False, 'message': '子任务添加失败'}), 500
@@ -177,7 +212,7 @@ def add_detail(template_id):
 @admin_required
 def delete_detail(template_id, detail_id):
     try:
-        success, error = _template_service.delete_detail(template_id, detail_id)
+        success, error = _get_template_service().delete_detail(template_id, detail_id)
         if success:
             return jsonify({'success': True, 'message': '子任务删除成功'})
         return jsonify({'success': False, 'message': error}), 404 if '不存在' in (error or '') else 500
@@ -191,7 +226,7 @@ def delete_detail(template_id, detail_id):
 def reorder_details(template_id):
     try:
         data = request.get_json()
-        success, message = _template_service.reorder_details(template_id, data.get('order', []))
+        success, message = _get_template_service().reorder_details(template_id, data.get('order', []))
         if success:
             return jsonify({'success': True, 'message': f'成功更新 {message} 个子任务的顺序'})
         return jsonify({'success': False, 'message': message}), 400
@@ -206,7 +241,7 @@ def reorder_details(template_id):
 def rcs_sync_status(template_id):
     """查询跨环境大模板在四张表（model_process/model_process_detail/task_template/task_relation）中的同步状态"""
     try:
-        status = _template_service.get_four_tables_status(template_id)
+        status = _get_template_service().get_four_tables_status(template_id)
         if status is None:
             return jsonify({
                 'success': False,
@@ -224,7 +259,7 @@ def rcs_sync_status(template_id):
 def rcs_sync_template(template_id):
     """同步跨环境大模板到四张表（以 xialiaoDA02-LH023_521 为模板复制新增）"""
     try:
-        result = _template_service.sync_template_to_rcs(template_id)
+        result = _get_template_service().sync_template_to_rcs(template_id)
         return jsonify({'success': True, 'data': result})
     except Exception as e:
         return jsonify({'success': False, 'message': f'服务器错误: {str(e)}'}), 500
