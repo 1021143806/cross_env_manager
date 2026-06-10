@@ -99,33 +99,33 @@
             <div class="col-md-6">
                 <label class="form-label fw-bold"><i class="bi bi-database-fill-up text-primary"></i> 源服务器</label>
                 <div class="input-group mb-2">
-                    <select class="form-select" id="sourceIp">
-                        <option value="">-- 选择服务器 --</option>
+                    <input class="form-control" list="sourceIpList" id="sourceIp" placeholder="输入或选择服务器 IP" autocomplete="off">
+                    <datalist id="sourceIpList">
                         {% for s in servers %}
                         <option value="{{ s }}">{{ s }}</option>
                         {% endfor %}
-                    </select>
+                    </datalist>
                     <button class="btn btn-outline-primary" onclick="testConnection('source')" id="btnTestSource">
                         <i class="bi bi-plug"></i> 测试
                     </button>
                 </div>
-                <div class="form-text small mt-0">IP 从子任务模板 task_servicec 解析</div>
+                <div class="form-text small mt-0">从子任务模板 task_servicec 解析的 IP 列表可供参考选择，也支持手动输入</div>
                 <div class="server-info-card" id="sourceInfo" style="display:none;"></div>
             </div>
             <div class="col-md-6">
                 <label class="form-label fw-bold"><i class="bi bi-database-fill-down text-success"></i> 目标服务器</label>
                 <div class="input-group mb-2">
-                    <select class="form-select" id="targetIp">
-                        <option value="">-- 选择服务器 --</option>
+                    <input class="form-control" list="targetIpList" id="targetIp" placeholder="输入或选择服务器 IP" autocomplete="off">
+                    <datalist id="targetIpList">
                         {% for s in servers %}
                         <option value="{{ s }}">{{ s }}</option>
                         {% endfor %}
-                    </select>
+                    </datalist>
                     <button class="btn btn-outline-success" onclick="testConnection('target')" id="btnTestTarget">
                         <i class="bi bi-plug"></i> 测试
                     </button>
                 </div>
-                <div class="form-text small mt-0">设备数据将写入此服务器</div>
+                <div class="form-text small mt-0">设备数据将写入此服务器，支持手动输入</div>
                 <div class="server-info-card" id="targetInfo" style="display:none;"></div>
             </div>
         </div>
