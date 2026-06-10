@@ -1240,6 +1240,20 @@ def show_stats():
     """显示统计页面"""
     return render_template('stats/index.html')
 
+
+# ========== Postlook 日志查看嵌入 ==========
+
+
+@app.route('/postlook')
+@login_required
+def postlook_view():
+    """Postlook 日志查看嵌入页面"""
+    # 从配置读取 postlook 服务器列表，默认当前服务器
+    _postlook_cfg = config.get('postlook', {})
+    servers = _postlook_cfg.get('servers', ['172.31.43.181:5011'])
+    return render_template('template/postlook_embed.html', servers=servers)
+
+
 # @app.route('/api/stats/overview')
 @login_required
 def get_stats_overview():
