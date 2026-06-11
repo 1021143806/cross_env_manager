@@ -3,13 +3,26 @@
  * 所有页面共享：主题切换、HTML 转义、高亮、规则渲染
  */
 
-// ── 主题 ──
+// ── 主题 + Embed 模式 ──
 (function() {
     var html = document.documentElement;
+    var isEmbed = location.search.includes('embed=1');
+    if (isEmbed) html.classList.add('embed-mode');
+
     var savedTheme = localStorage.getItem('postlook-theme');
     if (savedTheme) html.setAttribute('data-theme', savedTheme);
 
     document.addEventListener('DOMContentLoaded', function() {
+        // Embed 模式：不绑定主题按钮，监听 postMessage
+        if (isEmbed) {
+            window.addEventListener('message', function(e) {
+                if (e.data && e.data.type === 'setTheme') {
+                    html.setAttribute('data-theme', e.data.value);
+                }
+            });
+            return;
+        }
+
         var themeBtn = document.getElementById('themeBtn');
         if (!themeBtn) return;
         themeBtn.addEventListener('click', function() {

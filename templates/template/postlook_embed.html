@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}日志查看 - Postlook{% endblock %}
+
+{% block content %}
+<style>
+    .postlook-wrapper { display: flex; flex-direction: column; height: calc(100vh - 120px); }
+    .postlook-toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 0 16px; flex-shrink: 0; flex-wrap: wrap; }
+    .postlook-toolbar label { font-size: 0.85rem; font-weight: 500; color: var(--text-secondary, #a0aec0); white-space: nowrap; }
+    .postlook-toolbar select { min-width: 220px; }
+    #postlookFrame { width: 100%; flex: 1; border: none; border-radius: 8px; transition: opacity 0.25s ease; }
+    #postlookFrame.loading { opacity: 0.4; }
+</style>
+
+<div class="postlook-wrapper">
+    <div class="postlook-toolbar">
+        <label for="serverSelect"><i class="bi bi-hdd-network"></i> 选择服务器</label>
+        <select id="serverSelect" class="form-select form-select-sm" style="width:auto;">
+            {% for s in servers %}
+            <option value="{{ s }}" {% if loop.first %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+        </select>
+        <button id="postlookRefreshBtn" class="btn btn-sm btn-outline-secondary" title="刷新页面">
+            <i class="bi bi-arrow-clockwise"></i>
+        </button>
+        <span style="font-size:0.78rem;color:var(--text-tertiary,#718096);margin-left:auto;">
+            <i class="bi bi-info-circle"></i> 日志服务 · 独立部署在各服务器
+        </span>
+    </div>
+    <iframe id="postlookFrame" src=""></iframe>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var frame = document.getElementById('postlookFrame');
+    var serverSelect = document.getElementById('serverSelect');
+    var refreshBtn = document.getElementById('postlookRefreshBtn');
+
+    var pages = { logs: '日志查询', config: '配置管理', status: '服务状态', topology: '拓扑' };
+
+    function getPageFromHash() {
+        return location.hash.replace('#', '') || 'logs';
+    }
+
+    function getFrameUrl(server, page) {
+        return 'http://' + server + '/' + page + '?embed=1';
+    }
+
+    function loadFrame(server, page) {
+        if (!server) return;
+        frame.classList.add('loading');
+        frame.src = getFrameUrl(server, page);
+    }
+
+    // 页面切换（hash 变化时）
+    function onHashChange() {
+        var page = getPageFromHash();
+        if (!pages[page]) return; // 不认识的 hash 忽略
+        loadFrame(serverSelect.value, page);
+    }
+
+    // 服务器切换时保持当前页面
+    serverSelect.addEventListener('change', function() {
+        loadFrame(this.value, getPageFromHash());
+    });
+
+    // 刷新
+    refreshBtn.addEventListener('click', function() {
+        var server = serverSelect.value;
+        frame.classList.add('loading');
+        frame.src = '';
+        setTimeout(function() {
+            loadFrame(server, getPageFromHash());
+        }, 100);
+    });
+
+    // 监听 hash 变化
+    window.addEventListener('hashchange', onHashChange);
+
+    // iframe 加载完成去掉 loading 样式
+    frame.addEventListener('load', function() {
+        frame.classList.remove('loading');
+        syncThemeToFrame();
+    });
+
+    // 初始加载
+    if (serverSelect.options.length > 0) {
+        loadFrame(serverSelect.value, getPageFromHash());
+    }
+
+    // ===== 主题同步 =====
+    function syncThemeToFrame() {
+        var theme = document.documentElement.getAttribute('data-bs-theme') || 'dark';
+        if (frame && frame.contentWindow) {
+            frame.contentWindow.postMessage({ type: 'setTheme', value: theme }, '*');
+        }
+    }
+
+    document.addEventListener('themeChanged', function() { syncThemeToFrame(); });
+
+    var lastTheme = document.documentElement.getAttribute('data-bs-theme') || 'dark';
+    setInterval(function() {
+        var current = document.documentElement.getAttribute('data-bs-theme') || 'dark';
+        if (current !== lastTheme) { lastTheme = current; syncThemeToFrame(); }
+    }, 5000);
+});
+</script>
+{% endblock %}
