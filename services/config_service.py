@@ -44,12 +44,59 @@ class ConfigService:
         """读取 JSON 配置，返回 dict"""
         path = self._get_config_path()
         if not os.path.exists(path):
+            # 兼容升级：从旧 static/js/config.js 迁移
+            migrated = self._migrate_from_old_js()
+            if migrated is not None:
+                return migrated
             return self._default_config()
         try:
             with open(path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except (json.JSONDecodeError, IOError) as e:
             raise RuntimeError(f'配置解析失败: {e}')
+
+    def _migrate_from_old_js(self):
+        """
+        从旧版 static/js/config.js 迁移配置到 config/dispatch_config.json
+        当 JSON 源文件不存在但旧 JS 文件存在时自动迁移。
+        返回迁移后的 dict，如果无法迁移返回 None。
+        """
+        old_js_path = self._get_js_output_path()
+        if not os.path.exists(old_js_path):
+            return None
+
+        try:
+            with open(old_js_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # 解析 const config = {...};
+            match = re.search(r'const config\s*=\s*(\{[\s\S]*?\});', content)
+            if not match:
+                print('[Config] 旧 config.js 格式不匹配，跳过迁移')
+                return None
+
+            config_dict = json.loads(match[1])
+
+            # 确保 _version 字段
+            if '_version' not in config_dict:
+                config_dict['_version'] = 0
+
+            # 写入新的 JSON 源文件
+            config_dir = self._get_config_dir()
+            os.makedirs(config_dir, exist_ok=True)
+            json_path = self._get_config_path()
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(config_dict, f, indent=2, ensure_ascii=False)
+                f.write('\n')
+
+            # 同步更新 JS 文件（生成带标准头部的新版本）
+            self._sync_js_file(config_dict)
+
+            print(f'[Config] 已从旧版 {old_js_path} 自动迁移配置到 {json_path}')
+            return config_dict
+        except Exception as e:
+            print(f'[Config] 从旧 config.js 迁移失败: {e}')
+            return None
 
     def save_config(self, config_dict: dict, commit_message: str = ''):
         """
