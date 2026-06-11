@@ -1026,11 +1026,13 @@
                 
                 const generateOrderId = () => {
                     const now = new Date();
-                    // 格式: CEM_YYYY-MM-DD HH:MM:SS.毫秒__随机数
+                    // 格式: CEM_YYYY-MM-DD HH:MM:SS.毫秒__随机数（跨环境）
+                    // 格式: RLLR_YYYY-MM-DD HH:MM:SS.毫秒__随机数（辊筒）
+                    const prefix = isRoller ? 'RLLR' : 'CEM';
                     const dateStr = now.toLocaleString('sv-SE', {timeZone:'Asia/Shanghai'}).replace('T',' ');
                     const ms = now.getMilliseconds().toString().padStart(3, '0');
                     const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-                    return `CEM_${dateStr}.${ms}__${random}`;
+                    return `${prefix}_${dateStr}.${ms}__${random}`;
                 };
                 const orderId = generateOrderId();
                 const taskPathVal = isRoller
@@ -1200,6 +1202,44 @@
             function displayTaskDetails(main, subs, detailError) {
                 emptyState.style.display = 'none';
                 let html = '';
+                
+                if (main.isRoller) {
+                    // ======== 辊筒任务专属卡片（非跨环境） ========
+                    const statusLabel = getStatusText(main.taskStatus);
+                    const timeStr = main.createTime ? new Date(main.createTime).toLocaleString() : '--';
+                    const rollerTimeStr = main.rollerTime ? new Date(main.rollerTime).toLocaleString() : '--';
+                    html += `<div class="task-item">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="mb-0 d-flex align-items-center gap-2">
+                                <span class="badge bg-secondary" style="font-size:0.65rem;">辊筒</span>
+                                辊筒任务
+                            </h5>
+                            <span class="task-status status-${main.taskStatus}">${statusLabel}</span>
+                        </div>
+                        <div class="small">
+                            <span class="fw-semibold">OrderId:</span> ${main.orderId}
+                            <i class="bi bi-clipboard copy-icon ms-1" data-copy="${(main.orderId||'').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" data-msg="OrderId 已复制" title="复制OrderId"></i>
+                        </div>
+                        <div class="small">
+                            <span class="fw-semibold">下发点位:</span>
+                            ${main.qrContent ? `<code class="px-2 py-1 rounded" style="background:var(--detail-card-bg);border:1px solid var(--border-color);font-size:0.85rem;">${main.qrContent}</code>` : '--'}
+                        </div>
+                        <div class="small"><span class="fw-semibold">设备编号:</span> ${main.deviceNum||'无'}</div>
+                        <div class="small"><span class="fw-semibold">任务状态:</span> ${statusLabel} (${main.taskStatus})</div>
+                        <div class="small"><span class="fw-semibold">创建时间:</span> ${timeStr}</div>
+                        <div class="small"><span class="fw-semibold">最近更新:</span> ${rollerTimeStr}</div>
+                        <div class="mt-3 d-flex flex-wrap gap-2">
+                            <button class="btn btn-sm btn-outline-info" onclick="showTaskJsonModal(${JSON.stringify(main).replace(/"/g, '&quot;').replace(/'/g, "&#39;")}, ${JSON.stringify(subs).replace(/"/g, '&quot;').replace(/'/g, "&#39;")})">
+                                <i class="bi bi-code-slash me-1"></i>查看JSON数据
+                            </button>
+                        </div>
+                    </div>`;
+                    // 辊筒任务无子任务，不需要后续渲染
+                    taskDetails.innerHTML = html;
+                    return;
+                }
+                
+                // ======== 跨环境任务卡片（原逻辑） ========
                 const encodedOrderId = encodeURIComponent(main.orderId);
                 html += `<div class="task-item"><div class="d-flex justify-content-between align-items-center mb-2"><h5 class="mb-0">主任务</h5><span class="task-status status-${main.taskStatus}">${getStatusText(main.taskStatus)}</span></div>
                     <div class="small"><span class="fw-semibold">OrderId:</span> ${main.orderId} <i class="bi bi-clipboard copy-icon ms-1" data-copy="${(main.orderId||'').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" data-msg="OrderId 已复制" title="复制OrderId"></i></div>
