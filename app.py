@@ -1247,6 +1247,7 @@ _POSTLOOK_SERVERS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__))
 
 def _load_postlook_servers():
     """加载 postlook 服务器列表，优先级: postlook_servers.json > env.toml > 硬编码默认值"""
+    import json
     # 1. 优先从 postlook_servers.json 读取
     try:
         if os.path.exists(_POSTLOOK_SERVERS_PATH):
@@ -1280,6 +1281,7 @@ def get_postlook_servers():
 @login_required
 def save_postlook_servers():
     """保存 postlook 服务器列表"""
+    import json
     data = request.json or {}
     servers = data.get('servers', [])
     if not isinstance(servers, list) or not servers:
