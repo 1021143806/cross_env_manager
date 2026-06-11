@@ -1243,15 +1243,59 @@ def show_stats():
 
 # ========== Postlook 日志查看嵌入 ==========
 
+_POSTLOOK_SERVERS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config', 'postlook_servers.json')
+
+def _load_postlook_servers():
+    """加载 postlook 服务器列表，优先级: postlook_servers.json > env.toml > 硬编码默认值"""
+    # 1. 优先从 postlook_servers.json 读取
+    try:
+        if os.path.exists(_POSTLOOK_SERVERS_PATH):
+            with open(_POSTLOOK_SERVERS_PATH, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            servers = data.get('servers', [])
+            if servers:
+                return servers
+    except Exception:
+        pass
+    # 2. 回退到 env.toml 中的 [postlook] 段
+    _postlook_cfg = config.get('postlook', {})
+    servers = _postlook_cfg.get('servers', ['127.0.0.1:5011', '172.31.43.181:5011'])
+    return servers
 
 @app.route('/postlook')
 @login_required
 def postlook_view():
     """Postlook 日志查看嵌入页面"""
-    # 从配置读取 postlook 服务器列表，默认当前服务器
-    _postlook_cfg = config.get('postlook', {})
-    servers = _postlook_cfg.get('servers', ['172.31.43.181:5011'])
+    servers = _load_postlook_servers()
     return render_template('template/postlook_embed.html', servers=servers)
+
+@app.route('/api/postlook/servers', methods=['GET'])
+@login_required
+def get_postlook_servers():
+    """获取 postlook 服务器列表"""
+    servers = _load_postlook_servers()
+    return jsonify({'servers': servers, 'config_path': _POSTLOOK_SERVERS_PATH})
+
+@app.route('/api/postlook/servers', methods=['POST'])
+@login_required
+def save_postlook_servers():
+    """保存 postlook 服务器列表"""
+    data = request.json or {}
+    servers = data.get('servers', [])
+    if not isinstance(servers, list) or not servers:
+        return jsonify({'success': False, 'message': '至少需要一个服务器地址'}), 400
+    # 基本校验
+    for s in servers:
+        if not isinstance(s, str) or ':' not in s:
+            return jsonify({'success': False, 'message': f'无效的服务器地址: {s}'}), 400
+    try:
+        os.makedirs(os.path.dirname(_POSTLOOK_SERVERS_PATH), exist_ok=True)
+        with open(_POSTLOOK_SERVERS_PATH, 'w', encoding='utf-8') as f:
+            json.dump({'servers': servers}, f, indent=2, ensure_ascii=False)
+            f.write('\n')
+        return jsonify({'success': True, 'servers': servers})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'保存失败: {e}'}), 500
 
 
 # @app.route('/api/stats/overview')

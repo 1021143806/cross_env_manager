@@ -23,11 +23,37 @@
         <button id="postlookRefreshBtn" class="btn btn-sm btn-outline-secondary" title="刷新页面">
             <i class="bi bi-arrow-clockwise"></i>
         </button>
+        <button id="postlookSettingsBtn" class="btn btn-sm btn-outline-secondary" title="服务器管理">
+            <i class="bi bi-gear"></i>
+        </button>
         <span style="font-size:0.78rem;color:var(--text-tertiary,#718096);margin-left:auto;">
             <i class="bi bi-info-circle"></i> 日志服务 · 独立部署在各服务器
         </span>
     </div>
     <iframe id="postlookFrame" src=""></iframe>
+</div>
+
+<!-- 服务器管理模态框 -->
+<div class="modal fade" id="postlookSettingsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-hdd-network me-2"></i>管理 Postlook 服务器</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-2">每个服务器一行，格式 <code>IP:端口</code></p>
+                <textarea id="postlookServersInput" class="form-control" rows="6" style="font-family:monospace;font-size:0.85rem;"></textarea>
+                <div id="postlookSettingsStatus" class="mt-2 small"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="postlookSettingsSaveBtn">
+                    <i class="bi bi-check-lg"></i> 保存
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -103,6 +129,81 @@ document.addEventListener('DOMContentLoaded', function() {
         var current = document.documentElement.getAttribute('data-bs-theme') || 'dark';
         if (current !== lastTheme) { lastTheme = current; syncThemeToFrame(); }
     }, 5000);
+
+    // ===== 服务器管理 =====
+    var settingsBtn = document.getElementById('postlookSettingsBtn');
+    var settingsModal = document.getElementById('postlookSettingsModal');
+    var serversInput = document.getElementById('postlookServersInput');
+    var settingsStatus = document.getElementById('postlookSettingsStatus');
+    var settingsSaveBtn = document.getElementById('postlookSettingsSaveBtn');
+    var bsSettingsModal = null;
+
+    if (settingsBtn && settingsModal) {
+        settingsBtn.addEventListener('click', function() {
+            // 加载当前服务器列表到 textarea
+            var options = serverSelect.options;
+            var list = [];
+            for (var i = 0; i < options.length; i++) {
+                list.push(options[i].value);
+            }
+            serversInput.value = list.join('\n');
+            settingsStatus.innerHTML = '';
+            if (!bsSettingsModal) {
+                bsSettingsModal = new bootstrap.Modal(settingsModal);
+            }
+            bsSettingsModal.show();
+        });
+
+        settingsSaveBtn.addEventListener('click', function() {
+            var raw = serversInput.value.trim();
+            var servers = raw.split('\n').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; });
+            // 基本校验
+            var invalid = servers.filter(function(s) { return s.indexOf(':') === -1; });
+            if (invalid.length > 0) {
+                settingsStatus.innerHTML = '<span class="text-danger">格式错误（缺少端口）: ' + invalid.join(', ') + '</span>';
+                return;
+            }
+            if (servers.length === 0) {
+                settingsStatus.innerHTML = '<span class="text-danger">至少需要一个服务器地址</span>';
+                return;
+            }
+            settingsStatus.innerHTML = '<span class="text-muted">保存中...</span>';
+            fetch('/api/postlook/servers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ servers: servers })
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                if (data.success) {
+                    // 更新下拉框
+                    var currentVal = serverSelect.value;
+                    serverSelect.innerHTML = '';
+                    data.servers.forEach(function(s, idx) {
+                        var opt = document.createElement('option');
+                        opt.value = s;
+                        opt.textContent = s;
+                        if (s === currentVal || (idx === 0 && data.servers.indexOf(currentVal) === -1)) {
+                            opt.selected = true;
+                        }
+                        serverSelect.appendChild(opt);
+                    });
+                    // 如果当前选中的服务器不在新列表中，切换到第一个
+                    if (serverSelect.querySelector('option[selected]') === null && serverSelect.options.length > 0) {
+                        serverSelect.options[0].selected = true;
+                    }
+                    // 重新加载 iframe
+                    loadFrame(serverSelect.value, getPageFromHash());
+                    settingsStatus.innerHTML = '<span class="text-success">✅ 保存成功</span>';
+                    setTimeout(function() {
+                        if (bsSettingsModal) bsSettingsModal.hide();
+                    }, 800);
+                } else {
+                    settingsStatus.innerHTML = '<span class="text-danger">保存失败: ' + (data.message || '未知错误') + '</span>';
+                }
+            }).catch(function(err) {
+                settingsStatus.innerHTML = '<span class="text-danger">网络错误: ' + err.message + '</span>';
+            });
+        });
+    }
 });
 </script>
 {% endblock %}
