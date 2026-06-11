@@ -74,12 +74,8 @@ def search():
 @template_bp.route('/template/<int:template_id>')
 @login_required
 def view_template(template_id):
-    template = _get_template_service().get_template(template_id)
-    if not template:
-        flash('任务模板不存在', 'error')
-        return redirect(url_for('template.index'))
-    details = template.pop('details', [])
-    return render_template('template/detail.html', template=template, details=details)
+    """查看模板详情 — 已合并到编辑页，直接跳转"""
+    return redirect(url_for('template.edit_template', template_id=template_id))
 
 
 # ========== 编辑模板 ==========
