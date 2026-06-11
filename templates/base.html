@@ -23,6 +23,7 @@
             if (path.indexOf('/dispatch') === 0) mod = 'dispatch';
             else if (path.indexOf('/addtask') === 0) mod = 'task';
             else if (path.indexOf('/query') === 0) mod = 'query';
+            else if (path.indexOf('/postlook') === 0) mod = 'postlook';
             else if (path.indexOf('/monitor') === 0 || path.indexOf('/stats') === 0 ||
                      path.indexOf('/platform-switch') === 0 || path.indexOf('/docs') === 0 ||
                      path.indexOf('/system/config') === 0 || path.indexOf('/config-editor') === 0) mod = 'system';
@@ -41,6 +42,7 @@
         html[data-module="task"]    [data-sidebar-module="task"]    { display: flex !important; }
         html[data-module="query"]   [data-sidebar-module="query"]   { display: flex !important; }
         html[data-module="system"]  [data-sidebar-module="system"]  { display: flex !important; }
+        html[data-module="postlook"] [data-sidebar-module="postlook"] { display: flex !important; }
     </style>
 
     <style>
@@ -755,7 +757,7 @@
         });
 
         // 根据当前 URL 激活侧边栏菜单项（含 hash 支持）
-        (function updateActive() {
+        function updateSidebarActive() {
             const sidebarLinks = document.querySelectorAll('.sidebar-menu a[href]');
             const curPath = window.location.pathname;
             const fullPath = curPath + (window.location.hash || '');
@@ -781,7 +783,10 @@
                 document.querySelectorAll('.sidebar-menu .nav-link.active').forEach(a => a.classList.remove('active'));
                 bestMatch.classList.add('active');
             }
-        })();
+        }
+        updateSidebarActive();
+        // hash 变化时同步侧边栏高亮（iframe 内嵌页面场景）
+        window.addEventListener('hashchange', updateSidebarActive);
     })();
 
     // ========== 调车侧边栏 - 动态加载区域列表 ==========
