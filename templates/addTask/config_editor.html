@@ -284,6 +284,10 @@
             const taskCodeInput = document.getElementById('task-code');
             const taskRequiresShelf = document.getElementById('task-requires-shelf');
             const taskRequiresPath = document.getElementById('task-requires-path');
+            const taskRollerSwitch = document.getElementById('task-roller-switch');
+            const rollerConfigSection = document.getElementById('roller-config-section');
+            const taskRollerPoint = document.getElementById('task-roller-point');
+            const taskRollerLabel = document.getElementById('task-roller-label');
             const enableCapacityCheck = document.getElementById('enable-capacity');
             const capacityInputWrapper = document.getElementById('capacity-input-wrapper');
             const taskCapacity = document.getElementById('task-capacity');
@@ -501,6 +505,18 @@ const config = ${JSON.stringify(configData, null, 4)};`;
                             task.task_path_options = [];
                         }
                         
+                        // 确保 roller_task 字段存在
+                        if (task.roller_task === undefined) {
+                            task.roller_task = false;
+                        }
+                        // 确保 roller_point 和 roller_point_label 字段存在
+                        if (task.roller_point === undefined) {
+                            task.roller_point = '';
+                        }
+                        if (task.roller_point_label === undefined) {
+                            task.roller_point_label = '';
+                        }
+                        
                         // 确保 task_path_options 中的每个选项都有 value 和 label
                         task.task_path_options = task.task_path_options.map(option => {
                             if (typeof option === 'object' && option !== null) {
@@ -697,6 +713,10 @@ const config = ${JSON.stringify(configData, null, 4)};`;
                 taskCodeInput.value = task.code || '';
                 taskRequiresShelf.checked = task.requires_shelf || false;
                 taskRequiresPath.checked = task.requires_task_path || false;
+                taskRollerSwitch.checked = task.roller_task || false;
+                taskRollerPoint.value = task.roller_point || '';
+                taskRollerLabel.value = task.roller_point_label || '';
+                rollerConfigSection.style.display = task.roller_task ? 'block' : 'none';
                 
                 // 容量字段动态显示优化
                 const hasCapacity = task.hasOwnProperty('capacity');
@@ -780,12 +800,16 @@ const config = ${JSON.stringify(configData, null, 4)};`;
                 const area = configData.areas[currentAreaName];
                 const oldName = taskOriginalName.value;
                 
+                const isRoller = taskRollerSwitch.checked;
                 const taskData = {
                     base_url: url,
                     code: taskCodeInput.value.trim(),
-                    requires_shelf: taskRequiresShelf.checked,
+                    requires_shelf: isRoller ? false : taskRequiresShelf.checked,
                     requires_task_path: taskRequiresPath.checked,
-                    task_path_options: taskRequiresPath.checked ? getPathOptionsFromForm() : []
+                    task_path_options: taskRequiresPath.checked ? getPathOptionsFromForm() : [],
+                    roller_task: isRoller,
+                    roller_point: isRoller ? taskRollerPoint.value.trim() : '',
+                    roller_point_label: isRoller ? taskRollerLabel.value.trim() : ''
                 };
                 
                 // 处理容量字段
@@ -1769,6 +1793,13 @@ const config = ${formatted};`;
                 
                 taskRequiresPath.addEventListener('change', (e) => {
                     pathOptionsSection.style.display = e.target.checked ? 'block' : 'none';
+                });
+                
+                taskRollerSwitch.addEventListener('change', (e) => {
+                    rollerConfigSection.style.display = e.target.checked ? 'block' : 'none';
+                    if (e.target.checked) {
+                        taskRequiresShelf.checked = false;
+                    }
                 });
                 
                 enableCapacityCheck.addEventListener('change', (e) => {

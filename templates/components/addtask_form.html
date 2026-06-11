@@ -28,6 +28,20 @@
             <div class="shelf-lock-warning" id="shelf-lock" style="display: none;"><i class="bi bi-exclamation-triangle me-1"></i>此货架在5分钟内已下发过任务，请勿重复下发</div>
         </div>
 
+        <!-- 辊筒任务固定点位提示（只读） -->
+        <div class="mb-4" id="roller-task-info" style="display: none;">
+            <div class="p-3 rounded" style="background:var(--detail-card-bg);border:1px solid var(--border-color);">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-secondary" style="font-size:0.7rem;">辊筒</span>
+                    <span class="fw-semibold small">固定下发点位</span>
+                </div>
+                <div class="mt-1 d-flex align-items-center gap-2">
+                    <span style="font-size:1.1rem;">📍</span>
+                    <span id="roller-point-display" class="fw-bold">--</span>
+                </div>
+            </div>
+        </div>
+
         <div class="mb-4" id="task-path-group" style="display: none;">
             <label class="form-label fw-semibold">任务路径</label>
             <select id="task-path-select" class="form-select">
