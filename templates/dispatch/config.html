@@ -78,6 +78,9 @@
         </div>
         <div>
             <button class="btn btn-success me-2" onclick="saveConfig()"><i class="bi bi-check-lg"></i> 保存配置</button>
+            <button class="btn btn-outline-info me-2" onclick="exportDispatchConfig()"><i class="bi bi-download"></i> 导出</button>
+            <button class="btn btn-outline-info me-2" onclick="document.getElementById('import-dispatch-config').click()"><i class="bi bi-upload"></i> 导入</button>
+            <input type="file" id="import-dispatch-config" accept=".json" style="display:none">
             <a href="/dispatch" class="btn btn-outline-secondary me-2"><i class="bi bi-arrow-left"></i> 返回看板</a>
             <a href="/docs/module/dispatch" class="btn btn-outline-info" target="_blank"><i class="bi bi-question-circle"></i> 帮助</a>
         </div>
@@ -191,6 +194,25 @@
 </div>
 
 <div id="toastContainer" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+
+<!-- 导入预览模态框 -->
+<div class="modal fade" id="importDispatchPreviewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-file-earmark-check me-2"></i>导入预览 — 调车配置</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre id="import-dispatch-preview-content" style="max-height:400px;overflow:auto;font-size:12px;background:#1e1e1e;padding:12px;border-radius:8px;color:#d4d4d4;"></pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="import-dispatch-confirm-btn">确认导入</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -480,6 +502,66 @@ function deleteBackup(name) {
             else showToast('删除失败: '+(r.error||'未知错误'),'danger');
         }).catch(e=>showToast('删除失败: '+e.message,'danger'));
 }
+
+// ========== 导出配置 ==========
+function exportDispatchConfig() {
+    try {
+        const dump = JSON.stringify(configData, null, 2);
+        const blob = new Blob([dump], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        const ts = new Date().toISOString().slice(0,10).replace(/-/g,'');
+        a.download = 'dispatch_config_' + ts + '.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showToast('配置文件已导出', 'success');
+    } catch(e) {
+        showToast('导出失败: ' + e.message, 'danger');
+    }
+}
+
+// ========== 导入配置 ==========
+(function initDispatchImport() {
+    const fileInput = document.getElementById('import-dispatch-config');
+    if (!fileInput) return;
+    let importData = null;  // 暂存解析后的数据
+
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+            try {
+                importData = JSON.parse(ev.target.result);
+                // 基本校验：至少是一个非空对象
+                if (typeof importData !== 'object' || importData === null || Object.keys(importData).length === 0) {
+                    throw new Error('配置内容为空');
+                }
+                // 显示预览
+                const preview = document.getElementById('import-dispatch-preview-content');
+                preview.textContent = JSON.stringify(importData, null, 2);
+                const modal = new bootstrap.Modal(document.getElementById('importDispatchPreviewModal'));
+                modal.show();
+            } catch(e) {
+                showToast('导入文件格式错误: ' + e.message, 'danger');
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    });
+
+    document.getElementById('import-dispatch-confirm-btn').addEventListener('click', function() {
+        if (!importData) return;
+        // 关闭模态框
+        bootstrap.Modal.getInstance(document.getElementById('importDispatchPreviewModal')).hide();
+        // 替换当前配置数据
+        configData = importData;
+        // 刷新可视化编辑器
+        renderVisualEditor(configData);
+        document.getElementById('sourceEditor').value = JSON.stringify(configData, null, 2);
+        showToast('配置已导入，请点击"保存配置"持久化', 'success');
+    });
+})();
 
 function showToast(message, type) {
     const c = document.getElementById('toastContainer');
