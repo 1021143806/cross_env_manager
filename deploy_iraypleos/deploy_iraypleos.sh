@@ -97,61 +97,39 @@ fi
 
 echo ""
 echo "6. 安装离线依赖包..."
-echo "   安装策略：批量安装，所有包已知Python 3.9兼容"
+echo "   安装策略：批量安装，版本锁定与离线包一致"
 
-# 创建简化的requirements文件
-TEMP_REQ=$(mktemp)
-cat > "$TEMP_REQ" << EOF
-Flask==2.3.3
-PyMySQL==1.1.0
-python-dotenv==1.0.0
-Werkzeug==2.3.7
-Jinja2==3.1.2
-click==8.1.6
-itsdangerous==2.1.2
-Markdown==3.5.1
-tomli==2.0.1
-blinker==1.9.0
-markupsafe==2.1.3
-zipp==3.23.0
-importlib_metadata==8.7.1
-DBUtils==3.1.2
-Flask-Caching==2.3.1
-cachelib==0.13.0
-importlib_metadata==8.7.1
-paramiko==5.0.0
-PyYAML==6.0.3
-cryptography==43.0.3
-bcrypt==5.0.0
-pynacl==1.6.2
-cffi==2.0.0
-pycparser==2.23
-invoke==3.0.3
-typing_extensions==4.15.0
-EOF
-
-echo "   依赖列表:"
-wc -l < "$TEMP_REQ" | xargs echo "   包数量:"
+REQ_FILE="$VENDOR_DIR/requirements_py39_fixed.txt"
+if [ ! -f "$REQ_FILE" ]; then
+    echo "   ❌ 未找到 requirements_py39_fixed.txt，终止安装"
+    exit 1
+fi
+echo "   使用: $REQ_FILE"
+echo "   包数量: $(grep -cE '^[a-zA-Z]' "$REQ_FILE")"
 
 echo "   开始安装..."
-if pip install --no-index --find-links="$VENDOR_DIR" -r "$TEMP_REQ" 2>/dev/null; then
+if pip install --no-index --find-links="$VENDOR_DIR" -r "$REQ_FILE" 2>/dev/null; then
     echo "   ✅ 批量依赖安装成功"
 else
-    echo "   ⚠️  批量安装失败，尝试逐个安装..."
-    # 逐个安装关键包
-    for pkg in click itsdangerous tomli zipp blinker python_dotenv PyMySQL Werkzeug Jinja2 markupsafe Markdown Flask importlib_metadata DBUtils Flask_Caching cachelib paramiko PyYAML cryptography bcrypt pynacl cffi pycparser invoke typing_extensions; do
-        wheel_file=$(find "$VENDOR_DIR" -type f -iname "*${pkg}*.whl" | head -1)
+    echo "   ⚠️  批量安装失败，尝试逐个安装（带依赖解析）..."
+    while IFS= read -r line; do
+        # 跳过空行和注释
+        [[ -z "$line" || "$line" =~ ^# ]] && continue
+        pkg_name="${line%%==*}"
+        pkg_name="${pkg_name%%>*}"
+        pkg_name="$(echo "$pkg_name" | xargs)"  # trim
+        wheel_file=$(find "$VENDOR_DIR" -type f -iname "*${pkg_name}*.whl" 2>/dev/null | head -1)
         if [ -f "$wheel_file" ]; then
-            if pip install --no-index --no-deps "$wheel_file" 2>/dev/null; then
-                echo "   ✅ $pkg 安装成功"
+            if pip install --no-index --find-links="$VENDOR_DIR" "$wheel_file" 2>/dev/null; then
+                echo "   ✅ $pkg_name 安装成功"
             else
-                pip install --no-index "$wheel_file" 2>/dev/null && echo "   ✅ $pkg 安装成功" || echo "   ❌ $pkg 安装失败"
+                echo "   ❌ $pkg_name 安装失败"
             fi
+        else
+            echo "   ⚠️  未找到 ${pkg_name}.whl，跳过"
         fi
-    done
+    done < "$REQ_FILE"
 fi
-
-rm -f "$TEMP_REQ"
 
 echo ""
 echo "7. 验证安装..."
