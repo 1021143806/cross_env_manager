@@ -16,7 +16,7 @@
         <a href="{{ url_for('template.index') }}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-house"></i> 首页
         </a>
-        <a href="{{ url_for('search') }}?search_term={{ template.model_process_code.split('_')[0] }}" 
+        <a href="{{ url_for('template.search') }}?search_term={{ template.model_process_code.split('_')[0] }}" 
            class="btn btn-outline-primary btn-sm">
             <i class="bi bi-search"></i> 相关搜索
         </a>
@@ -219,7 +219,7 @@
                             data-bs-target="#jsonModal">
                         <i class="bi bi-code-slash"></i> 查看JSON数据
                     </button>
-<a href="{{ url_for('search') }}?search_term={% if template.model_process_code %}{{ template.model_process_code.split('_')[0] }}{% endif %}"
+<a href="{{ url_for('template.search') }}?search_term={% if template.model_process_code %}{{ template.model_process_code.split('_')[0] }}{% endif %}"
                        class="btn btn-outline-primary">
                         <i class="bi bi-search"></i> 搜索相关模板
                     </a>
@@ -367,7 +367,7 @@
                 <h5 class="modal-title">编辑子任务 #{{ detail.task_seq }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form action="{{ url_for('edit_detail', detail_id=detail.id) }}" method="post">
+            <form action="{{ url_for('template.edit_detail', detail_id=detail.id) }}" method="post">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label">任务顺序</label>
