@@ -19,6 +19,7 @@ ALLOWED_DOWNLOAD_EXTENSIONS = frozenset({
     '.hprof',      # Java Heap Dump
     '.core',       # Core Dump (Linux)
     '.dmp',        # Crash Dump / Minidump
+    '.jar',        # Java 可执行包（仅后台允许下载，前端不显示）
 })
 
 

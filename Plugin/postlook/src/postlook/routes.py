@@ -143,6 +143,9 @@ async def list_files():
         try:
             for entry in root_path.rglob("*"):
                 if entry.is_file() and not entry.is_symlink():
+                    # 隐藏 .jar 文件（仅支持后台下载，前端不展示）
+                    if entry.name.lower().endswith('.jar'):
+                        continue
                     stat = entry.stat()
                     files.append({
                         "name": entry.name,
