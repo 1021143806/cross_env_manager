@@ -5,7 +5,7 @@
 """
 
 # 调车模块版本号（修改本文件时递增末尾数字）
-DISPATCH_VERSION = '2.1.10'
+DISPATCH_VERSION = '2.1.11'
 
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response
 from functools import wraps
@@ -185,26 +185,43 @@ def _load_json(filepath):
         return []
 
 
-def _save_json(filepath, data):
-    """保存 JSON 文件（原子写入）"""
+def _save_json(filepath, data, max_retries=3):
+    """保存 JSON 文件（原子写入），失败时自动重试"""
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    with _write_lock:
-        tmp = filepath + '.tmp'
+    tmp = filepath + '.tmp'
+    
+    for attempt in range(max_retries):
         try:
-            with open(tmp, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            os.replace(tmp, filepath)
-        except UnicodeEncodeError as e:
-            print(f"[Dispatch] _save_json 编码错误: {e}, 尝试使用 repr 转义")
-            with open(tmp, 'w', encoding='utf-8') as f:
-                # 将数据中的字符串用 repr 处理
-                def _safe_str(obj):
-                    if isinstance(obj, str):
-                        return obj.encode('utf-8', errors='replace').decode('utf-8')
-                    return obj
-                safe_data = json.loads(json.dumps(data, default=_safe_str, ensure_ascii=False))
-                json.dump(safe_data, f, ensure_ascii=False, indent=2)
-            os.replace(tmp, filepath)
+            with _write_lock:
+                with open(tmp, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                os.replace(tmp, filepath)
+            return  # 成功直接返回
+        except (OSError, IOError) as e:
+            if attempt < max_retries - 1:
+                time.sleep(0.3 * (attempt + 1))
+                continue
+            print(f"[Dispatch] _save_json 写入失败(重试{max_retries}次): {os.path.basename(filepath)}, error={e}")
+        except (TypeError, ValueError, OverflowError) as e:
+            # 序列化异常，尝试 safe 模式
+            if attempt == 0:
+                print(f"[Dispatch] _save_json 序列化异常: {e}, 尝试 safe 模式")
+                try:
+                    with _write_lock:
+                        with open(tmp, 'w', encoding='utf-8') as f:
+                            def _safe_str(obj):
+                                if isinstance(obj, str):
+                                    return obj.encode('utf-8', errors='replace').decode('utf-8')
+                                return obj
+                            safe_data = json.loads(json.dumps(data, default=_safe_str, ensure_ascii=False))
+                            json.dump(safe_data, f, ensure_ascii=False, indent=2)
+                        os.replace(tmp, filepath)
+                    return
+                except Exception as e2:
+                    print(f"[Dispatch] _save_json safe 模式也失败: {os.path.basename(filepath)}, error={e2}")
+            else:
+                print(f"[Dispatch] _save_json 写入失败(重试{max_retries}次): {os.path.basename(filepath)}, error={e}")
+            return  # safe 模式失败或重试用完，放弃
 
 
 def _get_region_file(region_key, filename):
@@ -609,11 +626,19 @@ def calculate_area_balance(region_key, region_config):
             direction_icon = "bi-arrow-up"
             direction_color = "danger"
         elif expectedCount < xmin:
-            need = expectedCount - xmin  # 负数：车不够，下发调空车
-            direction = "in"
-            direction_text = f"车不够，需调入{abs(need)}辆"
-            direction_icon = "bi-arrow-down"
-            direction_color = "warning"
+            # 夜班/回库区(xmin=xmax=0)只允许回(out)，禁止主动来(in)
+            if xmin == 0 and xmax == 0:
+                need = 0
+                direction = "none"
+                direction_text = "禁止调入(回库区)"
+                direction_icon = "bi-shield-x"
+                direction_color = "text-secondary"
+            else:
+                need = expectedCount - xmin  # 负数：车不够，下发调空车
+                direction = "in"
+                direction_text = f"车不够，需调入{abs(need)}辆"
+                direction_icon = "bi-arrow-down"
+                direction_color = "warning"
         else:
             need = 0
             direction = "none"
@@ -646,7 +671,11 @@ def calculate_area_balance(region_key, region_config):
     can_dispatch = True
     mutex_reason = ""
     deadlock_cancelled = 0  # 解死锁取消计数
-    if need != 0:
+    # 夜班/回库区(xmin=xmax=0)禁用解死锁：不下发新"来"任务、不取消pending任务
+    # 避免 pending 任务触发"dispatch→cancel→dispatch"死循环
+    # 等白班自然恢复后解死锁功能自动生效
+    skip_deadlock = (xmin == 0 and xmax == 0)
+    if need != 0 and not skip_deadlock:
         for t in region_config.get('templates', []):
             task_type = _normalize_task_type(t)
             # 只检查空车模板
@@ -2723,14 +2752,14 @@ def _clean_stale_device_history(region_key):
 
 
 def _sync_device_history(region_key, api_devices):
-    """将API返回的设备列表同步到 device_history.json（匹配模式）
+    """将API返回的设备列表同步到 device_history.json
     
-    - 只更新 deviceCode 在 history 中已存在的设备（匹配模式）
-    - API 返回但不在 history 中的设备：抛弃不记录
+    - 匹配模式：更新 deviceCode 在 history 中已存在的设备
+    - 兜底初始化：history 为空时，将 API 设备全量加入（解决初始空历史无法自举问题）
     - 不删除任何记录（删除由48h清理负责）
     
     Returns:
-        {'total': int, 'updated': int, 'skipped': int}
+        {'total': int, 'updated': int, 'added': int, 'skipped': int}
     """
     history = _load_device_history(region_key)
     now = datetime.now().isoformat()
@@ -2738,7 +2767,9 @@ def _sync_device_history(region_key, api_devices):
     # 建立 deviceCode 索引
     history_map = {d['deviceCode']: d for d in history}
     updated_count = 0
+    added_count = 0
     skipped_count = 0
+    is_bootstrap = (len(history) == 0)  # 兜底初始化标志
     
     for dev in api_devices:
         dc = dev.get('deviceCode', '')
@@ -2756,12 +2787,25 @@ def _sync_device_history(region_key, api_devices):
             if dev_state not in ('Offline', 'Downlined'):
                 existing['update_time'] = now
             updated_count += 1
+        elif is_bootstrap:
+            # 兜底初始化：history 为空时，将 API 设备全量加入
+            dev_state = dev.get('state', '')
+            history.append({
+                'deviceCode': dc,
+                'deviceNum': dev.get('deviceName', ''),
+                'deviceName': dev.get('deviceName', ''),
+                'state': dev_state,
+                'battery': dev.get('battery', ''),
+                'create_time': now,
+                'update_time': now if dev_state not in ('Offline', 'Downlined') else ''
+            })
+            added_count += 1
         else:
-            # 不在 history 中，抛弃
+            # 不在 history 中，抛弃（匹配模式）
             skipped_count += 1
     
     _save_device_history(region_key, history)
-    return {'total': len(history), 'updated': updated_count, 'skipped': skipped_count}
+    return {'total': len(history), 'updated': updated_count, 'added': added_count, 'skipped': skipped_count}
 
 
 def _update_current_count_from_api(region_key, api_devices):
