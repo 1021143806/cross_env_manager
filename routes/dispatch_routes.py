@@ -5,7 +5,7 @@
 """
 
 # 调车模块版本号（修改本文件时递增末尾数字）
-DISPATCH_VERSION = '2.1.11'
+DISPATCH_VERSION = '2.2.0'
 
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response
 from functools import wraps
@@ -87,6 +87,43 @@ def _get_empty_task_limit(region_config):
 
 # 解死锁冷却期记录 {region_key: expiry_timestamp}
 _deadlock_cooldowns = {}
+
+# 解死锁事件计数（用于动态延长冷却期）
+_deadlock_event_count = {}  # {region_key: consecutive_count}
+_DEADLOCK_COOLDOWN_BASE = 120      # 基础冷却 120s
+_DEADLOCK_COOLDOWN_INCREMENT = 60  # 每次 +60s
+_DEADLOCK_COOLDOWN_MAX = 600       # 上限 600s（10分钟）
+
+# 解死锁取消时间戳（用于频率保护）
+_deadlock_cancel_timestamps = {}    # {region_key: [timestamp, ...]}
+_DEADLOCK_CANCEL_MAX_PER_HOUR = 5  # 每小时最多取消5次
+
+def _get_dynamic_deadlock_cooldown(region_key):
+    """获取动态冷却期（按连续次数递增）"""
+    count = _deadlock_event_count.get(region_key, 0)
+    cooldown = min(_DEADLOCK_COOLDOWN_BASE + count * _DEADLOCK_COOLDOWN_INCREMENT, _DEADLOCK_COOLDOWN_MAX)
+    return cooldown
+
+def _reset_deadlock_event_count(region_key):
+    """重置解死锁事件计数（无死锁时调用）"""
+    if region_key in _deadlock_event_count:
+        del _deadlock_event_count[region_key]
+
+def _record_cancel_timestamp(region_key):
+    """记录解死锁取消时间戳"""
+    now = time.time()
+    times = _deadlock_cancel_timestamps.get(region_key, [])
+    times.append(now)
+    # 只保留最近1小时
+    _deadlock_cancel_timestamps[region_key] = [t for t in times if now - t < 3600]
+
+def _is_cancel_too_frequent(region_key):
+    """检查解死锁取消是否过于频繁（>= N次/小时）"""
+    now = time.time()
+    times = _deadlock_cancel_timestamps.get(region_key, [])
+    times = [t for t in times if now - t < 3600]
+    _deadlock_cancel_timestamps[region_key] = times
+    return len(times) >= _DEADLOCK_CANCEL_MAX_PER_HOUR
 
 def _set_deadlock_cooldown(region_key, cooldown_seconds=120):
     """设置解死锁冷却期，冷却期内该区域两个方向都不下发"""
@@ -698,6 +735,18 @@ def calculate_area_balance(region_key, region_config):
                         can_dispatch = False
                         mutex_reason = f"pending {template_code} task, mutex"
                         break
+                    # 解死锁取消频率保护：1小时内取消 >= N 次时暂停
+                    if _is_cancel_too_frequent(region_key):
+                        cooldown = _get_dynamic_deadlock_cooldown(region_key)
+                        _deadlock_event_count[region_key] = _deadlock_event_count.get(region_key, 0) + 1
+                        _set_deadlock_cooldown(region_key, cooldown)
+                        print(f"[Dispatch] 解死锁取消频繁(>{_DEADLOCK_CANCEL_MAX_PER_HOUR}次/h)跳过取消，冷却{cooldown}s: {region_key}")
+                        write_global_log('execute_mutex', region_key,
+                            f'解死锁取消过于频繁(>{_DEADLOCK_CANCEL_MAX_PER_HOUR}次/小时)，跳过取消，冷却{cooldown}s',
+                            level='warning')
+                        can_dispatch = False
+                        mutex_reason = f"cancel too frequent, cooldown {cooldown}s"
+                        break
                     for pt in deadlock_tasks:
                         oid = pt.get('order_id', '')
                         if not oid:
@@ -733,14 +782,21 @@ def calculate_area_balance(region_key, region_config):
                         pending_after = [t for t in tasks if t.get('status') in (6, 9, 10) and not t.get('_low_battery')]
                         if not pending_after:
                             continue  # 阻塞已解除，继续检查下一个模板
-                    # 解死锁取消后，记录冷却时间，冷却期内两个方向都不下发
+                    # 解死锁取消后，记录冷却时间（动态递增），冷却期内两个方向都不下发
                     # 避免 in/out 互相阻塞形成"取消→下发→取消"死循环
-                    _set_deadlock_cooldown(region_key, cooldown_seconds=120)
+                    cooldown = _get_dynamic_deadlock_cooldown(region_key)
+                    _deadlock_event_count[region_key] = _deadlock_event_count.get(region_key, 0) + 1
+                    _record_cancel_timestamp(region_key)
+                    _set_deadlock_cooldown(region_key, cooldown)
                     dispatch_count = 0
                     need = 0
                     can_dispatch = False
                     mutex_reason = f"pending {template_code} task, mutex"
                     break
+    
+    # 无死锁时重置事件计数（连续死锁才递增冷却期）
+    if deadlock_cancelled == 0 and can_dispatch:
+        _reset_deadlock_event_count(region_key)
     
     # 最近一次调度事件
     last_calc_info = _get_last_calc_info(region_key)
