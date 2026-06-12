@@ -917,8 +917,11 @@ async function saveInlineConfig() {
             // 更新本地缓存的版本号
             _editorConfig._version = result.new_version || (clientVersion + 1);
             showConfigStatus('配置已保存！', 'success');
-            // 刷新下发页面的下拉框（由 addtask.js 管理）
-            if (typeof initForm === 'function') initForm();
+            // 同步到全局 config 对象（addtask.js 使用），刷新下拉分组和表单
+            try {
+                Object.assign(config, JSON.parse(JSON.stringify(_editorConfig)));
+                if (typeof updateTaskOptions === 'function') updateTaskOptions();
+            } catch(e) { console.warn('同步配置失败，请刷新页面:', e); }
         } else if (response.status === 409) {
             // 版本冲突 — 询问是否强制覆盖
             const forceOverwrite = confirm(
@@ -942,7 +945,10 @@ async function saveInlineConfig() {
                 if (retryRes.ok && retryResult.success) {
                     _editorConfig._version = retryResult.new_version || (clientVersion + 1);
                     showConfigStatus('配置已强制覆盖保存！', 'success');
-                    if (typeof initForm === 'function') initForm();
+                    try {
+                        Object.assign(config, JSON.parse(JSON.stringify(_editorConfig)));
+                        if (typeof updateTaskOptions === 'function') updateTaskOptions();
+                    } catch(e) { console.warn('同步配置失败，请刷新页面:', e); }
                 } else {
                     showConfigStatus('强制覆盖失败: ' + (retryResult.error || '未知错误'), 'error');
                 }
