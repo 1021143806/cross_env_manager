@@ -630,7 +630,8 @@ function renderAreaList() {
     const areas = Object.keys(_editorConfig.areas || {}).sort();
     list.innerHTML = areas.map(name => `
         <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center ${_selectedArea === name ? 'active' : ''}"
-                onclick="selectArea('${name.replace(/'/g, "\\'")}')">
+                onclick="selectArea('${name.replace(/'/g, "\\'")}')"
+                ondblclick="event.stopPropagation();renameArea('${name.replace(/'/g, "\\'")}')">
             <span>${escHtml(name)}</span>
             <span>
                 <span class="badge bg-secondary">${Object.keys(_editorConfig.areas[name]?.tasks || {}).length}</span>
@@ -718,6 +719,26 @@ function addArea() {
         _editorConfig.areas[trimmed] = { tasks: {} };
         renderAreaList();
         showConfigStatus('区域 "' + trimmed + '" 已添加（尚未保存）', 'info');
+    };
+    new bootstrap.Modal(document.getElementById('area-edit-modal')).show();
+}
+
+function renameArea(oldName) {
+    if (!_editorConfig || !_editorConfig.areas[oldName]) return;
+    document.getElementById('area-edit-modal-title').textContent = '重命名区域';
+    document.getElementById('area-edit-name').value = oldName;
+    _pendingAreaCallback = function(newName) {
+        const trimmed = newName.trim();
+        if (!trimmed || trimmed === oldName) return;
+        if (_editorConfig.areas[trimmed]) {
+            showConfigStatus('该名称已存在', 'error');
+            return;
+        }
+        _editorConfig.areas[trimmed] = _editorConfig.areas[oldName];
+        delete _editorConfig.areas[oldName];
+        if (_selectedArea === oldName) _selectedArea = trimmed;
+        renderAreaList();
+        showConfigStatus('区域已重命名（尚未保存）', 'info');
     };
     new bootstrap.Modal(document.getElementById('area-edit-modal')).show();
 }

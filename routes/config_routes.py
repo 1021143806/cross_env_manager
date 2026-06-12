@@ -87,10 +87,9 @@ def addtask_help():
 
 @config_bp.route('/config-editor')
 @login_required
-@admin_required
 def config_editor():
-    """独立配置编辑器页面"""
-    return render_template('addTask/config_editor.html')
+    """统一跳转到 /addtask/config-view（内联配置编辑器）"""
+    return redirect(url_for('config.addtask_config_view'))
 
 
 # ═══════════════════════════════════════════════════════════════

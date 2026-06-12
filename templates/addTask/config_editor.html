@@ -634,25 +634,6 @@ const config = ${JSON.stringify(configData, null, 4)};`;
                     `;
                 });
                 areaTreeEl.innerHTML = html || '<div class="text-muted text-center py-3">暂无区域，请新增</div>';
-                
-                document.querySelectorAll('.area-item .area-name-text').forEach(el => {
-                    el.addEventListener('click', (e) => {
-                        const areaDiv = e.target.closest('.area-item');
-                        selectArea(areaDiv.dataset.areaName);
-                    });
-                });
-                document.querySelectorAll('.rename-area-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        openAreaModal('rename', btn.dataset.area);
-                    });
-                });
-                document.querySelectorAll('.delete-area-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        deleteArea(btn.dataset.area);
-                    });
-                });
             }
 
             function selectArea(areaName) {
@@ -1796,6 +1777,30 @@ const config = ${formatted};`;
             // ---------- 事件绑定 ----------
             function bindEvents() {
                 document.getElementById('add-area-btn').addEventListener('click', () => openAreaModal('add'));
+                
+                // 区域树委托事件（避免 renderAreaTree 重绘后监听器丢失）
+                const areaTree = document.getElementById('area-tree');
+                if (areaTree) {
+                    areaTree.addEventListener('click', (e) => {
+                        const item = e.target.closest('.area-item');
+                        if (!item) return;
+                        if (e.target.closest('.rename-area-btn')) {
+                            openAreaModal('rename', item.dataset.areaName);
+                            return;
+                        }
+                        if (e.target.closest('.delete-area-btn')) {
+                            deleteArea(item.dataset.areaName);
+                            return;
+                        }
+                        selectArea(item.dataset.areaName);
+                    });
+                    areaTree.addEventListener('dblclick', (e) => {
+                        const item = e.target.closest('.area-item');
+                        if (!item || e.target.closest('.area-actions')) return;
+                        openAreaModal('rename', item.dataset.areaName);
+                    });
+                }
+                
                 document.getElementById('add-task-btn').addEventListener('click', createNewTask);
                 document.getElementById('add-path-option').addEventListener('click', addPathOption);
                 
