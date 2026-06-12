@@ -26,7 +26,8 @@
             else if (path.indexOf('/postlook') === 0) mod = 'postlook';
             else if (path.indexOf('/monitor') === 0 || path.indexOf('/stats') === 0 ||
                      path.indexOf('/platform-switch') === 0 || path.indexOf('/docs') === 0 ||
-                     path.indexOf('/system/config') === 0 || path.indexOf('/config-editor') === 0) mod = 'system';
+                     path.indexOf('/system/config') === 0 || path.indexOf('/config-editor') === 0 ||
+                     path.indexOf('/system/upgrade') === 0) mod = 'system';
             document.documentElement.setAttribute('data-module', mod);
 
             // --- 主题（从 localStorage 读取，默认 dark）---
