@@ -448,6 +448,14 @@ const config = ${JSON.stringify(configData, null, 4)};`;
                     console.log('自动添加 _version 字段: 0');
                 }
                 
+                // 1b. 确保 _features 字段存在（辊筒任务开关等新功能依赖）
+                if (!compatibleConfig._features || typeof compatibleConfig._features !== 'object') {
+                    compatibleConfig._features = { enable_roller_task: true };
+                }
+                if (compatibleConfig._features.enable_roller_task === undefined) {
+                    compatibleConfig._features.enable_roller_task = true;
+                }
+                
                 // 2. 确保有 general 字段
                 if (!compatibleConfig.general || typeof compatibleConfig.general !== 'object') {
                     compatibleConfig.general = {
