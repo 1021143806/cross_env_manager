@@ -1143,7 +1143,18 @@ function renderAreas(areas) {
                             </div>
                         </div>
                     </div>
-                    <div class="device-grid" id="devices-${area.region_key}">
+                     ${area.deadlock_cooldown || area.deadlock_cancel_frequent ? `
+                     <div style="margin:0 1rem 0.5rem;padding:0.5rem 0.75rem;border-radius:8px;background:rgba(255,193,7,0.12);border:1px solid rgba(255,193,7,0.3);display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;">
+                         <i class="bi bi-shield-exclamation" style="color:#ffc107;font-size:1.1rem;"></i>
+                         <span>
+                             ${area.deadlock_cancel_frequent
+                                 ? `⚠️ 取消频繁(${area.deadlock_cancelled_this_hour}次/h)，已暂停调度`
+                                 : `⏳ 解死锁冷却中${area.deadlock_cooldown_remaining > 0 ? '，剩余' + Math.ceil(area.deadlock_cooldown_remaining / 60) + '分钟' : ''}`
+                             }
+                         </span>
+                     </div>
+                     ` : ''}
+                     <div class="device-grid" id="devices-${area.region_key}">
                         ${renderDeviceIcons(filterCurrentDevices(area.current_devices || [], area.pending_devices || []), false, area.low_battery_threshold)}
                         ${renderDeviceIcons(area.pending_devices || [], true, area.low_battery_threshold)}
                     </div>

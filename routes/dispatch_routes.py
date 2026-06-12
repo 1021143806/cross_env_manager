@@ -5,7 +5,7 @@
 """
 
 # 调车模块版本号（修改本文件时递增末尾数字）
-DISPATCH_VERSION = '2.2.0'
+DISPATCH_VERSION = '2.2.1'
 
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response
 from functools import wraps
@@ -831,6 +831,10 @@ def calculate_area_balance(region_key, region_config):
         "direction_color": direction_color,
         "can_dispatch": can_dispatch,
         "mutex_reason": mutex_reason,
+        "deadlock_cooldown": _is_deadlock_cooldown(region_key),
+        "deadlock_cooldown_remaining": max(0, int(_deadlock_cooldowns.get(region_key, 0) - time.time())),
+        "deadlock_cancel_frequent": _is_cancel_too_frequent(region_key),
+        "deadlock_cancelled_this_hour": len([t for t in _deadlock_cancel_timestamps.get(region_key, []) if time.time() - t < 3600]),
         "time_slot_active": time_slot_active,
         "time_slot_matched": time_slot_matched,
         "time_slot_matched_count": time_slot_matched_count,
