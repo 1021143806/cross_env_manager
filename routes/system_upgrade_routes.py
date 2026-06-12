@@ -21,13 +21,14 @@ def _get_upgrade_svc():
     if _upgrade_svc is None:
         from services.upgrade_service import (
             do_upgrade, do_rollback, get_upgrade_records, trigger_restart,
-            BASE_DIR, EXCLUDE_PATTERNS, MAX_BACKUPS,
+            get_version_info, BASE_DIR, EXCLUDE_PATTERNS, MAX_BACKUPS,
         )
         _upgrade_svc = {
             'do_upgrade': do_upgrade,
             'do_rollback': do_rollback,
             'get_upgrade_records': get_upgrade_records,
             'trigger_restart': trigger_restart,
+            'get_version_info': get_version_info,
             'BASE_DIR': BASE_DIR,
             'EXCLUDE_PATTERNS': EXCLUDE_PATTERNS,
             'MAX_BACKUPS': MAX_BACKUPS,
@@ -60,6 +61,15 @@ def admin_required(f):
 
 
 # ========== 页面 ==========
+
+
+@upgrade_bp.route('/api/system/version-info', methods=['GET'])
+@login_required
+def api_version_info():
+    """获取服务器版本信息（版本号 + git commit）"""
+    svc = _get_upgrade_svc()
+    from services.upgrade_service import get_version_info
+    return jsonify({'success': True, 'info': get_version_info()})
 
 
 @upgrade_bp.route('/system/upgrade', methods=['GET'])

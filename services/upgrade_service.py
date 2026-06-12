@@ -59,6 +59,42 @@ def _should_exclude(relative_path: str) -> bool:
     return False
 
 
+def _get_git_commit() -> str:
+    """获取当前 git commit hash（若 .git 存在）"""
+    git_head = os.path.join(BASE_DIR, '.git', 'HEAD')
+    if not os.path.exists(git_head):
+        return ''
+    try:
+        with open(git_head, 'r') as f:
+            ref_line = f.read().strip()
+        if ref_line.startswith('ref: '):
+            ref_path = os.path.join(BASE_DIR, '.git', ref_line[5:])
+            if os.path.exists(ref_path):
+                with open(ref_path, 'r') as f:
+                    return f.read().strip()[:40]
+            # packed-refs 场景
+            packed_refs = os.path.join(BASE_DIR, '.git', 'packed-refs')
+            if os.path.exists(packed_refs):
+                with open(packed_refs, 'r') as f:
+                    for line in f:
+                        if ref_line[5:] in line:
+                            return line.split()[0][:40]
+        else:
+            # detached HEAD
+            return ref_line[:40]
+    except Exception:
+        pass
+    return ''
+
+
+def get_version_info() -> dict:
+    """获取服务器版本信息"""
+    return {
+        'app_version': _get_app_version(),
+        'git_commit': _get_git_commit(),
+    }
+
+
 def _get_app_version() -> str:
     """从 app.py 读取 APP_VERSION"""
     try:
@@ -172,32 +208,48 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
         # 4. 备份项目文件（代码部分，不含排除项）
         _backup_project_files(backup_path)
 
-        # 5. 解压到临时目录
+        # 5. 校验增量包版本
         extract_dir = os.path.join(BACKUP_DIR, f'_extract_{timestamp}')
         os.makedirs(extract_dir, exist_ok=True)
 
         with zipfile.ZipFile(zip_path, 'r') as zf:
-            # 检查是否包含 app.py（粗略验证是合法的升级包）
+            # 检查是否包含 app.py（全量包有根目录 app.py，增量包有 version.json）
             all_names = [n.replace('\\', '/') for n in zf.namelist()]
             has_app_py = any(
                 n.endswith('app.py') and '/' not in n.rstrip('/')
                 for n in all_names
             )
-            if not has_app_py:
+            has_version_json = 'version.json' in all_names
+            if not has_app_py and not has_version_json:
                 shutil.rmtree(extract_dir)
                 os.remove(zip_path)
                 shutil.rmtree(backup_path)
-                return {'success': False, 'error': 'ZIP 包不合法：未找到 app.py（请确认是项目根目录打包）'}
+                return {'success': False, 'error': 'ZIP 包不合法：未找到 app.py 或 version.json'}
 
             zf.extractall(extract_dir)
 
-        # 6. 尝试读取 version.json（升级说明）
+        # 6. 尝试读取 version.json（升级说明 + 增量信息）
         version_info = _read_version_json(extract_dir)
         release_notes = version_info.get('changes', []) or []
         release_title = version_info.get('title', '')
+        from_version = version_info.get('from_version', '')
+        files_changed = version_info.get('files_changed', {})
         # 如果 version.json 没写 changes，用 remark 兜底
         if not release_notes and remark:
             release_notes = [remark]
+
+        # 6.1 增量包：校验 from_version
+        if from_version:
+            current_ver = _get_app_version()
+            if from_version != current_ver:
+                shutil.rmtree(extract_dir)
+                os.remove(zip_path)
+                shutil.rmtree(backup_path)
+                return {
+                    'success': False,
+                    'error': f'版本不匹配：升级包基线 v{from_version}，当前服务器 v{current_ver}。'
+                             f'请确认服务器版本后再生成升级包。'
+                }
 
         # 7. 逐文件覆盖（跳过排除项）
         overlay_count = 0
@@ -217,6 +269,18 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
                 shutil.copy2(src_path, dst_path)
                 overlay_count += 1
 
+        # 7.1 增量包：清理被删除的文件
+        deleted_paths = files_changed.get('D', []) if isinstance(files_changed, dict) else []
+        delete_count = 0
+        for rel_path in deleted_paths:
+            dst_path = os.path.join(BASE_DIR, rel_path.replace('\\', '/'))
+            if os.path.isfile(dst_path):
+                os.remove(dst_path)
+                delete_count += 1
+            elif os.path.isdir(dst_path):
+                shutil.rmtree(dst_path, ignore_errors=True)
+                delete_count += 1
+
         # 8. 记录升级信息
         new_version = _get_app_version()  # 覆盖后可能变了
         record = {
@@ -230,6 +294,12 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
             'release_title': release_title or f'从 v{old_version} 升级到 v{new_version}',
             'release_notes': release_notes,
         }
+        # 增量包特有信息
+        if from_version:
+            record['upgrade_type'] = 'incremental'
+            record['from_version'] = from_version
+        if delete_count:
+            record['files_deleted'] = delete_count
         # 清理空字段
         if not record['release_notes']:
             record.pop('release_notes', None)
@@ -265,13 +335,18 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
         if os.path.exists(zip_path):
             os.remove(zip_path)
 
-    return {
+    result = {
         'success': True,
         'message': f'升级完成（{old_version} → {new_version}），系统3秒后自动重启...',
         'backup': backup_name,
         'release_title': release_title,
         'release_notes': release_notes,
     }
+    if from_version:
+        result['upgrade_type'] = 'incremental'
+    if delete_count:
+        result['files_deleted'] = delete_count
+    return result
 
 
 def _backup_project_files(backup_path: str):

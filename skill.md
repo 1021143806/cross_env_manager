@@ -312,4 +312,10 @@ venv/bin/python3 test/???.py
   - 新增 `doc/modules/` 5 个模块介绍文件（dispatch/addtask/query/config/upgrade）
   - 新增 `doc/README.md` 文档目录索引
   - `skill/` 重命名：`skill_xxx.md` → `xxx.md`，新增 `upgrade.md`
+- 2026-06-12: **增量升级包支持** 完成。
+  - `GET /api/system/version-info` 返回版本号 + git commit hash
+  - `do_upgrade()` 支持增量包：读取 `version.json.from_version` 校验版本一致性，`files_changed.D` 清理废弃文件
+  - `scripts/build_upgrade.py` 构建工具：查询服务器版本 → `git diff` 找基线 → 仅打包变更文件 → 生成 `upgrade_vX_to_vY.zip`（62KB vs 3.1MB 全量）
+  - 增量包 `version.json` 结构：`from_version`/`to_version`/`from_commit`/`to_commit`/`type: incremental`/`files_changed: {A,M,D}`
+  - 全量包向后兼容（无 `from_version` 字段时跳过校验）
 - 2026-06-12: **辊筒任务模块 (v1.7.0)** 完成。`dispatch_config.json` 新增 `_features.enable_roller_task` 全局开关 + 任务级 `roller_task/roller_point/roller_point_label` 字段。前端 `addtask.js` 增加辊筒分组 `⏏️ 辊筒任务`、已下发缓存管理（localStorage + 15秒轮询 + 状态8自动释放 + capacity 满容阻止）、orderId 前缀 `RLLR_`。后端 `app.py` 新增 `_query_roller_task()` 函数，`/addtask/query` 按前缀 `RLLR_` → `:7000`（非跨环境）、`CEM_` → `:8315`（跨环境失败回退到辊筒 API）。`services/config_service.py` 的 `save_config()` 自动补全 `_features` 字段确保不缺失。`/config-editor` 跳转到 `/addtask/config-view`。区域列表双击重命名。配置编辑器 `ensureConfigCompatibility` 自动补全 `_features`。
