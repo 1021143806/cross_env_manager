@@ -35,6 +35,11 @@ EXCLUDE_PATTERNS = [
     '.gitignore',
     'skill.md',
     'README.md',
+    'deploy_iraypleos/',
+    'Plugin/postlook/deploy/',
+    'Plugin/postlook/venv/',
+    '__pycache__/',
+    '*.pyc',
 ]
 
 
@@ -124,9 +129,26 @@ def get_upgrade_records() -> list:
     return _read_upgrade_log()
 
 
-def do_upgrade(zip_path: str) -> dict:
+def _read_version_json(extract_dir: str) -> dict:
+    """从解压目录读取 version.json（如果存在）"""
+    vj_path = os.path.join(extract_dir, 'version.json')
+    if not os.path.exists(vj_path):
+        return {}
+    try:
+        with open(vj_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        # 删除 version.json 本身，防止覆盖到项目目录
+        os.remove(vj_path)
+        return data
+    except Exception:
+        return {}
+
+
+def do_upgrade(zip_path: str, remark: str = '') -> dict:
     """
     执行升级
+    zip_path: 升级包路径
+    remark:   可选的升级备注（如 "修复xxx，新增xxx"）
     返回: {"success": True/False, "message": "...", "backup": "backup_dir_name"}
     """
     # 1. 校验文件
@@ -169,7 +191,15 @@ def do_upgrade(zip_path: str) -> dict:
 
             zf.extractall(extract_dir)
 
-        # 6. 逐文件覆盖（跳过排除项）
+        # 6. 尝试读取 version.json（升级说明）
+        version_info = _read_version_json(extract_dir)
+        release_notes = version_info.get('changes', []) or []
+        release_title = version_info.get('title', '')
+        # 如果 version.json 没写 changes，用 remark 兜底
+        if not release_notes and remark:
+            release_notes = [remark]
+
+        # 7. 逐文件覆盖（跳过排除项）
         overlay_count = 0
         skip_count = 0
         for root, dirs, files in os.walk(extract_dir):
@@ -187,7 +217,7 @@ def do_upgrade(zip_path: str) -> dict:
                 shutil.copy2(src_path, dst_path)
                 overlay_count += 1
 
-        # 7. 记录升级信息
+        # 8. 记录升级信息
         new_version = _get_app_version()  # 覆盖后可能变了
         record = {
             'backup_name': backup_name,
@@ -197,22 +227,28 @@ def do_upgrade(zip_path: str) -> dict:
             'files_overlay': overlay_count,
             'files_skipped': skip_count,
             'status': 'success',
+            'release_title': release_title or f'从 v{old_version} 升级到 v{new_version}',
+            'release_notes': release_notes,
         }
+        # 清理空字段
+        if not record['release_notes']:
+            record.pop('release_notes', None)
         records = _read_upgrade_log()
         records.insert(0, record)
         _write_upgrade_log(records)
 
-        # 8. 写入备份 meta
+        # 9. 写入备份 meta
         meta = {
             'timestamp': timestamp,
             'old_version': old_version,
             'new_version': new_version,
-            'description': f'从 v{old_version} 升级到 v{new_version}',
+            'description': release_title or f'从 v{old_version} 升级到 v{new_version}',
+            'release_notes': release_notes,
         }
         with open(os.path.join(backup_path, 'meta.json'), 'w', encoding='utf-8') as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
 
-        # 9. 自动清理旧备份
+        # 10. 自动清理旧备份
         _cleanup_old_backups()
 
     except Exception as e:
@@ -233,6 +269,8 @@ def do_upgrade(zip_path: str) -> dict:
         'success': True,
         'message': f'升级完成（{old_version} → {new_version}），系统3秒后自动重启...',
         'backup': backup_name,
+        'release_title': release_title,
+        'release_notes': release_notes,
     }
 
 

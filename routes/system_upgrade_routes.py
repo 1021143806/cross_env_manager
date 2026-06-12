@@ -85,7 +85,9 @@ def upgrade_page():
 def api_upgrade():
     """
     上传并执行升级
-    参数: multipart/form-data, file=升级包.zip
+    参数: multipart/form-data
+      file=升级包.zip  (必需)
+      remark=升级说明  (可选，如 "修复xxx，新增xxx")
     """
     if 'file' not in request.files:
         return jsonify({'success': False, 'error': '缺少 file 字段'}), 400
@@ -94,22 +96,30 @@ def api_upgrade():
     if not file.filename or not file.filename.lower().endswith('.zip'):
         return jsonify({'success': False, 'error': '仅支持 .zip 文件'}), 400
 
+    # 可选：升级备注
+    remark = request.form.get('remark', '').strip()
+
     # 保存上传文件到临时路径
     tmp_fd, tmp_path = tempfile.mkstemp(suffix='.zip')
     os.close(tmp_fd)
     file.save(tmp_path)
 
     svc = _get_upgrade_svc()
-    result = svc['do_upgrade'](tmp_path)
+    result = svc['do_upgrade'](tmp_path, remark=remark)
 
     if result['success']:
         # 延迟重启
         svc['trigger_restart'](delay=3)
-        return jsonify({
+        resp = {
             'success': True,
             'message': result['message'],
             'backup': result.get('backup', ''),
-        })
+        }
+        if result.get('release_notes'):
+            resp['release_notes'] = result['release_notes']
+        if result.get('release_title'):
+            resp['release_title'] = result['release_title']
+        return jsonify(resp)
     else:
         return jsonify({'success': False, 'error': result.get('error', '升级失败')}), 500
 

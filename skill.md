@@ -26,6 +26,10 @@ description: 该cross_env_manager项目相关指导操作
 - deploy_iraypleos/ - 存放离线部署相关脚本和资源
 - test/ - 存放测试脚本和测试资源
 
+- skill/ - 存放需要用到的技能，需要同步阅读，在这里更新并整理，api文档也需要在这里更新汇总整理分类，允许创建文件夹，更新后需要同步修改
+
+- doc/ - 存放相关文档，对应模块有对应的文档，在这里更新并整理，api文档也需要在这里更新汇总整理分类，允许创建文件夹，更新后需要同步修改
+
 ## 离线部署相关
 
 ### 部署脚本位置
@@ -291,5 +295,21 @@ venv/bin/python3 test/???.py
    - **表单保留**：提交后 `refreshCountDisplay()` 仅更新文本，不丢失已选区。
 - 2026-06-02: **设备同步功能 (Device Sync)** 完成。基于原 `/python快捷处理sql脚本/` 三个脚本整合进 Web UI。Service 层 `services/device_sync_service.py` 封装三大同步逻辑（型号/设备主表/设备扩展表），连接管理通过 pymysql 直连多 IP（共享 `config/env.toml` 凭据）。路由挂 `template_bp`（5个API端点），SSE 流式推送实时日志。页面 `templates/template/device_sync.html` 卡片式布局：服务器选择+测试连接 → 同步配置(三开关) → 预览+执行 → SSE 实时日志流。入口：首页「设备同步」按钮→`/template/device-sync`。关键 SQL：SELECT agv_model/agv_robot/agv_robot_ext → INSERT IGNORE 到目标库。服务器 IP 从 `fy_cross_model_process_detail.task_servicec` 解析，目标区域从 `bms_area WHERE LEVEL=1` 获取。
 - 2026-06-03: **交接点配置管理 (Join QR Node)** 完成。管理 `join_qr_node_info` 表配对配置，以 `qr_content` 为配对单位（一个地码值对应对侧2条记录）。Service 层 `services/join_qr_service.py` 实现配对列表（按 qr_content 分组自动判断 type=0跨服务器/1同服务器）、配对新增（双栏表单→2条 INSERT + 基准服务器副本）、配对编辑（先删后加）、模板交接点检查。路由 `routes/join_qr_routes.py`（6页面+2API）。页面 `templates/join_qr_nodes/list.html`（筛选+配对展示）+ `edit.html`（双栏表单自动 type）。基准服务器 `10.68.2.32`：当新增配对的服务器不含 2.32 时自动创建基准副本。模板详情操作面板新增「交接点配置」自动检查：GET `/api/template/<id>/join_qr_check` 逐个检查每个子任务服务器的 `join_qr_node_info` 配置状态。入口：首页「交接点」→`/pair/list`。关键 SQL：INSERT INTO join_qr_node_info (area_id,type,qr_content,environment_ip,enable) VALUES；DELETE WHERE qr_content=%s；SELECT COUNT(*) WHERE environment_ip=%s AND area_id=%s。
-- 2026-06-12: **升级管理模块** 完成。新增 `services/upgrade_service.py`（核心逻辑：备份、解压覆盖（含排除规则）、回滚、升级记录管理、自动清理旧备份（MAX_BACKUPS=10）、延时重启）、`routes/system_upgrade_routes.py`（`GET /system/upgrade` 管理页面 + `POST /api/system/upgrade` 上传升级API + 记录/回滚 API）、`templates/system/upgrade.html`（版本信息 + 拖拽上传 + 升级记录表 + 一键回滚）。侧边栏系统管理组新增「升级管理」。后端按前缀路由匹配 `/system/upgrade` 归属 system 模块。上传 ZIP 自动备份 → 解压覆盖（保留 config 持久文件）→ 3 秒后 supervisorctl 重启。
+- 2026-06-12: **升级管理模块** 完成。
+  - 新增 `services/upgrade_service.py`（备份、解压覆盖、回滚、记录管理、自动清理 MAX_BACKUPS=10、延时重启）
+  - 新增 `routes/system_upgrade_routes.py`（`GET /system/upgrade` 页面 + `POST /api/system/upgrade` 上传升级 API + 记录/回滚 API）
+  - 新增 `templates/system/upgrade.html`（版本信息 + 拖拽上传 + 升级记录表 + 一键回滚）
+  - 侧边栏系统管理组新增「升级管理」，后端路径匹配 `/system/upgrade` 归属 system 模块
+  - 升级包支持 `version.json`（ZIP 内带 changes 列表）或 `remark` 表单参数记录升级说明
+  - 升级记录表展示 release_title + release_notes 列表
+  - 真实升级测试通过（3.1M ZIP + 2730 文件 + 自动重启 + 记录持久化）
+- 2026-06-12: **Doc & Skill 目录整理**。
+  - `doc/API.md`（单文件 820 行）→ `doc/api/` 按模块拆分 9 个独立文件
+  - `doc/task_template_relation.md` → `doc/architecture/数据库关系.md`
+  - `doc/华睿相关开发要求.md` → `doc/dev/华睿要求.md`
+  - 新增 `doc/architecture/整体架构.md`（三层架构图 + 模块依赖 + 数据流 + 启动流程）
+  - 新增 `doc/dev/定制表开发要求.md`（CRUD 约束规则）
+  - 新增 `doc/modules/` 5 个模块介绍文件（dispatch/addtask/query/config/upgrade）
+  - 新增 `doc/README.md` 文档目录索引
+  - `skill/` 重命名：`skill_xxx.md` → `xxx.md`，新增 `upgrade.md`
 - 2026-06-12: **辊筒任务模块 (v1.7.0)** 完成。`dispatch_config.json` 新增 `_features.enable_roller_task` 全局开关 + 任务级 `roller_task/roller_point/roller_point_label` 字段。前端 `addtask.js` 增加辊筒分组 `⏏️ 辊筒任务`、已下发缓存管理（localStorage + 15秒轮询 + 状态8自动释放 + capacity 满容阻止）、orderId 前缀 `RLLR_`。后端 `app.py` 新增 `_query_roller_task()` 函数，`/addtask/query` 按前缀 `RLLR_` → `:7000`（非跨环境）、`CEM_` → `:8315`（跨环境失败回退到辊筒 API）。`services/config_service.py` 的 `save_config()` 自动补全 `_features` 字段确保不缺失。`/config-editor` 跳转到 `/addtask/config-view`。区域列表双击重命名。配置编辑器 `ensureConfigCompatibility` 自动补全 `_features`。
