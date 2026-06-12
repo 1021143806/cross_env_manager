@@ -1,0 +1,508 @@
+{% extends "base.html" %}
+{% block title %}升级管理{% endblock %}
+{% block extra_css %}
+<style>
+    .upgrade-section {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 1.25rem;
+        overflow: hidden;
+    }
+    .upgrade-section .section-header {
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .upgrade-section .section-body {
+        padding: 1rem 1.25rem;
+    }
+
+    /* 版本信息 */
+    .version-info {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.5rem;
+    }
+    .version-info .info-item {
+        flex: 1 1 160px;
+    }
+    .version-info .info-item .label {
+        font-size: 0.75rem;
+        opacity: 0.6;
+        margin-bottom: 0.15rem;
+    }
+    .version-info .info-item .value {
+        font-size: 0.95rem;
+        font-weight: 600;
+        font-family: 'SF Mono', 'Cascadia Code', monospace;
+    }
+
+    /* 上传区 */
+    .upload-zone {
+        border: 2px dashed var(--border-color);
+        border-radius: 12px;
+        padding: 2rem 1.5rem;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color 0.2s, background 0.2s;
+        position: relative;
+    }
+    .upload-zone:hover {
+        border-color: var(--accent);
+        background: var(--accent-light);
+    }
+    .upload-zone.dragover {
+        border-color: var(--accent);
+        background: var(--accent-light);
+    }
+    .upload-zone .icon {
+        font-size: 2.5rem;
+        color: var(--accent);
+        margin-bottom: 0.5rem;
+    }
+    .upload-zone .hint {
+        font-size: 0.85rem;
+        opacity: 0.7;
+    }
+    .upload-zone input[type="file"] {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+    }
+
+    /* 文件信息 */
+    .file-info {
+        display: none;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.6rem 1rem;
+        background: var(--accent-light);
+        border-radius: 8px;
+        margin-top: 0.75rem;
+    }
+    .file-info.show {
+        display: flex;
+    }
+    .file-info .name {
+        flex: 1;
+        font-weight: 500;
+        font-size: 0.85rem;
+    }
+    .file-info .size {
+        font-size: 0.8rem;
+        opacity: 0.6;
+        font-family: 'SF Mono', monospace;
+    }
+
+    /* 升级按钮 */
+    #btnUpgrade {
+        width: 100%;
+        padding: 0.6rem;
+        border-radius: 8px;
+        margin-top: 1rem;
+        font-weight: 600;
+    }
+
+    /* 排除列表 */
+    .exclude-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-top: 0.75rem;
+    }
+    .exclude-list .badge {
+        font-size: 0.72rem;
+        font-weight: 400;
+        padding: 0.2rem 0.5rem;
+    }
+
+    /* 升级记录表格 */
+    .record-table {
+        width: 100%;
+        font-size: 0.82rem;
+    }
+    .record-table th {
+        opacity: 0.6;
+        font-weight: 600;
+        padding: 0.5rem 0.6rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .record-table td {
+        padding: 0.5rem 0.6rem;
+        border-bottom: 1px solid var(--border-light);
+        vertical-align: middle;
+    }
+    .record-table tr:last-child td {
+        border-bottom: none;
+    }
+    .record-table .version-tag {
+        font-family: 'SF Mono', monospace;
+        font-size: 0.8rem;
+    }
+
+    /* 进度条动画 */
+    .progress-upgrade {
+        height: 6px;
+        border-radius: 3px;
+        margin-top: 0.75rem;
+        display: none;
+    }
+    .progress-upgrade.show {
+        display: block;
+    }
+
+    /* 结果提示 */
+    .result-box {
+        display: none;
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        margin-top: 0.75rem;
+        font-size: 0.85rem;
+    }
+    .result-box.show {
+        display: block;
+    }
+    .result-box.success {
+        background: rgba(52, 211, 153, 0.12);
+        border: 1px solid rgba(52, 211, 153, 0.3);
+        color: #34d399;
+    }
+    .result-box.error {
+        background: rgba(239, 68, 68, 0.12);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        color: #ef4444;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <h5 class="mb-3" style="font-weight:600;"><i class="bi bi-cloud-upload me-2"></i>升级管理</h5>
+
+    <!-- 当前版本 -->
+    <div class="upgrade-section">
+        <div class="section-header"><i class="bi bi-info-circle me-2"></i>当前版本</div>
+        <div class="section-body">
+            <div class="version-info">
+                <div class="info-item">
+                    <div class="label">应用版本</div>
+                    <div class="value">{{ app_version }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">项目路径</div>
+                    <div class="value" style="font-size:0.82rem;">{{ project_dir }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">运行端口</div>
+                    <div class="value">{{ request.host }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">Supervisor 进程</div>
+                    <div class="value">cross_env_manager</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 上传升级 -->
+    <div class="upgrade-section">
+        <div class="section-header"><i class="bi bi-upload me-2"></i>上传升级包</div>
+        <div class="section-body">
+            <div class="upload-zone" id="uploadZone">
+                <div class="icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                <div><strong>点击选择或拖拽 .zip 文件到此处</strong></div>
+                <div class="hint">仅支持 .zip 格式，最大 500MB</div>
+                <input type="file" id="fileInput" accept=".zip">
+            </div>
+
+            <div class="file-info" id="fileInfo">
+                <i class="bi bi-file-zip" style="font-size:1.2rem;"></i>
+                <span class="name" id="fileName"></span>
+                <span class="size" id="fileSize"></span>
+                <button class="btn btn-sm btn-outline-secondary" id="btnClearFile" title="移除文件">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+
+            <div class="progress progress-upgrade" id="progressBar">
+                <div class="progress-bar progress-bar-striped progress-bar-animated bg-info"
+                     style="width:100%">正在升级...</div>
+            </div>
+
+            <div class="result-box" id="resultBox"></div>
+
+            <button class="btn btn-primary" id="btnUpgrade" disabled>
+                <i class="bi bi-rocket-takeoff me-1"></i>开始升级
+            </button>
+
+            <div class="exclude-list">
+                <span style="font-size:0.75rem;opacity:0.6;width:100%;margin-bottom:0.2rem;">
+                    <i class="bi bi-shield-check me-1"></i>以下文件/目录将被保留，不受升级影响：
+                </span>
+                {% for pattern in exclude_patterns %}
+                <span class="badge bg-secondary">{{ pattern }}</span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- API 调用说明 -->
+    <div class="upgrade-section">
+        <div class="section-header">
+            <i class="bi bi-terminal me-2"></i>API 调用方式
+            <button class="btn btn-sm btn-outline-secondary" onclick="toggleApiHelp()">
+                <i class="bi bi-chevron-down"></i>
+            </button>
+        </div>
+        <div class="section-body" id="apiHelpBody" style="display:none;">
+            <pre style="background:var(--bg-secondary);padding:0.75rem;border-radius:8px;font-size:0.8rem;overflow-x:auto;">
+<span style="color:var(--accent);"># 通过 curl 升级</span>
+curl -X POST http://{{ request.host }}/api/system/upgrade \
+  -H "Cookie: session=你的SESSION_COOKIE" \
+  -F "file=@upgrade_v2.4.2.zip"
+
+<span style="color:var(--accent);"># 查看升级记录</span>
+curl http://{{ request.host }}/api/system/upgrade/records \
+  -H "Cookie: session=你的SESSION_COOKIE"
+
+<span style="color:var(--accent);"># 回滚到指定备份</span>
+curl -X POST http://{{ request.host }}/api/system/upgrade/rollback/升级备份目录名 \
+  -H "Cookie: session=你的SESSION_COOKIE"
+            </pre>
+        </div>
+    </div>
+
+    <!-- 升级记录 -->
+    <div class="upgrade-section">
+        <div class="section-header">
+            <i class="bi bi-clock-history me-2"></i>升级记录（保留最近 {{ max_backups }} 条）
+        </div>
+        <div class="section-body" style="padding:0;">
+            {% if records %}
+            <table class="record-table">
+                <thead>
+                    <tr>
+                        <th>时间</th>
+                        <th>版本变化</th>
+                        <th>状态</th>
+                        <th>文件数</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in records %}
+                    <tr>
+                        <td style="white-space:nowrap;">
+                            {% set ts = r.timestamp %}
+                            {{ ts[:4] }}-{{ ts[4:6] }}-{{ ts[6:8] }}
+                            {{ ts[9:11] }}:{{ ts[11:13] }}:{{ ts[13:15] }}
+                        </td>
+                        <td>
+                            {% if r.status == 'rollback' %}
+                                <span class="version-tag text-warning">
+                                    {{ r.get('old_version', '?') }} ← {{ r.get('new_version', '?') }}
+                                </span>
+                                <span class="badge bg-warning ms-1" style="font-size:0.65rem;">回滚</span>
+                            {% else %}
+                                <span class="version-tag">
+                                    {{ r.get('old_version', '?') }} → {{ r.get('new_version', '?') }}
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if r.status == 'success' %}
+                                <span class="badge bg-success">成功</span>
+                            {% elif r.status == 'rollback' %}
+                                <span class="badge bg-warning text-dark">回滚</span>
+                            {% else %}
+                                <span class="badge bg-danger">失败</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ r.get('files_overlay', '-') }}</td>
+                        <td>
+                            {% if r.backup_name and r.backup_name.startswith('upgrade_') %}
+                            <button class="btn btn-sm btn-outline-warning py-0 px-2"
+                                    onclick="rollback('{{ r.backup_name }}')"
+                                    title="回滚到此版本">
+                                <i class="bi bi-arrow-counterclockwise"></i> 回滚
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div style="padding:2rem;text-align:center;opacity:0.5;">
+                <i class="bi bi-inbox" style="font-size:2rem;display:block;margin-bottom:0.5rem;"></i>
+                暂无升级记录
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ========== 文件选择 ==========
+const fileInput = document.getElementById('fileInput');
+const uploadZone = document.getElementById('uploadZone');
+const fileInfo = document.getElementById('fileInfo');
+const fileName = document.getElementById('fileName');
+const fileSize = document.getElementById('fileSize');
+const btnUpgrade = document.getElementById('btnUpgrade');
+const btnClearFile = document.getElementById('btnClearFile');
+const progressBar = document.getElementById('progressBar');
+const resultBox = document.getElementById('resultBox');
+
+let selectedFile = null;
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+    return (bytes/(1024*1024)).toFixed(1) + ' MB';
+}
+
+fileInput.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+        alert('仅支持 .zip 格式');
+        this.value = '';
+        return;
+    }
+    selectedFile = file;
+    fileName.textContent = file.name;
+    fileSize.textContent = formatSize(file.size);
+    fileInfo.classList.add('show');
+    btnUpgrade.disabled = false;
+    resultBox.classList.remove('show');
+});
+
+btnClearFile.addEventListener('click', function() {
+    selectedFile = null;
+    fileInput.value = '';
+    fileInfo.classList.remove('show');
+    btnUpgrade.disabled = true;
+    resultBox.classList.remove('show');
+});
+
+// 拖拽
+uploadZone.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    this.classList.add('dragover');
+});
+uploadZone.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    this.classList.remove('dragover');
+});
+uploadZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    this.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.toLowerCase().endsWith('.zip')) {
+        fileInput.files = e.dataTransfer.files;
+        fileInput.dispatchEvent(new Event('change'));
+    } else {
+        alert('仅支持 .zip 格式');
+    }
+});
+
+// ========== 升级 ==========
+btnUpgrade.addEventListener('click', function() {
+    if (!selectedFile) return;
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    btnUpgrade.disabled = true;
+    btnUpgrade.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>升级中...';
+    progressBar.classList.add('show');
+    resultBox.classList.remove('show');
+
+    fetch('/api/system/upgrade', {
+        method: 'POST',
+        body: formData,
+    })
+    .then(res => res.json().then(data => ({status: res.status, data})))
+    .then(({status, data}) => {
+        progressBar.classList.remove('show');
+        resultBox.classList.add('show');
+
+        if (data.success) {
+            resultBox.className = 'result-box show success';
+            resultBox.innerHTML = '<i class="bi bi-check-circle me-1"></i> ' + data.message;
+            // 3 秒后自动刷新页面
+            setTimeout(() => {
+                resultBox.innerHTML += '<br><span style="font-size:0.8rem;">页面即将自动刷新...</span>';
+            }, 2000);
+            setTimeout(() => {
+                location.reload();
+            }, 4000);
+        } else {
+            resultBox.className = 'result-box show error';
+            resultBox.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i> ' + (data.error || '升级失败');
+            btnUpgrade.disabled = false;
+            btnUpgrade.innerHTML = '<i class="bi bi-rocket-takeoff me-1"></i>开始升级';
+        }
+    })
+    .catch(err => {
+        progressBar.classList.remove('show');
+        resultBox.className = 'result-box show error';
+        resultBox.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i> 请求失败: ' + err.message;
+        btnUpgrade.disabled = false;
+        btnUpgrade.innerHTML = '<i class="bi bi-rocket-takeoff me-1"></i>开始升级';
+    });
+});
+
+// ========== 回滚 ==========
+function rollback(backupName) {
+    if (!confirm(`确认回滚到备份 "${backupName}"？\n回滚前会自动备份当前代码，完成后系统将自动重启。`)) {
+        return;
+    }
+
+    const btn = event.target.closest('button');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    fetch('/api/system/upgrade/rollback/' + encodeURIComponent(backupName), {
+        method: 'POST',
+    })
+    .then(res => res.json().then(data => ({status: res.status, data})))
+    .then(({status, data}) => {
+        if (data.success) {
+            alert('✅ ' + data.message);
+            setTimeout(() => location.reload(), 3000);
+        } else {
+            alert('❌ ' + (data.error || '回滚失败'));
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> 回滚';
+        }
+    })
+    .catch(err => {
+        alert('❌ 请求失败: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> 回滚';
+    });
+}
+
+// ========== API 帮助折叠 ==========
+function toggleApiHelp() {
+    const body = document.getElementById('apiHelpBody');
+    const icon = event.currentTarget.querySelector('i');
+    if (body.style.display === 'none') {
+        body.style.display = 'block';
+        icon.className = 'bi bi-chevron-up';
+    } else {
+        body.style.display = 'none';
+        icon.className = 'bi bi-chevron-down';
+    }
+}
+</script>
+{% endblock %}
