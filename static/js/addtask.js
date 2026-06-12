@@ -7,7 +7,7 @@
 
             const shelfHistory = {};
             let _enableRollerTask = false;  // 全局辊筒任务开关（从 config._features 读取）
-            let queryLastClickTime = 0;
+            let _rollerRefreshTimer = null;  // 定时刷新 timer
             let priorityLastClickTime = 0;
             const lastCapacityLoadByCode = {};
 
@@ -22,6 +22,9 @@
             const taskPathError = document.getElementById('task-path-error');
             const rollerTaskInfo = document.getElementById('roller-task-info');
             const rollerPointDisplay = document.getElementById('roller-point-display');
+            const rollerSentOrders = document.getElementById('roller-sent-orders');
+            const rollerSentOrdersList = document.getElementById('roller-sent-orders-list');
+            const rollerCapacityBadge = document.getElementById('roller-capacity-badge');
             const submitBtn = document.getElementById('submit-btn');
             const responseBox = document.getElementById('response-box');
             const debugToggle = document.getElementById('debug-toggle');
@@ -688,6 +691,110 @@
                 }
             }
 
+            // ==================== 辊筒任务已下发缓存管理 ====================
+            const SENT_ORDERS_KEY = 'roller_sent_orders';
+
+            function getRollerSentOrders(area, taskName) {
+                try {
+                    const all = JSON.parse(localStorage.getItem(SENT_ORDERS_KEY) || '{}');
+                    return all[`${area}::${taskName}`] || [];
+                } catch { return []; }
+            }
+
+            function saveRollerSentOrders(area, taskName, orders) {
+                try {
+                    const all = JSON.parse(localStorage.getItem(SENT_ORDERS_KEY) || '{}');
+                    all[`${area}::${taskName}`] = orders;
+                    localStorage.setItem(SENT_ORDERS_KEY, JSON.stringify(all));
+                } catch (e) { console.warn('保存辊筒任务缓存失败:', e); }
+            }
+
+            function addRollerSentOrder(area, taskName, orderId, rollerPoint) {
+                const orders = getRollerSentOrders(area, taskName);
+                orders.unshift({ orderId, rollerPoint, dispatchedAt: Date.now() });
+                saveRollerSentOrders(area, taskName, orders);
+            }
+
+            async function checkAndCleanRollerOrders(area, taskName) {
+                const task = config.areas[area]?.tasks[taskName];
+                if (!task) return [];
+                const orders = getRollerSentOrders(area, taskName);
+                if (orders.length === 0) return [];
+
+                // 逐个查询状态，移除已完成的 (status===8)
+                const active = [];
+                for (const o of orders) {
+                    try {
+                        const res = await fetch('/addtask/query', {
+                            method: 'POST', headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ orderId: o.orderId })
+                        });
+                        if (res.status === 404) { active.push(o); continue; }
+                        const data = await res.json();
+                        if (data.success && data.mainTask) {
+                            if (data.mainTask.taskStatus === 8) continue; // 已完成，自动释放
+                            o.status = data.mainTask.taskStatus;
+                            active.push(o);
+                        } else {
+                            active.push(o);
+                        }
+                    } catch { active.push(o); }
+                }
+                saveRollerSentOrders(area, taskName, active);
+                return active;
+            }
+
+            function renderRollerSentOrders(orders, capacity) {
+                if (!rollerSentOrdersList) return;
+                const cap = capacity || 0;
+                if (orders.length === 0) {
+                    rollerSentOrdersList.innerHTML = '<div class="text-muted" style="font-size:0.75rem;">暂无已下发任务</div>';
+                    rollerCapacityBadge.style.display = 'none';
+                    return;
+                }
+                const statusMap = {4:'正在发送',6:'执行中',8:'已完成',9:'已下发','-1':'容量管控'};
+                rollerCapacityBadge.style.display = 'inline-block';
+                rollerCapacityBadge.textContent = `${orders.filter(o => o.status !== 8).length}/${cap || '∞'}`;
+                let html = '';
+                orders.slice(0, 5).forEach(o => {
+                    const st = o.status || 0;
+                    const label = statusMap[st] || `状态${st}`;
+                    const cls = st === 8 ? 'text-success' : (st === 6 ? 'text-primary' : 'text-warning');
+                    const shortId = o.orderId.length > 40 ? o.orderId.slice(0, 38) + '…' : o.orderId;
+                    const time = o.dispatchedAt ? new Date(o.dispatchedAt).toLocaleTimeString() : '';
+                    html += `<div class="d-flex justify-content-between align-items-center py-1 border-bottom" style="font-size:0.75rem;">
+                        <span title="${o.orderId}">${shortId}</span>
+                        <span class="${cls} fw-semibold">${label}</span>
+                    </div>`;
+                });
+                if (orders.length > 5) {
+                    html += `<div class="text-muted text-center mt-1" style="font-size:0.7rem;">还有 ${orders.length - 5} 条…</div>`;
+                }
+                rollerSentOrdersList.innerHTML = html;
+            }
+
+            async function refreshRollerSentOrders() {
+                const area = areaSelect.value;
+                const taskName = taskSelect.value;
+                if (!area || !taskName) return;
+                const task = config.areas[area]?.tasks[taskName];
+                if (!task || !(_enableRollerTask && task.roller_task === true)) return;
+                const active = await checkAndCleanRollerOrders(area, taskName);
+                renderRollerSentOrders(active, task.capacity || 0);
+            }
+
+            function startRollerRefreshTimer() {
+                stopRollerRefreshTimer();
+                _rollerRefreshTimer = setInterval(refreshRollerSentOrders, 15000);
+            }
+
+            function stopRollerRefreshTimer() {
+                if (_rollerRefreshTimer) {
+                    clearInterval(_rollerRefreshTimer);
+                    _rollerRefreshTimer = null;
+                }
+            }
+
             function updateTaskOptions() {
                 const area = areaSelect.value;
                 taskSelect.innerHTML = '<option value="">请选择任务模板</option>';
@@ -778,9 +885,17 @@
                         const label = task.roller_point_label || '';
                         const point = task.roller_point || '';
                         rollerPointDisplay.textContent = label ? `${label}（${point}）` : (point || '未配置');
+                        // 加载已下发任务缓存并显示
+                        rollerSentOrders.style.display = 'block';
+                        checkAndCleanRollerOrders(area, taskName).then(active => {
+                            renderRollerSentOrders(active, task.capacity || 0);
+                        });
+                        startRollerRefreshTimer();
                         submitBtn.disabled = false;
                     } else {
                         rollerTaskInfo.style.display = 'none';
+                        rollerSentOrders.style.display = 'none';
+                        stopRollerRefreshTimer();
                         
                         if (task.requires_shelf) {
                             shelfGroup.style.display = 'block';
@@ -817,6 +932,8 @@
                     shelfGroup.style.display = 'none';
                     taskPathGroup.style.display = 'none';
                     rollerTaskInfo.style.display = 'none';
+                    rollerSentOrders.style.display = 'none';
+                    stopRollerRefreshTimer();
                     submitBtn.disabled = false;
                 }
                 // 切换任务时加载设备建议
@@ -984,7 +1101,17 @@
                 
                 // 辊筒任务跳过货架校验
                 if (isRoller) {
-                    // 无需货架，无需任务路径，直接下发
+                    // 容量管控：已下发未完成数 >= capacity 时禁止下发
+                    if (task.capacity > 0) {
+                        const active = await checkAndCleanRollerOrders(area, taskName);
+                        if (active.length >= task.capacity) {
+                            capacityModalMessage.textContent =
+                                `该辊筒任务已达到容量上限 (${active.length}/${task.capacity})，` +
+                                `请等待已有任务完成后（状态变为已完成）再下发。`;
+                            capacityModal.show();
+                            return;
+                        }
+                    }
                 } else {
                     if (task.requires_shelf && !shelf) { shelfError.style.display='block'; return; }
                     if (task.requires_task_path && (!taskPathSelect.value || taskPathSelect.value==='请选择任务路径')) {
@@ -1072,6 +1199,10 @@
                     noResponsePlaceholder.style.display = 'none';
                     if (data.code === 1000) {
                         successModal.show();
+                        if (isRoller) {
+                            addRollerSentOrder(area, taskName, orderId, task.roller_point || '');
+                            refreshRollerSentOrders();
+                        }
                         if (task.requires_shelf) shelfHistory[shelf] = Date.now();
                         orderQueryInput.value = orderId;
                         // 统一切换到 OrderId 查询（关闭其他模式）

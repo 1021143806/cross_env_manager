@@ -40,6 +40,14 @@
                     <span id="roller-point-display" class="fw-bold">--</span>
                 </div>
             </div>
+            <!-- 已下发任务列表（辊筒任务容量管控） -->
+            <div id="roller-sent-orders" class="mt-2" style="display:none;">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small fw-semibold text-muted">已下发任务</span>
+                    <span id="roller-capacity-badge" class="badge bg-info" style="display:none;font-size:0.65rem;">0/0</span>
+                </div>
+                <div id="roller-sent-orders-list" class="small"></div>
+            </div>
         </div>
 
         <div class="mb-4" id="task-path-group" style="display: none;">
