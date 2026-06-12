@@ -741,7 +741,8 @@
         else if (path.startsWith('/query')) activeModule = 'query';
         else if (path.startsWith('/monitor') || path.startsWith('/stats') ||
                  path.startsWith('/platform-switch') || path.startsWith('/docs') ||
-                 path.startsWith('/system/config') || path.startsWith('/config-editor')) activeModule = 'system';
+                 path.startsWith('/system/config') || path.startsWith('/config-editor') ||
+                 path.startsWith('/system/upgrade')) activeModule = 'system';
         else if (path.startsWith('/postlook')) activeModule = 'postlook';
         else if (path.startsWith('/pair') || path.startsWith('/template/device-sync') ||
                  path.startsWith('/custom_table') || path.startsWith('/search') ||
