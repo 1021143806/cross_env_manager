@@ -48,16 +48,36 @@
                     <input type="text" class="form-control" id="task-code" required>
                 </div>
                 <div class="row mb-3">
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" id="task-requires-shelf">
                             <label class="form-check-label" for="task-requires-shelf">需要货架</label>
                         </div>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" id="task-requires-path">
                             <label class="form-check-label" for="task-requires-path">需要指定路径</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="task-roller-switch">
+                            <label class="form-check-label" for="task-roller-switch">⏏️ 辊筒任务</label>
+                        </div>
+                    </div>
+                </div>
+                <!-- 辊筒点位配置（辊筒任务时显示） -->
+                <div class="mb-3" id="roller-config-section" style="display:none;">
+                    <div class="p-3 rounded" style="background:var(--detail-card-bg);border:1px solid var(--border-color);">
+                        <label class="form-label fw-semibold">📍 固定下发点位</label>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <input type="text" class="form-control" id="task-roller-point" placeholder="点位 code，如 43000688">
+                            </div>
+                            <div class="col-md-6">
+                                <input type="text" class="form-control" id="task-roller-label" placeholder="点位说明，如 线头A-上料位">
+                            </div>
                         </div>
                     </div>
                 </div>

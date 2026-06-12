@@ -109,7 +109,13 @@ class ConfigService:
         current = self.load_config() if os.path.exists(self._get_config_path()) else {}
         current_version = current.get('_version', 0)
 
-        # 2. 版本递增
+        # 2a. 自动补全：确保 _features 字段存在（辊筒任务等新功能依赖此开关）
+        if '_features' not in config_dict or not isinstance(config_dict['_features'], dict):
+            config_dict['_features'] = {}
+        if 'enable_roller_task' not in config_dict['_features']:
+            config_dict['_features']['enable_roller_task'] = True
+
+        # 2b. 版本递增
         new_version = current_version + 1
         config_dict['_version'] = new_version
 
@@ -154,6 +160,9 @@ class ConfigService:
     def _default_config(self):
         return {
             '_version': 0,
+            '_features': {
+                'enable_roller_task': True
+            },
             'general': {
                 'title': 'AGV 跨环境任务下发系统',
                 'footer_text': '任务下发系统 © 2025 | 运营 AGV 组提供技术支持'

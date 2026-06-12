@@ -485,6 +485,24 @@
                         </div>
                     </div>
                     <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="task-edit-roller">
+                            <label class="form-check-label" for="task-edit-roller">⏏️ 辊筒任务</label>
+                        </div>
+                    </div>
+                    <!-- 辊筒点位配置（辊筒任务时显示） -->
+                    <div id="task-edit-roller-config" style="display:none;" class="mb-3 p-3 rounded" style="background:var(--detail-card-bg);border:1px solid var(--border-color);">
+                        <label class="form-label fw-semibold">📍 固定下发点位</label>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <input type="text" class="form-control" id="task-edit-roller-point" placeholder="点位 code，如 43000688">
+                            </div>
+                            <div class="col-md-6">
+                                <input type="text" class="form-control" id="task-edit-roller-label" placeholder="点位说明，如 线头A-上料位">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">容量上限（0 表示不限）</label>
                         <input type="number" class="form-control" id="task-edit-capacity" min="0" value="0">
                     </div>
@@ -645,6 +663,15 @@ function renderTaskList() {
     }
     container.innerHTML = names.map(name => {
         const t = tasks[name];
+        const isRoller = t.roller_task === true;
+        const typeBadge = isRoller
+            ? '<span class="badge bg-secondary me-1">⏏️ 辊筒</span>'
+            : (t.requires_shelf
+                ? '<span class="badge bg-info me-1">带货架</span>'
+                : '<span class="badge bg-secondary me-1">空车</span>');
+        const pointInfo = isRoller && t.roller_point
+            ? `<span class="me-2 small"><span class="text-muted">📍</span> ${t.roller_point_label || t.roller_point}</span>`
+            : '';
         return `<div class="card mb-2 ${_selectedTask === name ? 'border-primary' : ''}" style="cursor:pointer;"
                     onclick="selectTask('${name.replace(/'/g, "\\'")}')">
             <div class="card-body py-2 px-3">
@@ -659,7 +686,8 @@ function renderTaskList() {
                 </div>
                 <div class="small text-muted mt-1">
                     ${t.base_url ? `<span class="me-2"><i class="bi bi-link-45deg"></i>${escHtml(t.base_url)}</span>` : ''}
-                    ${t.requires_shelf ? '<span class="badge bg-info me-1">带货架</span>' : '<span class="badge bg-secondary me-1">空车</span>'}
+                    ${typeBadge}
+                    ${pointInfo}
                     ${t.capacity ? `<span class="badge bg-warning">容量:${t.capacity}</span>` : ''}
                 </div>
             </div>
@@ -728,6 +756,10 @@ function openTaskEditModal(taskName) {
     const codeInput = document.getElementById('task-edit-code');
     const urlInput = document.getElementById('task-edit-url');
     const shelfInput = document.getElementById('task-edit-shelf');
+    const rollerInput = document.getElementById('task-edit-roller');
+    const rollerConfig = document.getElementById('task-edit-roller-config');
+    const rollerPointInput = document.getElementById('task-edit-roller-point');
+    const rollerLabelInput = document.getElementById('task-edit-roller-label');
     const capacityInput = document.getElementById('task-edit-capacity');
 
     if (isEdit) {
@@ -738,6 +770,10 @@ function openTaskEditModal(taskName) {
         codeInput.value = task.code || '';
         urlInput.value = task.base_url || 'http://10.68.2.32:7000/ics/taskOrder/addTask';
         shelfInput.checked = !!task.requires_shelf;
+        rollerInput.checked = !!task.roller_task;
+        rollerPointInput.value = task.roller_point || '';
+        rollerLabelInput.value = task.roller_point_label || '';
+        rollerConfig.style.display = rollerInput.checked ? 'block' : 'none';
         capacityInput.value = task.capacity || 0;
         _editingTaskName = taskName;
     } else {
@@ -747,6 +783,10 @@ function openTaskEditModal(taskName) {
         codeInput.value = '';
         urlInput.value = 'http://10.68.2.32:7000/ics/taskOrder/addTask';
         shelfInput.checked = false;
+        rollerInput.checked = false;
+        rollerPointInput.value = '';
+        rollerLabelInput.value = '';
+        rollerConfig.style.display = 'none';
         capacityInput.value = 0;
         _editingTaskName = null;
     }
@@ -773,6 +813,9 @@ document.getElementById('task-edit-save-btn')?.addEventListener('click', functio
     const codeInput = document.getElementById('task-edit-code');
     const urlInput = document.getElementById('task-edit-url');
     const shelfInput = document.getElementById('task-edit-shelf');
+    const rollerInput = document.getElementById('task-edit-roller');
+    const rollerPointInput = document.getElementById('task-edit-roller-point');
+    const rollerLabelInput = document.getElementById('task-edit-roller-label');
     const capacityInput = document.getElementById('task-edit-capacity');
 
     const taskName = nameInput.value.trim();
@@ -786,13 +829,17 @@ document.getElementById('task-edit-save-btn')?.addEventListener('click', functio
         }
     }
 
+    const isRoller = rollerInput.checked;
     const taskData = {
         base_url: urlInput.value.trim() || 'http://10.68.2.32:7000/ics/taskOrder/addTask',
         code: codeInput.value.trim(),
-        requires_shelf: shelfInput.checked,
+        requires_shelf: isRoller ? false : shelfInput.checked,
         requires_task_path: _editorConfig.areas[_selectedArea].tasks[_editingTaskName]?.requires_task_path || false,
         task_path_options: _editorConfig.areas[_selectedArea].tasks[_editingTaskName]?.task_path_options || [],
-        capacity: parseInt(capacityInput.value) || 0
+        capacity: parseInt(capacityInput.value) || 0,
+        roller_task: isRoller,
+        roller_point: isRoller ? rollerPointInput.value.trim() : '',
+        roller_point_label: isRoller ? rollerLabelInput.value.trim() : ''
     };
 
     // 新增时如果编辑中改了名字，需要删除旧的 key
@@ -808,6 +855,18 @@ document.getElementById('task-edit-save-btn')?.addEventListener('click', functio
         (_editingTaskName ? '任务已更新' : '任务已添加') + '（尚未保存）',
         'info'
     );
+});
+
+// 辊筒开关联动：显示/隐藏点位配置
+document.getElementById('task-edit-roller')?.addEventListener('change', function() {
+    const configDiv = document.getElementById('task-edit-roller-config');
+    if (configDiv) {
+        configDiv.style.display = this.checked ? 'block' : 'none';
+    }
+    // 辊筒任务时自动取消"需要货架"
+    if (this.checked) {
+        document.getElementById('task-edit-shelf').checked = false;
+    }
 });
 
 // 按回车触发保存
@@ -858,8 +917,11 @@ async function saveInlineConfig() {
             // 更新本地缓存的版本号
             _editorConfig._version = result.new_version || (clientVersion + 1);
             showConfigStatus('配置已保存！', 'success');
-            // 刷新下发页面的下拉框（由 addtask.js 管理）
-            if (typeof initForm === 'function') initForm();
+            // 同步到全局 config 对象（addtask.js 使用），刷新下拉分组和表单
+            try {
+                Object.assign(config, JSON.parse(JSON.stringify(_editorConfig)));
+                if (typeof updateTaskOptions === 'function') updateTaskOptions();
+            } catch(e) { console.warn('同步配置失败，请刷新页面:', e); }
         } else if (response.status === 409) {
             // 版本冲突 — 询问是否强制覆盖
             const forceOverwrite = confirm(
@@ -883,7 +945,10 @@ async function saveInlineConfig() {
                 if (retryRes.ok && retryResult.success) {
                     _editorConfig._version = retryResult.new_version || (clientVersion + 1);
                     showConfigStatus('配置已强制覆盖保存！', 'success');
-                    if (typeof initForm === 'function') initForm();
+                    try {
+                        Object.assign(config, JSON.parse(JSON.stringify(_editorConfig)));
+                        if (typeof updateTaskOptions === 'function') updateTaskOptions();
+                    } catch(e) { console.warn('同步配置失败，请刷新页面:', e); }
                 } else {
                     showConfigStatus('强制覆盖失败: ' + (retryResult.error || '未知错误'), 'error');
                 }

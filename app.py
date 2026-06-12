@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # 应用版本号
-APP_VERSION = '2.4.1'
+APP_VERSION = '2.4.2'
 
 # Python 3.9兼容性修改：使用pymysql替代mysql.connector
 import pymysql
@@ -2068,7 +2068,13 @@ def query_help():
 @app.route('/addtask/query', methods=['POST'])
 @login_required
 def addtask_query_task():
-    """代理查询ICS任务（供addtask右侧面板复用）"""
+    """代理查询ICS任务（供addtask右侧面板复用）
+
+    按 orderId 前缀自动路由：
+      - RLLR_ → 辊筒任务，走 :7000/ics/out/task/getTaskOrderStatus
+      - CEM_ / 其他 → 跨环境任务，走 :8315/crossTask/query
+      - shelfNum / deviceNum → 走 :8315/crossTask/query
+    """
     import urllib.request as _urllib
     import json as _json
     import time as _time
@@ -2078,9 +2084,8 @@ def addtask_query_task():
     shelf_num = data.get('shelfNum', '').strip()
     device_num = data.get('deviceNum', '').strip()
     server_ip = data.get('serverIp', '10.68.2.32')
-    base_url = f"http://{server_ip}:8315"
     
-    def _call_ics(path, body, timeout=12):
+    def _call_ics(base_url, path, body, timeout=12):
         url = f"{base_url}{path}"
         try:
             req = _urllib.Request(url, data=_json.dumps(body).encode('utf-8'),
@@ -2091,21 +2096,70 @@ def addtask_query_task():
         except Exception as e:
             return None
     
+    def _query_roller_task(base_url, oid):
+        """查询辊筒任务状态（非跨环境）"""
+        url = f"{base_url}/ics/out/task/getTaskOrderStatus"
+        app.logger.info(f"[roller query] 查询辊筒任务: url={url}, orderId={oid}")
+        try:
+            req = _urllib.Request(url,
+                data=_json.dumps({'orderId': oid}).encode('utf-8'),
+                headers={'Content-Type': 'application/json'})
+            resp = _urllib.urlopen(req, timeout=12)
+            result = _json.loads(resp.read().decode())
+            
+            if result.get('code') == 1000 and result.get('data'):
+                d = result['data']
+                detail = (d.get('taskOrderDetail') or [{}])[0]
+                return {
+                    'orderId': d.get('orderId') or oid,
+                    'modelProcessName': '辊筒任务',
+                    'modelProcessCode': detail.get('qrContent', ''),
+                    'shelfNum': detail.get('shelfNumber', '') or '',
+                    'deviceNum': detail.get('deviceNum', '') or '',
+                    'taskStatus': detail.get('status', d.get('status', 0)),
+                    'createTime': d.get('createTime', 0),
+                    'isRoller': True,
+                    'qrContent': detail.get('qrContent', ''),
+                    'areaId': d.get('areaId', 0),
+                    'rollerTime': detail.get('time', 0)
+                }
+        except Exception as e:
+            app.logger.warning(f"[roller query] 请求失败: {e}")
+            pass
+        return None
+    
+    is_roller_order = order_id.startswith('RLLR_')
+    app.logger.info(f"[addtask query] order_id={order_id!r}, server_ip={server_ip!r}, is_roller={is_roller_order}")
     main_task = None
     
-    if order_id:
-        res = _call_ics('/crossTask/query', {'orderId': order_id, 'pageSize': 1, 'pageNo': 1})
+    if is_roller_order and order_id:
+        # 辊筒任务 → 直接走非跨环境 API (port 7000)
+        base_url = f"http://{server_ip}:7000"
+        main_task = _query_roller_task(base_url, order_id)
+    elif order_id:
+        # 跨环境任务 → 先走 crossTask API (port 8315)
+        base_url = f"http://{server_ip}:8315"
+        res = _call_ics(base_url, '/crossTask/query',
+            {'orderId': order_id, 'pageSize': 1, 'pageNo': 1})
         if res and res.get('code') == 1000 and res.get('data', {}).get('list'):
             main_task = res['data']['list'][0]
+        # 未找到 → 回退到辊筒 API (port 7000)，兼容旧 CEM_ 前缀的辊筒任务
+        if not main_task:
+            base_url = f"http://{server_ip}:7000"
+            main_task = _query_roller_task(base_url, order_id)
     elif shelf_num:
+        base_url = f"http://{server_ip}:8315"
         for st in ['6', '9', '4', '-1']:
-            res = _call_ics('/crossTask/query', {'taskStatus': st, 'shelfNum': shelf_num, 'pageSize': 1, 'pageNo': 1})
+            res = _call_ics(base_url, '/crossTask/query',
+                {'taskStatus': st, 'shelfNum': shelf_num, 'pageSize': 1, 'pageNo': 1})
             if res and res.get('code') == 1000 and res.get('data', {}).get('list'):
                 main_task = res['data']['list'][0]
                 break
     elif device_num:
+        base_url = f"http://{server_ip}:8315"
         for st in ['6', '9', '4', '-1']:
-            res = _call_ics('/crossTask/query', {'taskStatus': st, 'deviceNum': device_num, 'pageSize': 1, 'pageNo': 1})
+            res = _call_ics(base_url, '/crossTask/query',
+                {'taskStatus': st, 'deviceNum': device_num, 'pageSize': 1, 'pageNo': 1})
             if res and res.get('code') == 1000 and res.get('data', {}).get('list'):
                 main_task = res['data']['list'][0]
                 break
@@ -2113,28 +2167,30 @@ def addtask_query_task():
     if not main_task:
         return jsonify({'success': False, 'message': '未找到任务'}), 404
     
+    # 子任务查询：仅跨环境任务有子任务，辊筒任务直接返回空
     subs = []
     detail_error = None
-    try:
-        # 子任务查询：空数据时重试最多3次，间隔1秒
-        for retry in range(3):
-            detail_res = _call_ics('/crossTask/detail', {'id': main_task['id']})
-            if detail_res and detail_res.get('code') == 1000:
-                sub_data = detail_res.get('data')
-                if sub_data and len(sub_data) > 0:
-                    subs = sub_data
-                    detail_error = None
-                    break
+    if not is_roller_order:
+        base_url = f"http://{server_ip}:8315"
+        try:
+            for retry in range(3):
+                detail_res = _call_ics(base_url, '/crossTask/detail', {'id': main_task['id']})
+                if detail_res and detail_res.get('code') == 1000:
+                    sub_data = detail_res.get('data')
+                    if sub_data and len(sub_data) > 0:
+                        subs = sub_data
+                        detail_error = None
+                        break
+                    else:
+                        detail_error = 'detail API 返回空数据'
+                elif detail_res:
+                    detail_error = f"detail API 返回 code={detail_res.get('code')}"
                 else:
-                    detail_error = 'detail API 返回空数据'
-            elif detail_res:
-                detail_error = f"detail API 返回 code={detail_res.get('code')}"
-            else:
-                detail_error = 'detail API 请求失败（超时或网络错误）'
-            if retry < 2:
-                _time.sleep(1)
-    except Exception as e:
-        detail_error = str(e)
+                    detail_error = 'detail API 请求失败（超时或网络错误）'
+                if retry < 2:
+                    _time.sleep(1)
+        except Exception as e:
+            detail_error = str(e)
     
     if detail_error:
         app.logger.warning(f"[addtask query] orderId={order_id or '-'} shelf={shelf_num or '-'} device={device_num or '-'} {detail_error}")
