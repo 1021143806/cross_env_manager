@@ -1972,7 +1972,7 @@
                     window._queryDebug = data.query_debug;
                 }
                 if (!res.ok || data.error) {
-                    alert('切换失败: ' + (data.error || '未知错误'));
+                    alert('切换失败: ' + extractErrorMessage(data));
                     return;
                 }
                 const deepResult = {
@@ -2570,7 +2570,7 @@
                 if (data.code === 1000) {
                     alert('优先级调整成功');
                 } else {
-                    alert('调整失败: ' + (data.desc || '未知错误'));
+                    alert('调整失败: ' + extractErrorMessage(data));
                 }
             } catch (e) {
                 alert('请求失败: ' + e.message);
@@ -2746,6 +2746,20 @@
             };
         };
 
+        // 提取错误消息（兼容多种响应格式）
+        function extractErrorMessage(data) {
+            if (data.error) {
+                // login_required 返回 {"error":"需要登录","redirect":"/login"}
+                if (data.redirect) {
+                    return data.error + '，请重新登录';
+                }
+                return data.error;
+            }
+            if (data.message) return data.message;
+            if (data.desc) return data.desc;
+            return '未知错误';
+        }
+
         // 异常完成（仅将子任务状态置为3）
         window.forceCompleteTask = async function(subOrderId, orderId, taskSeq) {
             const confirmMsg = `确定要将该子任务标记为异常完成吗？\n\n` +
@@ -2772,7 +2786,7 @@
                     alert('✅ ' + data.message);
                     setTimeout(() => executeQuery(), 3000);
                 } else {
-                    alert('❌ 操作失败: ' + (data.message || '未知错误'));
+                    alert('❌ 操作失败: ' + extractErrorMessage(data));
                 }
             } catch (e) {
                 alert('❌ 请求失败: ' + e.message);
