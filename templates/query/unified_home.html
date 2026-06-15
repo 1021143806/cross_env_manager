@@ -818,9 +818,9 @@
                 shelfInput.value = urlParams.get('shelf');
                 setTimeout(executeQuery, 200);
             } else if (queryHistory.length > 0) {
-                // 有最近查询历史时，仅回填最近一条记录到输入框（不自动查询）
+                // 有最近查询历史时，自动用最近一条记录查询
                 const latest = queryHistory[0];
-                setTimeout(() => fillHistoryInput(latest), 300);
+                setTimeout(() => fillHistory(latest), 300);
             }
             
             // 初始化图表
@@ -1009,6 +1009,8 @@
         }
 
         // ---------- 查询主流程 ----------
+        let _execQueryId = 0;  // 并发锁：递增 ID，仅最新查询的结果可渲染
+        
         async function executeQuery() {
             const isTaskQuery = typeTaskRadio.checked;
             const isDeviceQuery = typeDeviceRadio.checked;
@@ -1028,6 +1030,9 @@
                 alert('请输入设备号');
                 return;
             }
+
+            // 并发锁：递增查询 ID，稍后仅允许最新查询结果渲染
+            const myQueryId = ++_execQueryId;
 
             // 禁用输入框防止重复提交
             orderIdInput.disabled = true;
@@ -1053,6 +1058,8 @@
                         body: JSON.stringify({ device_num: deviceNum, server_ip: serverIp })
                     });
                     const data = await res.json();
+                    // 并发锁：后续查询已发起，丢弃本次结果
+                    if (myQueryId !== _execQueryId) return;
                     // 存储 query_debug 供调试面板使用（即使查询部分失败也展示）
                     if (data.query_debug) {
                         window._queryDebug = data.query_debug;
@@ -1117,6 +1124,8 @@
                         body: JSON.stringify({ order_id: orderId, server_ip: serverIp })
                     });
                     const data = await res.json();
+                    // 并发锁：后续查询已发起，丢弃本次结果
+                    if (myQueryId !== _execQueryId) return;
                     if (data.query_debug) {
                         window._queryDebug = data.query_debug;
                     }
@@ -1152,12 +1161,15 @@
                 }
             } catch (error) {
                 console.error('查询失败:', error);
+                if (myQueryId !== _execQueryId) return;
                 resultContainer.innerHTML = `
                     <div class="alert alert-danger">
                         <i class="bi bi-exclamation-triangle"></i> 查询失败: ${error.message}
                     </div>
                 `;
             } finally {
+                // 并发锁：后续查询进行中，不恢复UI状态
+                if (myQueryId !== _execQueryId) return;
                 loadingIndicator.classList.add('d-none');
                 // 恢复输入框
                 orderIdInput.disabled = false;
@@ -2893,24 +2905,6 @@
                 orderIdInput.value = term;
             }
             executeQuery();
-        };
-
-        window.fillHistoryInput = function(term) {
-            if (term.includes('(设备)')) {
-                const deviceNum = term.replace(' (设备)', '');
-                typeDeviceRadio.checked = true;
-                toggleQueryPanel();
-                deviceNumInput.value = deviceNum;
-            } else if (term.includes('(货架)')) {
-                const shelf = term.replace(' (货架)', '');
-                typeShelfRadio.checked = true;
-                toggleQueryPanel();
-                shelfInput.value = shelf;
-            } else {
-                typeTaskRadio.checked = true;
-                toggleQueryPanel();
-                orderIdInput.value = term;
-            }
         };
 
         
