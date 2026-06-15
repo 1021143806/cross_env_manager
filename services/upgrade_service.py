@@ -21,6 +21,9 @@ UPGRADE_LOG_FILE = os.path.join(BACKUP_DIR, 'upgrade_log.json')
 # 保留的最大备份数量（超出时自动清理最旧的）
 MAX_BACKUPS = 10
 
+# 升级日志记录最大保留数量
+MAX_LOG_RECORDS = 500
+
 # 排除覆盖的文件/目录模式（这些文件会被保留，不解压覆盖）
 EXCLUDE_PATTERNS = [
     'config/env.toml',
@@ -130,8 +133,8 @@ def _write_upgrade_log(records: list):
 
 def _cleanup_old_backups():
     """
-    清理超出 MAX_BACKUPS 的旧备份目录和日志
-    保留最新的 MAX_BACKUPS 条备份记录
+    清理超出 MAX_BACKUPS 的旧备份目录（仅清理磁盘文件，不删日志记录）
+    日志记录独立受 MAX_LOG_RECORDS 限制
     """
     records = _read_upgrade_log()
 
@@ -154,10 +157,38 @@ def _cleanup_old_backups():
         if os.path.isdir(backup_path):
             shutil.rmtree(backup_path)
 
-    # 清理日志记录
-    records = [r for r in records if r.get('backup_name', '') not in remove_names]
+    print(f"[Upgrade] 已清理 {len(remove_names)} 个旧备份目录（日志记录独立保留）")
+
+
+def _trim_upgrade_log():
+    """
+    限制升级日志记录不超过 MAX_LOG_RECORDS 条
+    超出时删除最旧的记录，同时清理对应备份目录
+    """
+    records = _read_upgrade_log()
+    if len(records) <= MAX_LOG_RECORDS:
+        return
+
+    # 按 timestamp 排序，保留最新的 MAX_LOG_RECORDS 条
+    to_remove = sorted(
+        records,
+        key=lambda r: r.get('timestamp', ''),
+    )[:-MAX_LOG_RECORDS]
+
+    # 清理被移除记录对应的备份目录（如果还存在）
+    cleaned_dirs = 0
+    for r in to_remove:
+        backup_name = r.get('backup_name', '')
+        if backup_name and backup_name.startswith('upgrade_'):
+            backup_path = os.path.join(BACKUP_DIR, backup_name)
+            if os.path.isdir(backup_path):
+                shutil.rmtree(backup_path)
+                cleaned_dirs += 1
+
+    # 保留最新的 MAX_LOG_RECORDS 条
+    records = records[-MAX_LOG_RECORDS:]
     _write_upgrade_log(records)
-    print(f"[Upgrade] 已清理 {len(remove_names)} 个旧备份")
+    print(f"[Upgrade] 已清理 {len(to_remove)} 条旧记录（{'，同步清理' + str(cleaned_dirs) + '个备份目录' if cleaned_dirs else ''}）")
 
 
 def get_upgrade_records() -> list:
@@ -320,6 +351,8 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
 
         # 10. 自动清理旧备份
         _cleanup_old_backups()
+        # 11. 限制日志记录不超过 500 条
+        _trim_upgrade_log()
 
     except Exception as e:
         # 清理临时目录
@@ -406,6 +439,7 @@ def do_rollback(backup_name: str) -> dict:
 
         # 4. 自动清理旧备份
         _cleanup_old_backups()
+        _trim_upgrade_log()
 
         # 5. 记录回滚日志
         record = {
