@@ -34,3 +34,16 @@
 |-----|------|
 | `POST /api/task/resend` | 修改大模板状态 → sub_order_id+1 → 调用 ICS |
 | `POST /api/task/force_complete` | 仅修改子模板状态为 3（取消），不修改 sub_order_id |
+
+## 五、跨环境任务浏览 (v2.4.7+)
+
+**页面**: `/query/cross-tasks` 直接查询 `fy_cross_task` 表
+
+**筛选参数**（11个）：orderId、task_status（气泡多选）、device_num、shelf_num、from_system（气泡多选）、create_time、model_process_code、model_process_name、task_error（气泡多选）、device_code、taskPath
+
+**API**:
+| 端点 | 说明 |
+|------|------|
+| `GET /query/cross-tasks` | 页面渲染 |
+| `POST /api/query/cross_tasks` | 分页查询，支持数组 IN 筛选，每页 20-200 条可调，最多 2 页 |
+| `GET /api/query/cross_task_filters` | 返回 from_system/task_status/task_error 的下拉选项（含 count，5分钟缓存） |

@@ -34,7 +34,8 @@ description: 该cross_env_manager项目相关指导操作
 - 通过浏览器访问 `http://生产IP:5000` → 查询页面 / 调车看板
 - 通过 Postlook 服务 `http://生产IP:5011` → 日志查询页面
 
-
+### 本地测试
+使用supervisorctl restart cross_env2_manager进行本地环境重启
 
 ## Example Usage
 
@@ -286,6 +287,21 @@ venv/bin/python3 test/???.py
 
 **清除文件：** `search_results.html` 不再被引用（保留未删）
 **API 文档：** `doc/API.md` 已同步更新
+
+- 2026-06-15: **跨环境任务浏览 (v2.4.7)** 完成。
+  - 新增页面 `/query/cross-tasks`：直接查询 `fy_cross_task` 表，支持 11 个筛选参数（orderId/任务状态/设备号/货架号/来源系统/时间范围/模式流程/流程名称/错误描述/设备编码/任务路径）
+  - 筛选下拉框支持气泡多选：下拉选择后显示为蓝色气泡，点 × 清除，支持多选（后端 IN 查询）
+  - 下拉选项含数量统计（如"MES (8182)"），按数量降序排列，页面加载时从 `/api/query/cross_task_filters` 获取（5分钟缓存）
+  - 每页条数可调（20/40/50/100/200，默认40），最多显示 2 页
+  - 真实总数展示（如"共 8159 条 — 当前显示 80 条"）
+  - 任务状态统一标签映射（-1=容量管控、8=任务完成、3=任务异常结束 等）
+  - 查询耗时显示（如 ⏱ 87ms）
+  - 页面打开自动查询默认数据，筛选条件变化自动重新查询（文本输入 500ms 防抖）
+  - 每行"查看"按钮 → 跳转统一查询 `/query?orderId=xxx` 深度查询
+  - 新增路由：页面 `GET /query/cross-tasks`、数据 `POST /api/query/cross_tasks`、筛选选项 `GET /api/query/cross_task_filters`（task_routes.py）
+  - 侧边栏「查询」模块新增"跨环境任务浏览"入口
+  - 任务查询模块版本 `TASK_VERSION` 2.3.1 → 2.4.1
+  - 增量升级包部署至 10.68.2.40
 
 ### ds说
 - 2025-04-28: **Phase 1 架构优化完成**。引入 DBUtils 连接池（modules/database/connection.py 重构），新增 dao/ 层（BaseDAO + TemplateDAO + DetailDAO），新增 middleware/ 层（统一异常处理 AppError/NotFoundError/AuthError/ValidationError），app.py 启动时自动初始化连接池并注册异常处理器。新增依赖 DBUtils==3.1.2。
