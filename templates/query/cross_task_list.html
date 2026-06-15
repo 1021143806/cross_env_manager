@@ -53,9 +53,8 @@
     .order-id-link {
         font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
         font-size: 0.78rem;
-        max-width: 200px;
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        display: inline-block;
+        max-width: none;
+        word-break: break-all;
     }
     .btn-detail {
         font-size: 0.72rem; padding: 0.15rem 0.5rem;
@@ -389,13 +388,13 @@
         tasks.forEach((t, i) => {
             const rowNum = startIdx + i + 1;
             const statusBadge = renderStatusBadge(t.task_status, t.task_error);
-            const orderIdShort = t.orderId ? (t.orderId.length > 35 ? t.orderId.substring(0, 35) + '...' : t.orderId) : '';
+            const orderIdFull = t.orderId || '';
             const modelName = t.model_process_name || t.model_process_code || '-';
             const createTime = t.create_time || '';
 
             html += `<tr>
                 <td class="text-muted small">${rowNum}</td>
-                <td><span class="order-id-link" title="${htmlEscape(t.orderId || '')}">${htmlEscape(orderIdShort)}</span></td>
+                <td><span class="order-id-link" title="${htmlEscape(orderIdFull)}">${htmlEscape(orderIdFull)}</span></td>
                 <td>${statusBadge}</td>
                 <td>${htmlEscape(t.device_num || '-')}</td>
                 <td>${htmlEscape(t.shelf_num || '-')}</td>
