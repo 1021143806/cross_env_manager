@@ -818,9 +818,9 @@
                 shelfInput.value = urlParams.get('shelf');
                 setTimeout(executeQuery, 200);
             } else if (queryHistory.length > 0) {
-                // 有最近查询历史时，自动用最近一条记录查询
+                // 有最近查询历史时，仅回填最近一条记录到输入框（不自动查询）
                 const latest = queryHistory[0];
-                setTimeout(() => fillHistory(latest), 300);
+                setTimeout(() => fillHistoryInput(latest), 300);
             }
             
             // 初始化图表
@@ -2893,6 +2893,24 @@
                 orderIdInput.value = term;
             }
             executeQuery();
+        };
+
+        window.fillHistoryInput = function(term) {
+            if (term.includes('(设备)')) {
+                const deviceNum = term.replace(' (设备)', '');
+                typeDeviceRadio.checked = true;
+                toggleQueryPanel();
+                deviceNumInput.value = deviceNum;
+            } else if (term.includes('(货架)')) {
+                const shelf = term.replace(' (货架)', '');
+                typeShelfRadio.checked = true;
+                toggleQueryPanel();
+                shelfInput.value = shelf;
+            } else {
+                typeTaskRadio.checked = true;
+                toggleQueryPanel();
+                orderIdInput.value = term;
+            }
         };
 
         
