@@ -468,14 +468,14 @@ def trigger_restart(delay: int = 3):
     """延迟触发 supervisor 重启（后台线程）"""
     def _restart():
         time.sleep(delay)
-        try:
-            subprocess.run(
-                ['/usr/local/bin/supervisorctl', 'restart', 'cross_env_manager'],
-                timeout=10,
-                capture_output=True,
-            )
-        except Exception as e:
-            print(f"[Upgrade] 重启失败: {e}")
+        for svc in ['cross_env_manager', 'postlook']:
+            try:
+                subprocess.run(
+                    ['/usr/local/bin/supervisorctl', 'restart', svc],
+                    timeout=10, capture_output=True,
+                )
+            except Exception as e:
+                print(f"[Upgrade] {svc} 重启失败: {e}")
 
     thread = threading.Thread(target=_restart, daemon=True)
     thread.start()
