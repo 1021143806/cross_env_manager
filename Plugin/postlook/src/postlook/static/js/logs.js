@@ -6,12 +6,16 @@
     var STORAGE_KEY = 'postlook-search-history-v2';
     var MAX_HISTORY = 15;
     var _debounceTimer = null;
+    var _liveTimer = null, _liveCountdown = null;
+    var _liveActive = false;
+    var LIVE_INTERVAL = 3000;      // 刷新间隔 3s
+    var LIVE_TIMEOUT = 60;         // 自动关闭倒计时 60s
 
     // ── DOM 引用 ──
     var els = {};
     function cacheEls() {
         ['folder','pattern','keyword','lineCount','tail','recentFiles',
-         'chipFilters','btnQuery','queryTime','logResults','historyDropdown','rulesContainer'].forEach(function(id) {
+         'chipFilters','btnQuery','btnLive','btnLiveLabel','queryTime','logResults','historyDropdown','rulesContainer'].forEach(function(id) {
             els[id] = document.getElementById(id);
         });
     }
@@ -65,12 +69,74 @@
     // ── 自动查询（防抖 500ms） ──
     function autoQuery() {
         clearTimeout(_debounceTimer);
-        _debounceTimer = setTimeout(function() { doQuery(); }, 500);
+        _debounceTimer = setTimeout(function() { stopLive(); doQuery(); }, 500);
     }
 
     function autoQueryImmediate() {
         clearTimeout(_debounceTimer);
+        stopLive();
         doQuery();
+    }
+
+    // ── 实时刷新 ──
+    function startLive() {
+        if (_liveActive) return;
+        _liveActive = true;
+        els.btnLive.style.display = 'inline-flex';
+        els.btnLive.classList.add('active');
+        els.btnLive.classList.remove('auto-stop');
+        _liveCountdown = LIVE_TIMEOUT;
+        updateLiveLabel(_liveCountdown);
+        // 倒计时 ticker
+        clearInterval(_liveCountdownId);
+        _liveCountdownId = setInterval(tickCountdown, 1000);
+        scheduleNext();
+    }
+
+    function stopLive() {
+        _liveActive = false;
+        clearTimeout(_liveTimer);
+        clearInterval(_liveCountdownId);
+        els.btnLive.classList.remove('active','auto-stop');
+        updateLiveLabel(0);
+        els.btnLive.style.display = 'none';
+    }
+
+    function toggleLive() {
+        if (_liveActive) {
+            stopLive();
+        } else {
+            startLive();
+            doQuery(); // 立即刷新一次
+        }
+    }
+
+    var _liveCountdownId = null;
+    function scheduleNext() {
+        clearTimeout(_liveTimer);
+        if (!_liveActive) return;
+        _liveTimer = setTimeout(function() {
+            if (!_liveActive) return;
+            doQuery();
+        }, LIVE_INTERVAL);
+    }
+
+    function updateLiveLabel(sec) {
+        if (sec > 0) {
+            els.btnLiveLabel.textContent = '实时 (' + sec + 's)';
+            if (sec <= 10) els.btnLive.classList.add('auto-stop');
+        } else {
+            els.btnLiveLabel.textContent = '实时';
+        }
+    }
+
+    function tickCountdown() {
+        if (!_liveActive) return;
+        _liveCountdown--;
+        updateLiveLabel(_liveCountdown);
+        if (_liveCountdown <= 0) {
+            stopLive();
+        }
     }
 
     // ── 执行查询 ──
@@ -105,6 +171,15 @@
         }).then(function(r) { return r.json(); }).then(function(data) {
             var elapsed = Math.round(performance.now() - t0);
             renderResults(data, keyword, elapsed);
+            // 查询成功后自动开启实时刷新
+            if (_liveActive) {
+                _liveCountdown = LIVE_TIMEOUT;
+                updateLiveLabel(_liveCountdown);
+                els.btnLive.classList.remove('auto-stop');
+            } else {
+                startLive();
+            }
+            scheduleNext();
         }).catch(function(err) {
             els.logResults.innerHTML = '<div class="empty-state"><p style="color:var(--danger)">请求失败: ' + err.message + '</p></div>';
             els.queryTime.textContent = '';
@@ -194,6 +269,7 @@
 
     // ── 重置 ──
     window.resetFilters = function() {
+        stopLive();
         els.folder.value = '';
         els.pattern.value = '*.log';
         els.keyword.value = '';

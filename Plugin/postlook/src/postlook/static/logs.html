@@ -66,6 +66,20 @@
             font-family: 'SF Mono','Monaco','Consolas',monospace; white-space: pre-wrap; word-break: break-all; }
         .empty-state { text-align: center; padding: 3rem; color: var(--text-tertiary); }
         .form-select-sm { font-size: 0.82rem; }
+        .btn-live {
+            padding: 0.4rem 0.7rem; font-size: 0.78rem;
+            background: var(--glass-bg); color: var(--accent);
+            border: 1px solid var(--accent); border-radius: 6px;
+            cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem;
+            transition: all 0.2s;
+        }
+        .btn-live:hover { background: var(--accent-light); }
+        .btn-live.active {
+            background: var(--accent); color: #fff;
+            animation: livePulse 1.5s ease-in-out infinite;
+        }
+        @keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+        .btn-live.auto-stop { background: var(--warning); color: #000; border-color: var(--warning); }
     </style>
 </head>
 <body>
@@ -166,6 +180,10 @@
                                 查询
                             </button>
                             <button type="button" class="btn-secondary" onclick="resetFilters()">重置</button>
+                            <button type="button" class="btn-live" id="btnLive" onclick="toggleLive()" style="display:none;" title="实时刷新日志">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                <span id="btnLiveLabel">实时</span>
+                            </button>
                             <span id="queryTime" style="font-size:0.75rem;color:var(--text-tertiary);"></span>
                         </div>
                     </div>
