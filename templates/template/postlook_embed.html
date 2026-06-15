@@ -69,7 +69,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function getFrameUrl(server, page) {
-        return 'http://' + server + '/' + page + '?embed=1';
+        return 'http://' + server + '/' + page + '?embed=1&v={{ app_version }}';
     }
 
     function loadFrame(server, page) {
