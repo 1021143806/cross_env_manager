@@ -20,7 +20,8 @@ def register_blueprints(app):
     from routes.monitor_routes import monitor_bp
     from routes.custom_table_routes import custom_table_bp
     from routes.platform_switch_routes import platform_switch_bp
-    
+    from routes.system_upgrade_routes import upgrade_bp
+
     app.register_blueprint(template_bp)
     app.register_blueprint(task_bp)
     app.register_blueprint(config_bp)
@@ -33,5 +34,6 @@ def register_blueprints(app):
     app.register_blueprint(monitor_bp)
     app.register_blueprint(custom_table_bp)
     app.register_blueprint(platform_switch_bp)
-    
+    app.register_blueprint(upgrade_bp)
+
     print("[Routes] 所有蓝图已注册")

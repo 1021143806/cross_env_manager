@@ -1143,17 +1143,22 @@ function renderAreas(areas) {
                             </div>
                         </div>
                     </div>
-                     ${area.deadlock_cooldown || area.deadlock_cancel_frequent ? `
-                     <div style="margin:0 1rem 0.5rem;padding:0.5rem 0.75rem;border-radius:8px;background:rgba(255,193,7,0.12);border:1px solid rgba(255,193,7,0.3);display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;">
-                         <i class="bi bi-shield-exclamation" style="color:#ffc107;font-size:1.1rem;"></i>
-                         <span>
-                             ${area.deadlock_cancel_frequent
-                                 ? `⚠️ 取消频繁(${area.deadlock_cancelled_this_hour}次/h)，已暂停调度`
-                                 : `⏳ 解死锁冷却中${area.deadlock_cooldown_remaining > 0 ? '，剩余' + Math.ceil(area.deadlock_cooldown_remaining / 60) + '分钟' : ''}`
-                             }
-                         </span>
-                     </div>
-                     ` : ''}
+                      ${area.deadlock_cooldown || area.deadlock_cancel_frequent ? `
+                      <div style="margin:0 1rem 0.5rem;padding:0.5rem 0.75rem;border-radius:8px;background:rgba(255,193,7,0.12);border:1px solid rgba(255,193,7,0.3);display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;flex-wrap:wrap;">
+                          <i class="bi bi-shield-exclamation" style="color:#ffc107;font-size:1.1rem;"></i>
+                          <span style="flex:1;">
+                              ${area.deadlock_cancel_frequent
+                                  ? `⚠️ 取消频繁(${area.deadlock_cancelled_this_hour}次/h)，已暂停调度`
+                                  : `⏳ 解死锁冷却中${area.deadlock_cooldown_remaining > 0 ? '，剩余' + Math.ceil(area.deadlock_cooldown_remaining / 60) + '分钟' : ''}`
+                              }
+                          </span>
+                          ${area.deadlock_cancel_frequent ? `
+                          <button class="btn btn-sm" style="background:#ffc107;color:#000;border:none;border-radius:6px;padding:0.2rem 0.6rem;font-size:0.8rem;font-weight:600;white-space:nowrap;cursor:pointer;" onclick="resumeScheduling('${area.region_key}')" title="手动恢复调度">
+                              ▶ 恢复调度
+                          </button>
+                          ` : ''}
+                      </div>
+                      ` : ''}
                      <div class="device-grid" id="devices-${area.region_key}">
                         ${renderDeviceIcons(filterCurrentDevices(area.current_devices || [], area.pending_devices || []), false, area.low_battery_threshold)}
                         ${renderDeviceIcons(area.pending_devices || [], true, area.low_battery_threshold)}
@@ -3323,7 +3328,11 @@ function showTemplateDetail(regionKey, templateCode) {
                 html += '<table class="table table-sm table-bordered mb-0"><thead><tr><th>设备</th><th>序列号</th><th>订单号</th><th>开始时间</th></tr></thead><tbody>';
                 data.running_tasks.forEach(t => {
                     const time = t.create_time ? t.create_time.slice(11, 19) : '';
-                    html += '<tr><td>' + escapeHtml(t.deviceNum || '-') + '</td><td><code style="font-size:0.7rem;">' + escapeHtml(t.deviceCode || '-') + '</code></td><td><code style="font-size:0.7rem;word-break:break-all;">' + escapeHtml(t.order_id || '-') + '</code></td><td>' + time + '</td></tr>';
+                    const orderId = t.order_id || '';
+                    const orderLink = orderId
+                        ? `<a href="/query?orderId=${encodeURIComponent(orderId)}" target="_blank" style="font-size:0.7rem;word-break:break-all;color:var(--primary-color);text-decoration:none;" title="点击跳转查询任务详情">${escapeHtml(orderId)} <i class="bi bi-box-arrow-up-right" style="font-size:0.6rem;"></i></a>`
+                        : '<code style="font-size:0.7rem;">-</code>';
+                    html += '<tr><td>' + escapeHtml(t.deviceNum || '-') + '</td><td><code style="font-size:0.7rem;">' + escapeHtml(t.deviceCode || '-') + '</code></td><td>' + orderLink + '</td><td>' + time + '</td></tr>';
                 });
                 html += '</tbody></table></div>';
             }
@@ -3614,6 +3623,24 @@ function renderHistoryDeviceIcons(devices) {
             onmouseenter="showAgvTooltip(event,'${escapeHtml(dc)}','${escapeHtml(label)}','${escapeHtml(updateTime)}','','')"
             onmouseleave="hideAgvTooltip()"><span class="${spriteCls}"></span><span class="dev-num">${dn}</span></span>`;
     }).join('');
+}
+
+// 恢复调度
+function resumeScheduling(regionKey) {
+    if (!confirm(`确定恢复区域 "${regionKey}" 的调度吗？将清除冷却状态。`)) return;
+    fetch('/api/dispatch/resume_scheduling/' + encodeURIComponent(regionKey), { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showToast('✅ 已恢复调度', 'success');
+                refreshAll();
+            } else {
+                showToast(data.error || '恢复失败', 'danger');
+            }
+        })
+        .catch(err => {
+            showToast('请求失败: ' + err.message, 'danger');
+        });
 }
 
 // 全量获取防抖

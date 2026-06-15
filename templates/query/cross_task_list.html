@@ -1,0 +1,516 @@
+{% extends "base.html" %}
+
+{% block title %}跨环境任务浏览{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-home.png?v=1">
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .filter-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        box-shadow: var(--card-shadow);
+        overflow: hidden;
+    }
+    .filter-card-header {
+        background: linear-gradient(135deg, var(--primary-color, #0d6efd), #6610f2);
+        color: #fff;
+        padding: 1rem 1.5rem;
+        display: flex; align-items: center; gap: 0.5rem;
+    }
+    .filter-card-body {
+        padding: 1.25rem;
+    }
+    .filter-row {
+        display: flex; flex-wrap: wrap; gap: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+    .filter-group {
+        flex: 1; min-width: 160px;
+    }
+    .filter-group label {
+        font-size: 0.75rem; font-weight: 600; color: var(--text-secondary, #6c757d);
+        margin-bottom: 0.15rem; display: block;
+    }
+    .filter-group input, .filter-group select {
+        font-size: 0.85rem;
+    }
+    .status-badge {
+        font-size: 0.7rem; padding: 0.15em 0.5em; white-space: nowrap;
+    }
+    .result-table {
+        font-size: 0.82rem;
+    }
+    .result-table th {
+        white-space: nowrap; font-weight: 600; font-size: 0.75rem;
+    }
+    .result-table td {
+        vertical-align: middle;
+    }
+    .order-id-link {
+        font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+        font-size: 0.78rem;
+        max-width: 380px;
+        display: inline-block;
+        overflow-wrap: break-word;
+        word-break: break-word;
+    }
+    .btn-detail {
+        font-size: 0.72rem; padding: 0.15rem 0.5rem;
+    }
+    .empty-state {
+        text-align: center; padding: 3rem; color: var(--text-secondary);
+    }
+    .stats-bar {
+        display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem;
+    }
+    .stats-badge {
+        font-size: 0.72rem; padding: 0.2rem 0.6rem;
+        background: var(--detail-card-bg); border: 1px solid var(--border-color);
+        border-radius: 6px;
+    }
+    /* 气泡多选 */
+    .chip-container {
+        display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; min-height: 1px;
+    }
+    .chip {
+        display: inline-flex; align-items: center; gap: 0.25rem;
+        font-size: 0.72rem; padding: 0.2rem 0.55rem;
+        background: var(--primary-color, #0d6efd); color: #fff;
+        border-radius: 20px; white-space: nowrap;
+        animation: chipIn 0.15s ease;
+    }
+    @keyframes chipIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .chip .chip-close {
+        background: none; border: none; color: inherit; font-size: 0.85rem;
+        line-height: 1; padding: 0; margin-left: 0.1rem; cursor: pointer; opacity: 0.7;
+    }
+    .chip .chip-close:hover { opacity: 1; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="app-content">
+    <div class="container-fluid">
+        <!-- 页面标题 -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <h4 class="mb-1"><i class="bi bi-database me-2"></i>跨环境任务浏览</h4>
+                <p class="text-muted small mb-0">直接查询 fy_cross_task 表，支持多条件筛选，最多显示 50 条记录</p>
+            </div>
+        </div>
+
+        <!-- 筛选面板 -->
+        <div class="filter-card animate__animated animate__fadeIn">
+            <div class="filter-card-header">
+                <i class="bi bi-funnel"></i> 筛选条件
+            </div>
+            <div class="filter-card-body">
+                <!-- 第一行：核心参数 -->
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label>① 任务单号</label>
+                        <input type="text" class="form-control form-control-sm" id="fOrderId" placeholder="模糊搜索">
+                    </div>
+                    <div class="filter-group">
+                        <label>② 任务状态</label>
+                        <select class="form-select form-select-sm chip-picker" id="fTaskStatus" data-target="chipTaskStatus">
+                            <option value="">+ 添加筛选</option>
+                        </select>
+                        <div class="chip-container" id="chipTaskStatus"></div>
+                    </div>
+                    <div class="filter-group">
+                        <label>③ 设备号</label>
+                        <input type="text" class="form-control form-control-sm" id="fDeviceNum" placeholder="如: DJC2">
+                    </div>
+                    <div class="filter-group">
+                        <label>④ 货架号</label>
+                        <input type="text" class="form-control form-control-sm" id="fShelfNum" placeholder="如: D0399">
+                    </div>
+                </div>
+                <!-- 第二行：来源 + 时间 -->
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label>⑤ 来源系统</label>
+                        <select class="form-select form-select-sm chip-picker" id="fFromSystem" data-target="chipFromSystem">
+                            <option value="">+ 添加筛选</option>
+                        </select>
+                        <div class="chip-container" id="chipFromSystem"></div>
+                    </div>
+                    <div class="filter-group">
+                        <label>⑥ 创建时间 (起)</label>
+                        <input type="date" class="form-control form-control-sm" id="fTimeStart">
+                    </div>
+                    <div class="filter-group">
+                        <label>创建时间 (止)</label>
+                        <input type="date" class="form-control form-control-sm" id="fTimeEnd">
+                    </div>
+                    <div class="filter-group">
+                        <label>⑦ 模式流程代码</label>
+                        <input type="text" class="form-control form-control-sm" id="fModelCode" placeholder="模糊搜索">
+                    </div>
+                    <div class="filter-group">
+                        <label>⑧ 流程名称</label>
+                        <input type="text" class="form-control form-control-sm" id="fModelName" placeholder="模糊搜索">
+                    </div>
+                </div>
+                <!-- 第三行：其他 -->
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label>⑨ 错误描述</label>
+                        <select class="form-select form-select-sm chip-picker" id="fTaskError" data-target="chipTaskError">
+                            <option value="">+ 添加筛选</option>
+                        </select>
+                        <div class="chip-container" id="chipTaskError"></div>
+                    </div>
+                    <div class="filter-group">
+                        <label>⑩ 设备编码</label>
+                        <input type="text" class="form-control form-control-sm" id="fDeviceCode" placeholder="模糊搜索">
+                    </div>
+                    <div class="filter-group">
+                        <label>⑪ 任务路径</label>
+                        <input type="text" class="form-control form-control-sm" id="fTaskPath" placeholder="模糊搜索">
+                    </div>
+                    <div class="filter-group" style="display:flex;align-items:flex-end;gap:0.5rem;">
+                        <button class="btn btn-primary btn-sm" id="btnQuery" onclick="doQuery(1)">
+                            <i class="bi bi-search"></i> 查询
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="resetFilters()">
+                            <i class="bi bi-arrow-clockwise"></i> 重置
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 结果区域 -->
+        <div class="filter-card animate__animated animate__fadeIn" style="animation-delay:0.1s;">
+            <div class="filter-card-header" style="background: var(--header-bg);">
+                <i class="bi bi-list-ul"></i> 查询结果
+                <span id="statsBar" class="ms-auto"></span>
+            </div>
+            <div class="filter-card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover result-table mb-0" id="resultTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;">#</th>
+                                <th>任务单号</th>
+                                <th style="width:90px;">状态</th>
+                                <th>设备号</th>
+                                <th>货架号</th>
+                                <th style="width:70px;">来源</th>
+                                <th>流程名称</th>
+                                <th style="width:130px;">创建时间</th>
+                                <th style="width:80px;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultBody">
+                            <tr><td colspan="9" class="empty-state">
+                                <i class="bi bi-search display-6 d-block mb-2" style="opacity:0.3;"></i>
+                                请设置筛选条件后点击"查询"
+                            </td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 分页 -->
+        <div class="d-flex justify-content-center align-items-center gap-3 mb-4" id="paginationArea" style="display:none !important;">
+            <button class="btn btn-sm btn-outline-secondary" id="btnPrev" onclick="doQuery(currentPage-1)" disabled>
+                <i class="bi bi-chevron-left"></i>
+            </button>
+            <span class="text-muted small" id="pageInfo">第 1 页 / 共 1 页</span>
+            <button class="btn btn-sm btn-outline-secondary" id="btnNext" onclick="doQuery(currentPage+1)" disabled>
+                <i class="bi bi-chevron-right"></i>
+            </button>
+            <span class="text-muted small">每页</span>
+            <select class="form-select form-select-sm" id="fPageSize" style="width:80px;" onchange="doQuery(1)">
+                <option value="20">20</option>
+                <option value="40" selected>40</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+            </select>
+            <span class="text-muted small">条</span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentPage = 1;
+    let currentFilters = {};
+
+    // ===== 加载下拉筛选选项（含数量 + 排序） =====
+    async function loadFilterOptions() {
+        try {
+            const resp = await fetch('/api/query/cross_task_filters');
+            const data = await resp.json();
+            if (!data.success) return;
+
+            const f = data.filters;
+
+            // from_system
+            let html = '<option value="">+ 添加筛选</option>';
+            (f.from_system || []).forEach(item => {
+                html += `<option value="${htmlEscape(item.value)}">${htmlEscape(item.value)} (${item.count})</option>`;
+            });
+            $('#fFromSystem').html(html);
+
+            // task_status
+            html = '<option value="">+ 添加筛选</option>';
+            (f.task_status || []).forEach(item => {
+                const label = item.label ? ` — ${item.label}` : '';
+                html += `<option value="${item.value}">${item.value}${label} (${item.count})</option>`;
+            });
+            $('#fTaskStatus').html(html);
+
+            // task_error
+            html = '<option value="">+ 添加筛选</option>';
+            (f.task_error || []).forEach(item => {
+                html += `<option value="${htmlEscape(item.value)}">${htmlEscape(item.value)} (${item.count})</option>`;
+            });
+            $('#fTaskError').html(html);
+        } catch (e) {
+            console.error('加载筛选选项失败:', e);
+        }
+    }
+
+    // ===== 气泡多选 =====
+    function getChipValues(containerId) {
+        const vals = [];
+        $(`#${containerId} .chip`).each(function() {
+            vals.push($(this).attr('data-value'));
+        });
+        return vals.length > 0 ? vals : null;
+    }
+
+    function addChip(targetId, value, label) {
+        // 防重复
+        if ($(`#${targetId} .chip[data-value="${htmlEscape(value)}"]`).length > 0) return;
+        $(`#${targetId}`).append(
+            `<span class="chip" data-value="${htmlEscape(value)}">${htmlEscape(label)}<button type="button" class="chip-close" onclick="removeChip(this)">&times;</button></span>`
+        );
+    }
+
+    function removeChip(btn) {
+        $(btn).closest('.chip').remove();
+        doQuery(1);
+    }
+
+    let _debounceTimer = null;
+    function debounceQuery() {
+        clearTimeout(_debounceTimer);
+        _debounceTimer = setTimeout(() => doQuery(1), 500);
+    }
+
+    // 绑定下拉 → 气泡事件（变化后自动查询）
+    $(document).on('change', '.chip-picker', function() {
+        const sel = $(this);
+        const val = sel.val();
+        if (!val) return;
+        const label = sel.find('option:selected').text();
+        const target = sel.data('target');
+        addChip(target, val, label);
+        sel.val('');
+        doQuery(1);
+    });
+
+    function getFilters() {
+        return {
+            orderId: $('#fOrderId').val().trim(),
+            taskStatus: getChipValues('chipTaskStatus'),
+            deviceNum: $('#fDeviceNum').val().trim(),
+            shelfNum: $('#fShelfNum').val().trim(),
+            fromSystem: getChipValues('chipFromSystem'),
+            timeStart: $('#fTimeStart').val(),
+            timeEnd: $('#fTimeEnd').val(),
+            modelProcessCode: $('#fModelCode').val().trim(),
+            modelProcessName: $('#fModelName').val().trim(),
+            taskError: getChipValues('chipTaskError'),
+            deviceCode: $('#fDeviceCode').val().trim(),
+            taskPath: $('#fTaskPath').val().trim()
+        };
+    }
+
+    async function doQuery(page) {
+        currentPage = page;
+        const filters = getFilters();
+
+        const btn = $('#btnQuery');
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>查询中...');
+
+        const t0 = Date.now();
+        try {
+            const resp = await fetch('/api/query/cross_tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...filters, page: page, page_size: parseInt($('#fPageSize').val()) || 40 })
+            });
+            const data = await resp.json();
+            const elapsed = Date.now() - t0;
+
+            if (!data.success) {
+                showError(data.error || '查询失败');
+                updateElapsed(elapsed);
+                return;
+            }
+
+            renderResults(data);
+            renderPagination(data);
+            updateStats(data, elapsed);
+        } catch (err) {
+            showError('网络错误: ' + err.message);
+            updateElapsed(Date.now() - t0);
+        } finally {
+            btn.prop('disabled', false).html('<i class="bi bi-search"></i> 查询');
+        }
+    }
+
+    function renderResults(data) {
+        const tbody = $('#resultBody');
+        const tasks = data.tasks || [];
+
+        if (tasks.length === 0) {
+            tbody.html(`<tr><td colspan="9" class="empty-state">
+                <i class="bi bi-inbox display-6 d-block mb-2" style="opacity:0.3;"></i>
+                无匹配记录
+            </td></tr>`);
+            return;
+        }
+
+        let html = '';
+        const startIdx = (data.page - 1) * data.page_size;
+        tasks.forEach((t, i) => {
+            const rowNum = startIdx + i + 1;
+            const statusBadge = renderStatusBadge(t.task_status, t.task_error);
+            const orderIdFull = t.orderId || '';
+            const modelName = t.model_process_name || t.model_process_code || '-';
+            const createTime = t.create_time || '';
+
+            html += `<tr>
+                <td class="text-muted small">${rowNum}</td>
+                <td><span class="order-id-link" title="${htmlEscape(orderIdFull)}">${htmlEscape(orderIdFull)}</span></td>
+                <td>${statusBadge}</td>
+                <td>${htmlEscape(t.device_num || '-')}</td>
+                <td>${htmlEscape(t.shelf_num || '-')}</td>
+                <td><span class="badge bg-secondary bg-opacity-25 text-body">${htmlEscape(t.from_system || '-')}</span></td>
+                <td><small>${htmlEscape(modelName)}</small></td>
+                <td><small>${createTime}</small></td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary btn-detail"
+                        onclick="goToDetail('${htmlEscape(t.orderId || '')}')">
+                        <i class="bi bi-box-arrow-up-right"></i> 查看
+                    </button>
+                </td>
+            </tr>`;
+        });
+        tbody.html(html);
+    }
+
+    function renderStatusBadge(status, errorText) {
+        const s = parseInt(status);
+        let badgeClass = 'bg-secondary';
+        let label = errorText || ('状态 ' + status);
+
+        if (s === 8) { badgeClass = 'bg-success'; label = '完成'; }
+        else if (s === 7 || s === 4) { badgeClass = 'bg-info'; label = errorText || '已下发'; }
+        else if (s === 3) { badgeClass = 'bg-danger'; label = errorText || '任务异常结束'; }
+        else if (s === -1) { badgeClass = 'bg-dark'; label = '容量管控'; }
+        else if (s === -2) { badgeClass = 'bg-warning text-dark'; label = '高优先级'; }
+        else if (s === 20) { badgeClass = 'bg-warning text-dark'; label = '任务异常完成'; }
+        else if (s === 5 || s === 6 || s === 9 || s === 10) { badgeClass = 'bg-secondary'; }
+
+        return `<span class="badge status-badge ${badgeClass}">${htmlEscape(label)}</span>`;
+    }
+
+    function renderPagination(data) {
+        const area = $('#paginationArea');
+        const info = $('#pageInfo');
+        const btnPrev = $('#btnPrev');
+        const btnNext = $('#btnNext');
+
+        if (data.total_pages <= 1) {
+            area.hide();
+            return;
+        }
+        area.show();
+        info.text(`第 ${data.page} 页 / 共 ${data.total_pages} 页`);
+        btnPrev.prop('disabled', data.page <= 1);
+        btnNext.prop('disabled', data.page >= data.total_pages);
+    }
+
+    function updateStats(data, elapsedMs) {
+        const bar = $('#statsBar');
+        let html = '';
+        if (data.total > 0 || data.real_total > 0) {
+            const real = data.real_total || data.total;
+            if (data.capped) {
+                html += `<span class="stats-badge">共 ${real} 条 \u2014 当前显示 ${data.total} 条</span>`;
+            } else {
+                html += `<span class="stats-badge">共 ${real} 条</span>`;
+            }
+        }
+        if (elapsedMs != null) {
+            const timeStr = elapsedMs < 1000 ? `${elapsedMs}ms` : `${(elapsedMs/1000).toFixed(1)}s`;
+            html += `<span class="stats-badge text-muted"><i class="bi bi-clock"></i> ${timeStr}</span>`;
+        }
+        bar.html(html);
+    }
+
+    function updateElapsed(elapsedMs) {
+        const timeStr = elapsedMs < 1000 ? `${elapsedMs}ms` : `${(elapsedMs/1000).toFixed(1)}s`;
+        $('#statsBar').html(`<span class="stats-badge text-muted"><i class="bi bi-clock"></i> ${timeStr}</span>`);
+    }
+
+    function resetFilters() {
+        $('#fOrderId, #fDeviceNum, #fShelfNum, #fModelCode, #fModelName, #fDeviceCode, #fTaskPath').val('');
+        $('#fFromSystem, #fTaskStatus, #fTaskError').val('');
+        $('#fTimeStart, #fTimeEnd').val('');
+        $('.chip-container').empty();
+        currentPage = 1;
+        $('#resultBody').html(`<tr><td colspan="9" class="empty-state">
+            <i class="bi bi-search display-6 d-block mb-2" style="opacity:0.3;"></i>
+            请设置筛选条件后点击"查询"
+        </td></tr>`);
+        $('#paginationArea').hide();
+        $('#statsBar').html('');
+    }
+
+    function goToDetail(orderId) {
+        if (!orderId) return;
+        window.open('/query?orderId=' + encodeURIComponent(orderId), '_self');
+    }
+
+    function showError(msg) {
+        $('#resultBody').html(`<tr><td colspan="9" class="empty-state text-danger">
+            <i class="bi bi-exclamation-circle display-6 d-block mb-2"></i>
+            ${htmlEscape(msg)}
+        </td></tr>`);
+        $('#paginationArea').hide();
+        $('#statsBar').html('');
+    }
+
+    function htmlEscape(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    // 页面初始化：加载下拉 → 自动查默认数据 → 绑定自动查询事件
+    $(document).ready(function() {
+        loadFilterOptions().then(() => doQuery(1));
+        // 文本输入：输入暂停 500ms 后自动查询
+        $('.filter-group input[type="text"]').on('input', debounceQuery);
+        // 日期选择：变化后自动查询
+        $('.filter-group input[type="date"]').on('change', () => doQuery(1));
+    });
+</script>
+{% endblock %}

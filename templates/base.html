@@ -26,7 +26,8 @@
             else if (path.indexOf('/postlook') === 0) mod = 'postlook';
             else if (path.indexOf('/monitor') === 0 || path.indexOf('/stats') === 0 ||
                      path.indexOf('/platform-switch') === 0 || path.indexOf('/docs') === 0 ||
-                     path.indexOf('/system/config') === 0 || path.indexOf('/config-editor') === 0) mod = 'system';
+                     path.indexOf('/system/config') === 0 || path.indexOf('/config-editor') === 0 ||
+                     path.indexOf('/system/upgrade') === 0) mod = 'system';
             document.documentElement.setAttribute('data-module', mod);
 
             // --- 主题（从 localStorage 读取，默认 dark）---
@@ -581,6 +582,7 @@
                 <ul class="nav sidebar-menu flex-column" data-sidebar-module="query" data-lte-toggle="treeview">
                     <li class="nav-header">查询功能</li>
                     <li class="nav-item"><a href="/query" class="nav-link" data-nav="query-home"><i class="nav-icon bi bi-search"></i><p>统一查询</p></a></li>
+                    <li class="nav-item"><a href="/query/cross-tasks" class="nav-link" data-nav="query-cross-tasks"><i class="nav-icon bi bi-database"></i><p>跨环境任务浏览</p></a></li>
 
                     <li class="nav-header">帮助</li>
                     <li class="nav-item"><a href="/query/help" class="nav-link" data-nav="help"><i class="nav-icon bi bi-question-circle"></i><p>查询帮助</p></a></li>
@@ -593,6 +595,7 @@
                     <li class="nav-item"><a href="/monitor" class="nav-link" data-nav="monitor"><i class="nav-icon bi bi-activity"></i><p>系统监控</p></a></li>
                     <li class="nav-item"><a href="/stats" class="nav-link" data-nav="stats"><i class="nav-icon bi bi-graph-up"></i><p>数据统计</p></a></li>
                     <li class="nav-item"><a href="/platform-switch" class="nav-link" data-nav="platform-switch"><i class="nav-icon bi bi-hdd-network"></i><p>平台切换</p></a></li>
+                    <li class="nav-item"><a href="/system/upgrade" class="nav-link" data-nav="system-upgrade"><i class="nav-icon bi bi-cloud-upload"></i><p>升级管理</p></a></li>
 
                     <li class="nav-header">其他</li>
                     <li class="nav-item"><a href="/docs" class="nav-link" data-nav="docs"><i class="nav-icon bi bi-journal-text"></i><p>文档中心</p></a></li>
@@ -739,7 +742,8 @@
         else if (path.startsWith('/query')) activeModule = 'query';
         else if (path.startsWith('/monitor') || path.startsWith('/stats') ||
                  path.startsWith('/platform-switch') || path.startsWith('/docs') ||
-                 path.startsWith('/system/config') || path.startsWith('/config-editor')) activeModule = 'system';
+                 path.startsWith('/system/config') || path.startsWith('/config-editor') ||
+                 path.startsWith('/system/upgrade')) activeModule = 'system';
         else if (path.startsWith('/postlook')) activeModule = 'postlook';
         else if (path.startsWith('/pair') || path.startsWith('/template/device-sync') ||
                  path.startsWith('/custom_table') || path.startsWith('/search') ||

@@ -5,7 +5,7 @@
 """
 
 # 调车模块版本号（修改本文件时递增末尾数字）
-DISPATCH_VERSION = '2.2.1'
+DISPATCH_VERSION = '2.3.0'
 
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response
 from functools import wraps
@@ -108,6 +108,24 @@ def _reset_deadlock_event_count(region_key):
     """重置解死锁事件计数（无死锁时调用）"""
     if region_key in _deadlock_event_count:
         del _deadlock_event_count[region_key]
+
+def _reset_deadlock_state(region_key):
+    """完全清除解死锁冷却状态（恢复调度）"""
+    _deadlock_cooldowns.pop(region_key, None)
+    _deadlock_cancel_timestamps.pop(region_key, None)
+    _deadlock_event_count.pop(region_key, None)
+    _time_slot_check_last.pop(region_key, None)
+    _auto_dispatch_last.pop(region_key, None)
+    print(f"[Dispatch] 解死锁状态已清除，恢复调度: {region_key}")
+    try:
+        from app import _dispatch_samples
+        _dispatch_samples.append({
+            'time': datetime.now().isoformat(),
+            'action': 'resume_scheduling',
+            'region_key': region_key,
+            'detail': f'手动恢复调度（清除冷却状态）'
+        })
+    except: pass
 
 def _record_cancel_timestamp(region_key):
     """记录解死锁取消时间戳"""
@@ -2590,6 +2608,21 @@ def api_cancel_empty_tasks(region_key):
         })
     except Exception as e:
         return jsonify({'error': f'取消失败: {str(e)}'}), 500
+
+
+@dispatch_bp.route('/api/dispatch/resume_scheduling/<region_key>', methods=['POST'])
+@login_required
+@admin_required
+def api_resume_scheduling(region_key):
+    """手动恢复指定区域的调度（清除解死锁冷却状态）"""
+    try:
+        _reset_deadlock_state(region_key)
+        write_global_log('resume_scheduling', region_key,
+            f'手动恢复调度（清除冷却状态）')
+        print(f"[Dispatch] 手动恢复调度: {region_key}")
+        return jsonify({'success': True, 'message': f'区域 {region_key} 已恢复调度'})
+    except Exception as e:
+        return jsonify({'error': f'恢复调度失败: {str(e)}'}), 500
 
 
 # ========== 自恢复逻辑 ==========

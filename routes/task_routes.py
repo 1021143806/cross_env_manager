@@ -5,7 +5,7 @@
 """
 
 # 任务查询模块版本号（修改本文件时递增末尾数字）
-TASK_VERSION = '2.3.1'
+TASK_VERSION = '2.4.1'
 
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session
 from functools import wraps
@@ -769,5 +769,253 @@ def report_task_status():
             'message': f'上报完成: {sum(1 for r in results if r["success"])}/{len(results)} 成功'
         })
         
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ========== 跨环境任务浏览（直接查询 fy_cross_task 表） ==========
+
+@task_bp.route('/query/cross-tasks')
+@login_required
+def cross_task_list_page():
+    """跨环境任务浏览页面"""
+    return render_template('query/cross_task_list.html')
+
+
+@task_bp.route('/api/query/cross_tasks', methods=['POST'])
+@login_required
+def api_cross_tasks():
+    """
+    直接查询 fy_cross_task 表，支持多条件筛选 + 分页
+    最多返回 50 条，默认 20 条/页
+    """
+    import pymysql as _pymysql
+    from pymysql.cursors import DictCursor as _DictCursor
+    try:
+        data = request.get_json() or {}
+        page = max(1, int(data.get('page', 1)))
+        page_size = min(200, max(1, int(data.get('page_size', 40))))
+
+        # 筛选参数
+        order_id = (data.get('orderId') or '').strip()
+        device_num = (data.get('deviceNum') or '').strip()
+        shelf_num = (data.get('shelfNum') or '').strip()
+        from_system_raw = data.get('fromSystem')
+        if isinstance(from_system_raw, list):
+            from_system = from_system_raw  # 数组，后面 IN 处理
+        else:
+            from_system = (from_system_raw or '').strip()
+        task_status = data.get('taskStatus')  # 可以是单个值或数组
+        time_start = (data.get('timeStart') or '').strip()
+        time_end = (data.get('timeEnd') or '').strip()
+        model_code = (data.get('modelProcessCode') or '').strip()
+        model_name = (data.get('modelProcessName') or '').strip()
+        task_error_raw = data.get('taskError')
+        if isinstance(task_error_raw, list):
+            task_error = task_error_raw
+        else:
+            task_error = (task_error_raw or '').strip()
+        device_code = (data.get('deviceCode') or '').strip()
+        task_path = (data.get('taskPath') or '').strip()
+
+        where_clauses = []
+        params_list = []
+
+        if order_id:
+            where_clauses.append('orderId LIKE %s')
+            params_list.append(f'%{order_id}%')
+        if device_num:
+            where_clauses.append('device_num LIKE %s')
+            params_list.append(f'%{device_num}%')
+        if shelf_num:
+            where_clauses.append('shelf_num LIKE %s')
+            params_list.append(f'%{shelf_num}%')
+        if from_system:
+            if isinstance(from_system, list) and len(from_system) > 0:
+                placeholders = ','.join(['%s'] * len(from_system))
+                where_clauses.append(f'from_system IN ({placeholders})')
+                params_list.extend(from_system)
+            elif isinstance(from_system, str):
+                where_clauses.append('from_system = %s')
+                params_list.append(from_system)
+        if task_status is not None:
+            if isinstance(task_status, list) and len(task_status) > 0:
+                placeholders = ','.join(['%s'] * len(task_status))
+                where_clauses.append(f'task_status IN ({placeholders})')
+                params_list.extend([int(s) for s in task_status])
+            elif isinstance(task_status, (int, str)) and str(task_status).strip():
+                where_clauses.append('task_status = %s')
+                params_list.append(int(task_status))
+        if time_start:
+            where_clauses.append('create_time >= %s')
+            params_list.append(time_start)
+        if time_end:
+            where_clauses.append('create_time <= %s')
+            params_list.append(time_end + ' 23:59:59' if len(time_end) <= 10 else time_end)
+        if model_code:
+            where_clauses.append('model_process_code LIKE %s')
+            params_list.append(f'%{model_code}%')
+        if model_name:
+            where_clauses.append('model_process_name LIKE %s')
+            params_list.append(f'%{model_name}%')
+        if task_error:
+            if isinstance(task_error, list) and len(task_error) > 0:
+                placeholders = ','.join(['%s'] * len(task_error))
+                where_clauses.append(f'task_error IN ({placeholders})')
+                params_list.extend(task_error)
+            elif isinstance(task_error, str):
+                where_clauses.append('task_error = %s')
+                params_list.append(task_error)
+        if device_code:
+            where_clauses.append('device_code LIKE %s')
+            params_list.append(f'%{device_code}%')
+        if task_path:
+            where_clauses.append('taskPath LIKE %s')
+            params_list.append(f'%{task_path}%')
+
+        where_sql = ('WHERE ' + ' AND '.join(where_clauses)) if where_clauses else ''
+
+        conn = _pymysql.connect(
+            host='10.68.2.32', port=3306, user='wms', password='CCshenda889',
+            database='wms', charset='utf8mb4', cursorclass=_DictCursor,
+            connect_timeout=5
+        )
+
+        try:
+            with conn.cursor() as cursor:
+                # 查询总数
+                count_sql = f'SELECT COUNT(*) AS total FROM fy_cross_task {where_sql}'
+                cursor.execute(count_sql, params_list)
+                real_total = cursor.fetchone()['total']
+                max_total = page_size * 2  # 最多显示 2 页数据
+                total = min(real_total, max_total)
+
+                # 查询数据
+                offset = (page - 1) * page_size
+                offset = min(offset, max_total - page_size)
+                if offset < 0:
+                    offset = 0
+                data_sql = f'''SELECT id, orderId, task_status, task_error, device_num, shelf_num,
+                    from_system, model_process_code, model_process_name, device_code, taskPath,
+                    create_time, update_time
+                    FROM fy_cross_task {where_sql}
+                    ORDER BY create_time DESC
+                    LIMIT %s OFFSET %s'''
+                cursor.execute(data_sql, params_list + [page_size, offset])
+                rows = cursor.fetchall()
+
+                # 格式化时间
+                for row in rows:
+                    for key in ('create_time', 'update_time'):
+                        if row.get(key):
+                            row[key] = row[key].strftime('%Y-%m-%d %H:%M:%S') if hasattr(row[key], 'strftime') else str(row[key])
+        finally:
+            conn.close()
+
+        total_pages = max(1, (total + page_size - 1) // page_size)
+
+        return jsonify({
+            'success': True,
+            'tasks': rows,
+            'total': total,
+            'real_total': real_total,
+            'capped': real_total > max_total,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': total_pages
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ========== 跨环境任务查询 — 下拉筛选选项（含数量 + 排序，5分钟缓存） ==========
+
+import time as _time_module
+
+_filter_cache = {'data': None, 'expires_at': 0}
+
+
+@task_bp.route('/api/query/cross_task_filters')
+@login_required
+def api_cross_task_filters():
+    """返回 from_system、task_status、task_error 的下拉选项（含 count，按数量降序）"""
+    import pymysql as _pymysql
+    from pymysql.cursors import DictCursor as _DictCursor
+
+    now = _time_module.time()
+    if _filter_cache['data'] and now < _filter_cache['expires_at']:
+        return jsonify({'success': True, 'filters': _filter_cache['data'], 'cached': True})
+
+    try:
+        conn = _pymysql.connect(
+            host='10.68.2.32', port=3306, user='wms', password='CCshenda889',
+            database='wms', charset='utf8mb4', cursorclass=_DictCursor,
+            connect_timeout=5
+        )
+
+        try:
+            with conn.cursor() as cursor:
+                # from_system 分布
+                cursor.execute(
+                    "SELECT from_system AS value, COUNT(*) AS count "
+                    "FROM fy_cross_task WHERE from_system IS NOT NULL AND from_system != '' "
+                    "GROUP BY from_system ORDER BY count DESC"
+                )
+                from_system_options = cursor.fetchall()
+
+                # task_status 分布（附带最常见的 task_error，用预定义名称覆盖）
+                cursor.execute(
+                    "SELECT task_status AS value, COUNT(*) AS count "
+                    "FROM fy_cross_task WHERE task_status IS NOT NULL "
+                    "GROUP BY task_status ORDER BY count DESC"
+                )
+                task_status_options = cursor.fetchall()
+
+                # 任务状态 → 统一名称映射
+                STATUS_NAME_MAP = {
+                    8: "任务完成",
+                    7: "已下发",
+                    4: "已下发",
+                    3: "任务异常结束",
+                    20: "任务异常完成",
+                    6: "已下发",
+                    9: "已下发",
+                    10: "已下发",
+                    5: "请勿频繁请求",
+                    -1: "容量管控",
+                    -2: "高优先级"
+                }
+                for opt in task_status_options:
+                    sv = opt['value']
+                    if sv in STATUS_NAME_MAP:
+                        opt['label'] = STATUS_NAME_MAP[sv]
+                    else:
+                        opt['label'] = f'状态 {sv}'
+
+                # task_error 分布（仅 top 30）
+                cursor.execute(
+                    "SELECT task_error AS value, COUNT(*) AS count "
+                    "FROM fy_cross_task WHERE task_error IS NOT NULL AND task_error != '' "
+                    "GROUP BY task_error ORDER BY count DESC LIMIT 30"
+                )
+                task_error_options = cursor.fetchall()
+        finally:
+            conn.close()
+
+        result = {
+            'from_system': from_system_options,
+            'task_status': task_status_options,
+            'task_error': task_error_options
+        }
+        _filter_cache['data'] = result
+        _filter_cache['expires_at'] = now + 300  # 5分钟缓存
+
+        return jsonify({
+            'success': True,
+            'filters': result,
+            'cached': False
+        })
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500

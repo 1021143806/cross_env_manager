@@ -335,7 +335,7 @@
                             <i class="bi bi-plus"></i>
                         </button>
                     </h6>
-                    <div id="inline-area-list" class="list-group mb-2" style="max-height:400px;overflow-y:auto;"></div>
+                    <div id="inline-area-list" class="list-group mb-2" style="max-height:calc(100vh - 280px);overflow-y:auto;"></div>
                 </div>
                 <!-- 右侧：任务列表 -->
                 <div class="col-md-8">
@@ -346,7 +346,7 @@
                             <i class="bi bi-plus"></i> 新增任务
                         </button>
                     </h6>
-                    <div id="inline-task-list" style="max-height:400px;overflow-y:auto;">
+                    <div id="inline-task-list" style="max-height:calc(100vh - 280px);overflow-y:auto;">
                         <div class="text-muted text-center py-4">请先选择左侧区域</div>
                     </div>
                 </div>
@@ -630,7 +630,8 @@ function renderAreaList() {
     const areas = Object.keys(_editorConfig.areas || {}).sort();
     list.innerHTML = areas.map(name => `
         <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center ${_selectedArea === name ? 'active' : ''}"
-                onclick="selectArea('${name.replace(/'/g, "\\'")}')">
+                onclick="selectArea('${name.replace(/'/g, "\\'")}')"
+                ondblclick="event.stopPropagation();renameArea('${name.replace(/'/g, "\\'")}')">
             <span>${escHtml(name)}</span>
             <span>
                 <span class="badge bg-secondary">${Object.keys(_editorConfig.areas[name]?.tasks || {}).length}</span>
@@ -678,7 +679,10 @@ function renderTaskList() {
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <strong>${escHtml(name)}</strong>
-                        <span class="badge bg-dark ms-1">${t.code || '-'}</span>
+                        ${t.code ? `<span class="badge bg-dark ms-1">${escHtml(t.code)}</span>
+                        <a href="/search?search_term=${encodeURIComponent(t.code)}" target="_blank" class="btn btn-sm btn-outline-info py-0 px-1 ms-1" onclick="event.stopPropagation();" title="搜索该模板">
+                            <i class="bi bi-search"></i>
+                        </a>` : `<span class="badge bg-dark ms-1">-</span>`}
                     </div>
                     <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="event.stopPropagation();deleteTask('${name.replace(/'/g, "\\'")}')">
                         <i class="bi bi-trash"></i>
@@ -718,6 +722,26 @@ function addArea() {
         _editorConfig.areas[trimmed] = { tasks: {} };
         renderAreaList();
         showConfigStatus('区域 "' + trimmed + '" 已添加（尚未保存）', 'info');
+    };
+    new bootstrap.Modal(document.getElementById('area-edit-modal')).show();
+}
+
+function renameArea(oldName) {
+    if (!_editorConfig || !_editorConfig.areas[oldName]) return;
+    document.getElementById('area-edit-modal-title').textContent = '重命名区域';
+    document.getElementById('area-edit-name').value = oldName;
+    _pendingAreaCallback = function(newName) {
+        const trimmed = newName.trim();
+        if (!trimmed || trimmed === oldName) return;
+        if (_editorConfig.areas[trimmed]) {
+            showConfigStatus('该名称已存在', 'error');
+            return;
+        }
+        _editorConfig.areas[trimmed] = _editorConfig.areas[oldName];
+        delete _editorConfig.areas[oldName];
+        if (_selectedArea === oldName) _selectedArea = trimmed;
+        renderAreaList();
+        showConfigStatus('区域已重命名（尚未保存）', 'info');
     };
     new bootstrap.Modal(document.getElementById('area-edit-modal')).show();
 }
