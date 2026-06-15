@@ -984,7 +984,7 @@ def api_cross_task_filters():
                     10: "已下发",
                     5: "请勿频繁请求",
                     -1: "容量管控",
-                    -2: "任务异常"
+                    -2: "高优先级"
                 }
                 for opt in task_status_options:
                     sv = opt['value']

@@ -422,7 +422,7 @@
         else if (s === 7 || s === 4) { badgeClass = 'bg-info'; label = errorText || '已下发'; }
         else if (s === 3) { badgeClass = 'bg-danger'; label = errorText || '任务异常结束'; }
         else if (s === -1) { badgeClass = 'bg-dark'; label = '容量管控'; }
-        else if (s === -2) { badgeClass = 'bg-dark'; label = errorText || '任务异常'; }
+        else if (s === -2) { badgeClass = 'bg-warning text-dark'; label = '高优先级'; }
         else if (s === 20) { badgeClass = 'bg-warning text-dark'; label = '任务异常完成'; }
         else if (s === 5 || s === 6 || s === 9 || s === 10) { badgeClass = 'bg-secondary'; }
 
