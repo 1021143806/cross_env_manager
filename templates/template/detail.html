@@ -206,11 +206,11 @@
             </div>
             <div class="card-body">
                 <div class="d-grid gap-2">
-                    <a href="{{ url_for('edit_template', template_id=template.id) }}" 
+                    <a href="{{ url_for('template.edit_template', template_id=template.id) }}" 
                        class="btn btn-warning">
                         <i class="bi bi-pencil"></i> 编辑模板
                     </a>
-                    <a href="{{ url_for('copy_template', template_id=template.id) }}" 
+                    <a href="{{ url_for('template.copy_template', template_id=template.id) }}" 
                        class="btn btn-success">
                         <i class="bi bi-copy"></i> 复制模板
                     </a>
