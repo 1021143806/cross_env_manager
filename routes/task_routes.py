@@ -606,6 +606,59 @@ def resend_task_stream():
     )
 
 
+@task_bp.route('/api/task/cancel-subtask', methods=['POST'])
+@login_required
+@admin_required
+def cancel_subtask():
+    """取消子任务：调用 ICS cancelTask 接口"""
+    import urllib.request as _urllib
+    import time as _time
+
+    try:
+        data = request.get_json() or {}
+        sub_order_id = data.get('subOrderId', '').strip()
+        server_ip = data.get('serverIp', '').strip()
+
+        if not sub_order_id:
+            return jsonify({'success': False, 'error': '缺少子任务ID (subOrderId)'}), 400
+        if not server_ip:
+            return jsonify({'success': False, 'error': '缺少服务器IP (serverIp)'}), 400
+
+        url = f'http://{server_ip}:7000/ics/out/task/cancelTask'
+        body = [{'orderId': sub_order_id, 'destPosition': ''}]
+        body_str = json.dumps(body)
+
+        t0 = _time.time()
+        req = _urllib.Request(url, data=body_str.encode('utf-8'),
+                              headers={'Content-Type': 'application/json'}, method='POST')
+        with _urllib.urlopen(req, timeout=10) as resp:
+            elapsed_ms = round((_time.time() - t0) * 1000, 1)
+            raw = resp.read().decode('utf-8')
+            try:
+                resp_data = json.loads(raw)
+            except Exception:
+                resp_data = raw
+
+        code = resp_data.get('code') if isinstance(resp_data, dict) else 1000
+        # code=8007 表示订单不存在，也算成功
+        if code == 1000 or code == 8007:
+            return jsonify({
+                'success': True,
+                'message': f'已取消子任务 {sub_order_id}' if code == 1000 else f'子任务已不存在(8007)',
+                'elapsed_ms': elapsed_ms,
+                'remote_code': code
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': resp_data.get('message', resp_data) if isinstance(resp_data, dict) else str(resp_data),
+                'remote_code': code
+            }), 500
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'取消请求失败: {str(e)}'}), 500
+
+
 @task_bp.route('/api/query/tasks_by_error', methods=['POST'])
 @login_required
 def api_tasks_by_error():

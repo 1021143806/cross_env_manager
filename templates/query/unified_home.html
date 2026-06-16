@@ -2425,6 +2425,10 @@
                                 `<button class="btn btn-sm btn-outline-warning" onclick="resendTask('${subOrderId}', '${orderId}', ${taskSeq}, '${serverIp}')" title="重发任务（先预占设备→取消任务→再预占→修改数据库）">
                                     <i class="bi bi-arrow-repeat"></i> 重发
                                 </button>` : ''}
+                            ${status == 4 || status == 9 ? 
+                                `<button class="btn btn-sm btn-outline-danger" onclick="cancelSubtask('${subOrderId}', '${serverIp}')" title="直接取消此子任务">
+                                    <i class="bi bi-x-circle"></i> 取消任务
+                                </button>` : ''}
                             ${status == 5 ? 
                                 `<button class="btn btn-sm btn-outline-danger" onclick="forceCompleteTask('${subOrderId}', '${orderId}', ${taskSeq})" title="异常完成（仅将子任务状态置为3）">
                                     <i class="bi bi-check-circle"></i> 异常完成
@@ -2802,6 +2806,55 @@
                 }
             } catch (e) {
                 alert('❌ 请求失败: ' + e.message);
+            }
+        };
+
+        // 取消子任务（调用 ICS cancelTask 接口）
+        window.cancelSubtask = async function(subOrderId, serverIp) {
+            const confirmMsg = `确定要取消该子任务吗？\n\n` +
+                `子任务ID: ${subOrderId}\n` +
+                `目标服务器: ${serverIp}\n\n` +
+                `此操作将调用 ICS 取消接口，不可撤销！`;
+            
+            if (!confirm(confirmMsg)) return;
+            
+            const btn = event?.target?.closest('button');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 取消中...';
+            }
+            
+            try {
+                const res = await fetch('/api/task/cancel-subtask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        subOrderId: subOrderId,
+                        serverIp: serverIp
+                    })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    alert(`✅ ${data.message || '取消成功'}\n耗时: ${data.elapsed_ms || '?'}ms`);
+                    // 查询最新子任务状态
+                    setTimeout(() => {
+                        // 通过 orderId 重新加载页面（由当前 URL 中的 orderId 决定）
+                        const currentOrderId = new URLSearchParams(window.location.search).get('orderId');
+                        if (currentOrderId) {
+                            executeQuery();
+                        }
+                    }, 1000);
+                } else {
+                    alert('❌ 取消失败: ' + (data.error || '未知错误'));
+                }
+            } catch (e) {
+                alert('❌ 请求失败: ' + e.message);
+            }
+            
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-x-circle"></i> 取消任务';
             }
         };
 
