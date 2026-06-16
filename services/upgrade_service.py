@@ -324,8 +324,9 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
                 shutil.copy2(src_path, dst_path)
                 overlay_count += 1
 
-        # 7.0 清理 Python 字节码缓存（避免旧代码运行）
+        # 7.0 清理 Python 字节码缓存 + 强制重启 Postlook
         _clear_pycache()
+        _kill_postlook()
 
         # 7.1 增量包：清理被删除的文件
         deleted_paths = files_changed.get('D', []) if isinstance(files_changed, dict) else []
@@ -407,6 +408,25 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
     if delete_count:
         result['files_deleted'] = delete_count
     return result
+
+
+def _kill_postlook():
+    """强制杀死 Postlook 进程（依赖 supervisor auto-restart 重启新代码）"""
+    try:
+        import signal as _signal
+        # 找到 uvicorn postlook 进程的 PID
+        result = subprocess.run(
+            ['pgrep', '-f', 'uvicorn.*postlook'],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            for pid_str in result.stdout.strip().split('\n'):
+                try:
+                    os.kill(int(pid_str), _signal.SIGTERM)
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
 
 def _clear_pycache():
