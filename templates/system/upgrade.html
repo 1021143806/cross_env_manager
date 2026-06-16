@@ -364,6 +364,10 @@ curl -X POST http://{{ request.host }}/api/system/upgrade/rollback/升级备份�
                             {% else %}
                                 <span class="badge bg-danger">失败</span>
                             {% endif %}
+                            {% if r.get('merged_count', 0) > 1 %}
+                                <span class="badge bg-secondary ms-1" style="font-size:0.6rem;" title="合并了 {{ r.merged_count }} 次升级">×{{ r.merged_count }}</span>
+                            {% endif %}
+                        </td>
                         </td>
                         <td>{{ r.get('files_overlay', '-') }}</td>
                         <td>

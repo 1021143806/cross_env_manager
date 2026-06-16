@@ -192,8 +192,32 @@ def _trim_upgrade_log():
 
 
 def get_upgrade_records() -> list:
-    """获取升级记录列表"""
-    return _read_upgrade_log()
+    """获取升级记录列表（同版本连续记录自动合并）"""
+    records = _read_upgrade_log()
+    if len(records) < 2:
+        return records
+    merged = []
+    prev = None
+    for r in records:
+        if prev and r.get('old_version') == prev.get('old_version') and r.get('new_version') == prev.get('new_version') and r.get('status') == 'success' and prev.get('status') == 'success':
+            # 合并：累加文件数，合并 release_notes
+            prev['files_overlay'] = (prev.get('files_overlay', 0) or 0) + (r.get('files_overlay', 0) or 0)
+            prev['files_skipped'] = (prev.get('files_skipped', 0) or 0) + (r.get('files_skipped', 0) or 0)
+            if r.get('files_deleted'):
+                prev['files_deleted'] = (prev.get('files_deleted', 0) or 0) + r['files_deleted']
+            # 合并 release_notes：去重
+            prev_notes = prev.get('release_notes') or []
+            r_notes = r.get('release_notes') or []
+            if r_notes:
+                for note in r_notes:
+                    if note not in prev_notes:
+                        prev_notes.append(note)
+                prev['release_notes'] = prev_notes
+            prev['merged_count'] = (prev.get('merged_count', 1) + 1)
+        else:
+            merged.append(r)
+            prev = r
+    return merged
 
 
 def _read_version_json(extract_dir: str) -> dict:
