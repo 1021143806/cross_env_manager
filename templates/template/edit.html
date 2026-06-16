@@ -246,6 +246,38 @@ value="{{ detail.task_servicec|default('') }}">
         {% endif %}
     </div>
     
+    <!-- RCS 四表同步状态 -->
+    <div class="form-section" id="rcsSyncSection">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4><i class="bi bi-arrow-repeat text-info"></i> RCS 四表同步状态</h4>
+            <div class="d-flex align-items-center gap-2">
+                <small class="text-muted">目标: <code>10.68.2.32</code></small>
+                <button type="button" class="btn btn-outline-info btn-sm" id="refreshRcsBtn" onclick="refreshRcsStatus()">
+                    <i class="bi bi-arrow-clockwise"></i> 刷新
+                </button>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-borderless mb-0" id="rcsTable">
+                <thead>
+                    <tr class="text-muted" style="font-size:0.78rem;">
+                        <th style="width:40%;">数据表</th>
+                        <th style="width:30%;">同步状态</th>
+                        <th style="width:30%;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="rcsStatusBody">
+                    <tr>
+                        <td colspan="3" class="text-center py-3">
+                            <div class="spinner-border spinner-border-sm text-muted me-2"></div>
+                            <span class="text-muted">检查中...</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
     <!-- 操作按钮 -->
     <div class="form-section">
         <div class="d-flex justify-content-between">
@@ -416,6 +448,8 @@ value="{{ detail.task_servicec|default('') }}">
 {% block extra_js %}
 <script src="/static/vendor/sortablejs/Sortable.min.js"></script>
 <script>
+    const templateId = {{ template.id }};
+    
     // 确认保存
     function confirmSave() {
         if (confirm('确定要保存对模板的修改吗？\n\n此操作将直接更新数据库。')) {
@@ -436,11 +470,13 @@ value="{{ detail.task_servicec|default('') }}">
         
         // 初始化子任务管理功能
         initDetailManagement();
+        
+        // 自动检查 RCS 同步状态
+        refreshRcsStatus();
     });
     
     // 子任务管理功能
     function initDetailManagement() {
-        const templateId = {{ template.id }};
         let sortable = null;
         
         // 防止重复初始化
@@ -853,6 +889,99 @@ value="{{ detail.task_servicec|default('') }}">
                 }
             }, 5000);
         }
+    }
+    
+    // ========== RCS 四表同步 ==========
+    
+    const RCS_TABLE_LABELS = {
+        'model_process': 'model_process（主模板）',
+        'model_process_detail': 'model_process_detail（模板详情）',
+        'task_template': 'task_template（任务模板）',
+        'task_relation': 'task_relation（任务关系）'
+    };
+    
+    async function refreshRcsStatus() {
+        const tbody = document.getElementById('rcsStatusBody');
+        if (!tbody) return;
+        tbody.innerHTML = `<tr><td colspan="3" class="text-center py-3">
+            <div class="spinner-border spinner-border-sm text-muted me-2"></div>
+            <span class="text-muted">检查中...</span>
+        </td></tr>`;
+        
+        try {
+            const res = await fetch(`/api/template/${templateId}/rcs_sync_status`);
+            const json = await res.json();
+            if (!json.success) {
+                tbody.innerHTML = `<tr><td colspan="3" class="text-center py-3 text-muted">
+                    <i class="bi bi-exclamation-circle"></i> ${json.message || '获取状态失败'}
+                </td></tr>`;
+                return;
+            }
+            renderRcsStatus(json.data);
+        } catch (err) {
+            tbody.innerHTML = `<tr><td colspan="3" class="text-center py-3 text-muted">
+                <i class="bi bi-exclamation-triangle"></i> 请求失败: ${err.message}
+            </td></tr>`;
+        }
+    }
+    
+    function renderRcsStatus(data) {
+        const tbody = document.getElementById('rcsStatusBody');
+        if (!tbody) return;
+        
+        const details = data.details || {};
+        let html = '';
+        
+        for (const [key, label] of Object.entries(RCS_TABLE_LABELS)) {
+            const synced = details[key];
+            html += `<tr>
+                <td><code style="font-size:0.8rem;">${label}</code></td>
+                <td>
+                    ${synced
+                        ? '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>已同步</span>'
+                        : '<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-circle me-1"></i>未同步</span>'}
+                </td>
+                <td>
+                    ${synced
+                        ? '<span class="text-muted" style="font-size:0.75rem;">—</span>'
+                        : `<button type="button" class="btn btn-outline-primary btn-sm" onclick="syncRcsTable('${key}')">
+                            <i class="bi bi-cloud-upload me-1"></i>同步
+                        </button>`}
+                </td>
+            </tr>`;
+        }
+        
+        tbody.innerHTML = html;
+    }
+    
+    async function syncRcsTable(tableName) {
+        if (!confirm(`确定要将模板同步到 10.68.2.32 吗？\n\n将以 xialiaoDA02-LH023_521 为模板，自动对比并补充缺失的表数据。`)) {
+            return;
+        }
+        
+        // 禁用所有同步按钮
+        document.querySelectorAll('#rcsStatusBody button').forEach(btn => {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 同步中...';
+        });
+        
+        try {
+            const res = await fetch(`/api/template/${templateId}/rcs_sync`, {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const json = await res.json();
+            if (json.success) {
+                showAlert('RCS 同步成功', 'success');
+            } else {
+                showAlert(json.message || '同步失败', 'danger');
+            }
+        } catch (err) {
+            showAlert(`请求失败: ${err.message}`, 'danger');
+        }
+        
+        // 刷新状态
+        setTimeout(() => refreshRcsStatus(), 1000);
     }
 </script>
 {% endblock %}
