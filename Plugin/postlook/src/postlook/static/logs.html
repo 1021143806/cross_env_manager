@@ -80,6 +80,22 @@
         }
         @keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
         .btn-live.auto-stop { background: var(--warning); color: #000; border-color: var(--warning); }
+        .shell-cmd-bar {
+            display: flex; align-items: center; gap: 0.5rem;
+            background: #1a1a2e; border: 1px solid var(--glass-border);
+            border-radius: 8px; padding: 0.5rem 0.75rem; margin-bottom: 0.75rem;
+            font-size: 0.75rem;
+        }
+        .shell-cmd-bar code {
+            flex: 1; font-family: 'SF Mono','Monaco','Consolas',monospace;
+            color: #4ade80; overflow-x: auto; white-space: pre-wrap; word-break: break-all;
+        }
+        .btn-copy-shell {
+            background: none; border: 1px solid var(--glass-border);
+            color: var(--text-secondary); border-radius: 4px;
+            padding: 0.15rem 0.4rem; cursor: pointer; font-size: 0.8rem;
+        }
+        .btn-copy-shell:hover { background: var(--accent-light); color: var(--accent); }
     </style>
 </head>
 <body>
@@ -186,6 +202,12 @@
                             </button>
                             <span id="queryTime" style="font-size:0.75rem;color:var(--text-tertiary);"></span>
                         </div>
+                    </div>
+
+                    <!-- 等效 Shell 命令 -->
+                    <div class="shell-cmd-bar" id="shellCmdBar" style="display:none;">
+                        <code id="shellCmdText"></code>
+                        <button class="btn-copy-shell" onclick="copyShellCmd()" title="复制命令">📋</button>
                     </div>
 
                     <div id="logResults" class="results-area">

@@ -55,6 +55,7 @@ class LogQueryResponse(BaseModel):
     total_lines: int
     truncated: bool
     results: list
+    shell_cmd: Optional[str] = None
     keyword: Optional[str] = None
     error: Optional[str] = None
 

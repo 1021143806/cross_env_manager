@@ -20,7 +20,8 @@
     var els = {};
     function cacheEls() {
         ['folder','pattern','keyword','lineCount','tail','recentFiles',
-         'chipFilters','btnQuery','btnLive','btnLiveLabel','queryTime','logResults','historyDropdown','rulesContainer'].forEach(function(id) {
+         'chipFilters','btnQuery','btnLive','btnLiveLabel','queryTime','logResults','historyDropdown','rulesContainer',
+          'shellCmdBar','shellCmdText'].forEach(function(id) {
             els[id] = document.getElementById(id);
         });
     }
@@ -401,6 +402,8 @@
 
         els.logResults.innerHTML = statsHtml + bodyHtml;
         els.queryTime.textContent = '';
+        // 显示 shell 命令
+        showShellCmd(data.shell_cmd);
     }
 
     // ── 复制文件分组内容 ──
@@ -431,11 +434,31 @@
         els.tail.value = 'true';
         els.recentFiles.value = '2';
         chipClearAll();
+        els.shellCmdBar.style.display = 'none';
         els.logResults.innerHTML = '<div class="empty-state">' +
             '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">' +
             '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' +
             '<p>输入查询条件后点击"查询"查看日志</p></div>';
         els.queryTime.textContent = '';
+    };
+
+    // ── Shell 命令展示 ──
+    var _lastShellCmd = '';
+
+    function showShellCmd(cmd) {
+        if (!cmd) { els.shellCmdBar.style.display = 'none'; return; }
+        _lastShellCmd = cmd;
+        els.shellCmdText.textContent = '$ ' + cmd;
+        els.shellCmdBar.style.display = 'flex';
+    }
+
+    window.copyShellCmd = function() {
+        if (!_lastShellCmd) return;
+        navigator.clipboard.writeText(_lastShellCmd).catch(function(){});
+        var ta = document.createElement('textarea');
+        ta.value = _lastShellCmd; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
     };
 
     // ── 初始化 ──

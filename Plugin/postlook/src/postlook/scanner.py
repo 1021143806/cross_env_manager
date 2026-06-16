@@ -4,6 +4,7 @@ postlook · 文件扫描与内容读取
 
 import fnmatch
 import os
+import re
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -117,6 +118,84 @@ def find_files(
     return files[:recent_files]
 
 
+def parse_grep_pipeline(keyword: Optional[str]) -> tuple:
+    """
+    解析 grep 管道语法，返回 (filters, shell_cmd)
+    filters: [(pattern, invert, case_insensitive), ...]
+    示例:
+      "ERROR" → ([("ERROR", False, True)], "grep -i 'ERROR'")
+      "ERROR|Exception" → ([("ERROR|Exception", False, True)], "grep -iE '(ERROR|Exception)'")
+      "ERROR | grep timeout" → ([("ERROR", False, True), ("timeout", False, True)], "grep -i 'ERROR' | grep -i 'timeout'")
+      "ERROR | grep -v debug" → ([("ERROR", False, True), ("debug", True, True)], "grep -i 'ERROR' | grep -iv 'debug'")
+    """
+    if not keyword:
+        return [], ""
+    
+    keyword = keyword.strip()
+    parts = [p.strip() for p in keyword.split("|")]
+    
+    filters = []
+    cmd_parts = []
+    
+    for p in parts:
+        invert = False
+        case_insensitive = True
+        pattern = p
+        
+        # 检查是否是 grep 命令段
+        grep_match = re.match(r'^grep\s+(-[a-z]*)?\s*(.+)$', p, re.IGNORECASE)
+        if grep_match:
+            flags = grep_match.group(1) or ""
+            pattern = grep_match.group(2).strip()
+            if 'v' in flags.lower():
+                invert = True
+            if 'i' in flags.lower():
+                case_insensitive = True
+            # build cmd
+            cmd_flags = "-i" if case_insensitive else ""
+            if invert:
+                cmd_flags += "v" if cmd_flags else "-v"
+            cmd_parts.append(f"grep {cmd_flags} '{pattern}'" if cmd_flags else f"grep '{pattern}'")
+        else:
+            # 普通关键字，可能含 |
+            if "|" in p:
+                p_clean = p.strip()
+                # 已经 split 过了，这里不应该出现 |
+                pass
+            cmd_flags = "-iE" if "|" in pattern else "-i"
+            cmd_parts.append(f"grep {cmd_flags} '{pattern}'")
+        
+        filters.append((pattern, invert, case_insensitive))
+    
+    shell_cmd = " | ".join(cmd_parts) if cmd_parts else ""
+    return filters, shell_cmd
+
+
+def _line_matches_pipeline(line: str, filters: list) -> bool:
+    """检查一行是否通过所有过滤器"""
+    for pattern, invert, ci in filters:
+        test_line = line.lower() if ci else line
+        test_pat = pattern.lower() if ci else pattern
+        
+        # 支持 | (OR) 在单个 pattern 中
+        if "|" in pattern:
+            or_patterns = [p.strip() for p in pattern.split("|")]
+            matched = any(
+                (p.lower() if ci else p) in test_line
+                for p in or_patterns
+            )
+        else:
+            matched = test_pat in test_line
+        
+        if invert:
+            if matched:
+                return False
+        else:
+            if not matched:
+                return False
+    return True
+
+
 def search_lines(
     file_path: Path,
     keyword: Optional[str] = None,
@@ -143,11 +222,11 @@ def search_lines(
     total = len(lines)
 
     if keyword:
-        # 关键字搜索：先 grep 全文件，保留原始行号
-        kw_lower = keyword.lower()
+        # 管道解析
+        filters, _ = parse_grep_pipeline(keyword)
         all_matches = []
         for i, line in enumerate(lines):
-            if kw_lower in line.lower():
+            if _line_matches_pipeline(line, filters):
                 all_matches.append({
                     "file": file_path.name,
                     "line": i + 1,  # 原始行号
@@ -155,8 +234,13 @@ def search_lines(
                 })
 
         # line_start/line_end 作为匹配结果的索引范围（1-based）
-        start_idx = (line_start or 1) - 1
-        end_idx = line_end if line_end else len(all_matches)
+        if tail and not line_start:
+            # tail 模式：取最后 line_end 条
+            start_idx = max(0, len(all_matches) - (line_end or max_lines))
+            end_idx = len(all_matches)
+        else:
+            start_idx = (line_start or 1) - 1
+            end_idx = line_end if line_end else len(all_matches)
         start_idx = max(0, start_idx)
         end_idx = min(len(all_matches), end_idx)
 
@@ -191,6 +275,33 @@ def search_lines(
             })
 
     return results
+
+
+def _build_shell_cmd(keyword: Optional[str], folder_path: Path, pattern: str, line_end: int, tail: bool, files: list) -> str:
+    """生成等效的 shell 命令字符串"""
+    _, grep_part = parse_grep_pipeline(keyword)
+    # 构建 find 部分
+    file_list_cmd = f"find {folder_path} -name '{pattern}' | sort | tail -10"
+    if len(files) == 1:
+        file_list_cmd = str(files[0])
+    
+    parts = []
+    if grep_part:
+        parts.append(grep_part)
+    
+    # tail/head
+    tail_flag = "-n " + str(line_end)
+    if tail:
+        parts.append(f"tail {tail_flag}")
+    else:
+        parts.append(f"head {tail_flag}")
+    
+    if parts:
+        return file_list_cmd + " | " + " | ".join(parts)
+    elif tail:
+        return f"tail -n {line_end} {file_list_cmd}"
+    else:
+        return f"head -n {line_end} {file_list_cmd}"
 
 
 def scan_logs(
@@ -276,5 +387,5 @@ def scan_logs(
         "total_lines": len(all_results),
         "truncated": truncated,
         "results": all_results,
-        "keyword": keyword,
+        "shell_cmd": _build_shell_cmd(keyword, folder_path, pattern, line_end, tail, files),
     }
