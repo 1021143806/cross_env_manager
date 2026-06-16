@@ -25,6 +25,9 @@ static/js/backups/*
 # 调车模块数据文件
 data/
 
+# postlook 报文调试数据（需跟踪）
+!Plugin/postlook/data/
+
 # Python 虚拟环境
 venv/
 

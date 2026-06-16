@@ -192,32 +192,8 @@ def _trim_upgrade_log():
 
 
 def get_upgrade_records() -> list:
-    """获取升级记录列表（同版本连续记录自动合并）"""
-    records = _read_upgrade_log()
-    if len(records) < 2:
-        return records
-    merged = []
-    prev = None
-    for r in records:
-        if prev and r.get('old_version') == prev.get('old_version') and r.get('new_version') == prev.get('new_version') and r.get('status') == 'success' and prev.get('status') == 'success':
-            # 合并：累加文件数，合并 release_notes
-            prev['files_overlay'] = (prev.get('files_overlay', 0) or 0) + (r.get('files_overlay', 0) or 0)
-            prev['files_skipped'] = (prev.get('files_skipped', 0) or 0) + (r.get('files_skipped', 0) or 0)
-            if r.get('files_deleted'):
-                prev['files_deleted'] = (prev.get('files_deleted', 0) or 0) + r['files_deleted']
-            # 合并 release_notes：去重
-            prev_notes = prev.get('release_notes') or []
-            r_notes = r.get('release_notes') or []
-            if r_notes:
-                for note in r_notes:
-                    if note not in prev_notes:
-                        prev_notes.append(note)
-                prev['release_notes'] = prev_notes
-            prev['merged_count'] = (prev.get('merged_count', 1) + 1)
-        else:
-            merged.append(r)
-            prev = r
-    return merged
+    """获取升级记录列表"""
+    return _read_upgrade_log()
 
 
 def _read_version_json(extract_dir: str) -> dict:
@@ -324,13 +300,6 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
                 shutil.copy2(src_path, dst_path)
                 overlay_count += 1
 
-        # 7.0 清理 Python 字节码缓存 + 强制重启 Postlook
-        _clear_pycache()
-        _kill_postlook()
-
-        # 7.0.1 验证关键文件写入成功
-        verify_errors = _verify_postlook_files()
-
         # 7.1 增量包：清理被删除的文件
         deleted_paths = files_changed.get('D', []) if isinstance(files_changed, dict) else []
         delete_count = 0
@@ -405,71 +374,12 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
         'backup': backup_name,
         'release_title': release_title,
         'release_notes': release_notes,
-        'verify_warnings': verify_errors,
     }
     if from_version:
         result['upgrade_type'] = 'incremental'
     if delete_count:
         result['files_deleted'] = delete_count
     return result
-
-
-def _kill_postlook():
-    """强制杀死 Postlook 进程（依赖 supervisor auto-restart 重启新代码）"""
-    try:
-        import signal as _signal
-        result = subprocess.run(
-            ['pgrep', '-f', 'uvicorn.*postlook'],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            for pid_str in result.stdout.strip().split('\n'):
-                try:
-                    os.kill(int(pid_str), _signal.SIGTERM)
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-
-def _verify_postlook_files():
-    """校验 Postlook 关键 Python 文件是否包含预期代码特征"""
-    warnings = []
-    checks = {
-        'scanner.py': ('shell_cmd', 'parse_grep_pipeline'),
-        'routes.py': ('shell_cmd', 'postlook_version'),
-        'config.py': ('_BUILTIN_SERVICES', 'get_topology_config'),
-    }
-    postlook_dir = os.path.join(BASE_DIR, 'Plugin', 'postlook', 'src', 'postlook')
-    for filename, markers in checks.items():
-        filepath = os.path.join(postlook_dir, filename)
-        if not os.path.isfile(filepath):
-            warnings.append(f'{filename} 文件不存在')
-            continue
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                content = f.read()
-            missing = [m for m in markers if m not in content]
-            if missing:
-                warnings.append(f'{filename} 缺少预期代码: {", ".join(missing)}')
-        except Exception as e:
-            warnings.append(f'{filename} 读取失败: {e}')
-    return warnings
-
-
-def _clear_pycache():
-    """清理 Plugin/postlook 下的所有 __pycache__ 目录（强制 Python 重新编译）"""
-    postlook_src = os.path.join(BASE_DIR, 'Plugin', 'postlook', 'src')
-    if not os.path.isdir(postlook_src):
-        return
-    for root, dirs, files in os.walk(postlook_src):
-        for d in dirs:
-            if d == '__pycache__':
-                cache_dir = os.path.join(root, d)
-                try:
-                    shutil.rmtree(cache_dir, ignore_errors=True)
-                except Exception:
-                    pass
 
 
 def _backup_project_files(backup_path: str):
@@ -556,29 +466,17 @@ def do_rollback(backup_name: str) -> dict:
 
 def trigger_restart(delay: int = 3):
     """延迟触发 supervisor 重启（后台线程）"""
-    def _find_supervisorctl():
-        for path in ['/usr/bin/supervisorctl', '/usr/local/bin/supervisorctl', '/usr/sbin/supervisorctl']:
-            if os.path.exists(path):
-                return path
-        return 'supervisorctl'  # fallback to PATH
-
     def _restart():
         time.sleep(delay)
-        sctl = _find_supervisorctl()
-        for svc in ['cross_env_manager', 'postlook']:
+        for service in ['cross_env_manager', 'postlook']:
             try:
-                r = subprocess.run([sctl, 'restart', svc], timeout=10, capture_output=True, text=True)
-                if r.returncode == 0:
-                    continue
-            except Exception:
-                pass
-            # 备选：对 postlook 用 HTTP API 触发自重启
-            if svc == 'postlook':
-                try:
-                    import urllib.request as _urllib
-                    _urllib.urlopen('http://127.0.0.1:5011/api/system/restart', data=b'{}', timeout=3)
-                except Exception:
-                    pass
+                subprocess.run(
+                    ['/usr/local/bin/supervisorctl', 'restart', service],
+                    timeout=10,
+                    capture_output=True,
+                )
+            except Exception as e:
+                print(f"[Upgrade] 重启 {service} 失败: {e}")
 
     thread = threading.Thread(target=_restart, daemon=True)
     thread.start()
