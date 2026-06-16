@@ -16,7 +16,8 @@ from .routes import router
 __version__ = "0.5.0"
 
 # CEM 来源（嵌入 iframe 时使用）
-_CEM_ORIGIN = "http://172.31.43.181:5001"
+_CEM_ORIGIN = "http://10.68.2.40:5000"
+_CEM_ORIGIN_ALT = "http://172.31.43.181:5001"  # 旧地址兼容
 
 app = FastAPI(
     title="postlook",
@@ -27,7 +28,7 @@ app = FastAPI(
 # ── CORS 中间件：允许 CEM 跨域调用 API ──
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[_CEM_ORIGIN],
+    allow_origins=[_CEM_ORIGIN, _CEM_ORIGIN_ALT],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,7 +40,7 @@ class FrameAncestorsMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = \
-            f"frame-ancestors 'self' {_CEM_ORIGIN}"
+            f"frame-ancestors 'self' {_CEM_ORIGIN} {_CEM_ORIGIN_ALT}"
         return response
 
 
