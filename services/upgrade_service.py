@@ -524,18 +524,32 @@ def do_rollback(backup_name: str) -> dict:
 
 
 def trigger_restart(delay: int = 3):
-    """延迟触发 supervisor 重启（后台线程）"""
+    """延迟触发重启（后台线程），多路径兜底"""
     def _restart():
         time.sleep(delay)
+        # 1. 尝试 supervisorctl
         for service in ['cross_env_manager', 'postlook']:
-            try:
-                subprocess.run(
-                    ['/usr/local/bin/supervisorctl', 'restart', service],
-                    timeout=10,
-                    capture_output=True,
-                )
-            except Exception as e:
-                print(f"[Upgrade] 重启 {service} 失败: {e}")
+            for sctl in ['/usr/local/bin/supervisorctl', '/usr/bin/supervisorctl', 'supervisorctl']:
+                try:
+                    subprocess.run([sctl, 'restart', service], timeout=10, capture_output=True)
+                    print(f"[Upgrade] supervisorctl restart {service} OK (via {sctl})")
+                    break
+                except Exception:
+                    continue
+        # 2. 兜底：通过 HTTP 触发 Postlook 自重启
+        try:
+            import urllib.request
+            req = urllib.request.Request('http://127.0.0.1:5011/api/system/reload', method='POST')
+            urllib.request.urlopen(req, timeout=5)
+            print("[Upgrade] Postlook HTTP reload triggered")
+        except Exception:
+            pass
+        # 3. 最终兜底：pkill Postlook
+        time.sleep(2)
+        try:
+            subprocess.run(['pkill', '-f', 'postlook'], timeout=5, capture_output=True)
+        except Exception:
+            pass
 
     thread = threading.Thread(target=_restart, daemon=True)
     thread.start()

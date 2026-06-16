@@ -352,6 +352,53 @@ async def api_help():
     return {
         "name": "postlook",
         "version": __version__,
+
+
+@router.get("/api/version")
+async def api_version():
+    """返回版本号 + 关键文件 hash（用于升级后校验代码是否生效）"""
+    import hashlib
+    from pathlib import Path as _Path
+    from .app import __version__
+
+    _src = _Path(__file__).resolve().parent
+    key_files = {
+        "routes.py": _src / "routes.py",
+        "scanner.py": _src / "scanner.py",
+        "config.py": _src / "config.py",
+        "debug_service.py": _src / "debug_service.py",
+        "app.py": _src / "app.py",
+    }
+    hashes = {}
+    for name, path in key_files.items():
+        try:
+            if path.exists():
+                h = hashlib.md5(path.read_bytes()).hexdigest()[:8]
+                hashes[name] = h
+        except Exception:
+            pass
+
+    return {
+        "version": __version__,
+        "file_hashes": hashes,
+        "hash": hashlib.md5(
+            "".join(hashes.values()).encode()
+        ).hexdigest()[:8],
+    }
+
+
+@router.post("/api/system/reload")
+async def reload_postlook():
+    """重启 Postlook 进程（退出后依赖 supervisor auto-restart 拉起新代码）"""
+    import os as _os, signal as _signal
+    from threading import Timer
+
+    def _do_exit():
+        _os.kill(_os.getpid(), _signal.SIGTERM)
+
+    # 延迟 500ms 退出，确保 HTTP 响应先发出去
+    Timer(0.5, _do_exit).start()
+    return {"status": "ok", "message": "Postlook 正在重启，新代码即将生效"}
         "description": "轻量、安全的日志 HTTP 查询服务",
         "base_url": f"http://localhost:{app_config.SERVER_PORT}",
         "endpoints": [
