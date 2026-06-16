@@ -5,6 +5,7 @@ postlook · 配置模块
 
 import os
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
@@ -394,9 +395,26 @@ def get_rules_toml() -> str:
 
 
 def save_config_toml(content: str):
-    """保存主配置并热更新"""
+    """保存主配置并热更新（先备份 + 校验 TOML 合法性）"""
+    # 校验 TOML
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib
+    try:
+        tomllib.loads(content)
+    except Exception as e:
+        raise ValueError(f"TOML 语法错误: {e}")
+
     config_path = _get_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
+    # 写入前备份到 old/ 目录
+    if config_path.exists():
+        backup_dir = config_path.parent / "old"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        import shutil as _shutil
+        backup_name = f"{config_path.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.toml"
+        _shutil.copy2(config_path, backup_dir / backup_name)
     with open(config_path, "w", encoding="utf-8") as f:
         f.write(content)
     reload_config()

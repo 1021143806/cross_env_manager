@@ -127,8 +127,17 @@ async def get_config():
 
 @router.post("/api/config")
 async def save_config(req: ConfigUpdateRequest):
-    """保存配置并热更新"""
+    """保存配置并热更新（先校验 TOML 语法）"""
     from .config import save_config_toml
+    # 校验 TOML 合法性
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib
+    try:
+        tomllib.loads(req.content)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"TOML 语法错误: {e}")
     try:
         save_config_toml(req.content)
         return {"status": "ok", "message": "配置已保存并热更新生效"}
