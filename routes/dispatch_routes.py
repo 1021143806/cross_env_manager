@@ -1139,13 +1139,13 @@ def handle_status_report(data):
     if not region_key or not template_name:
         # 无法匹配区域/模板，静默接受上报（不返回错误，避免 ICS 重试）
         if order_id:
-            if status in (6, 9, 10):
-                # status=6/9/10：按 order_id 跨区域更新设备信息
+            if status in (6, 9):
+                # status=6/9：按 order_id 跨区域更新设备信息
                 updated = _update_by_order_id_across_all_regions(order_id, device_code, device_num)
                 if updated:
                     return True, f"无法匹配模板但按order_id更新了{updated}条 (region_key={region_key}, template={template_name})", True
             else:
-                # status=8 等完成状态：遍历所有区域按 order_id 清理
+                # status=8/10 等完成状态：遍历所有区域按 order_id 清理并写入 currentCount
                 cleaned, cleaned_task_types = _clean_by_order_id_across_all_regions(order_id, device_code, device_num)
                 if cleaned:
                     # 统计完成数（按 order_id 匹配成功也应计入 daily_stats）
@@ -1186,7 +1186,7 @@ def handle_status_report(data):
     if not template_config:
         # 模板不存在于该区域，静默接受上报
         if order_id:
-            if status in (6, 9, 10):
+            if status in (6, 9):
                 updated = _update_by_order_id_across_all_regions(order_id, device_code, device_num)
                 if updated:
                     return True, f"模板不在区域但按order_id更新了{updated}条 (region_key={region_key}, template={template_name})", True
@@ -1224,8 +1224,8 @@ def handle_status_report(data):
             _save_json(template_file, tasks)
         return True, f'模板-{template_name} -{template_removed} (status=7下发失败，车未移动)', True
     
-    if status in (6, 9, 10):
-        # 任务开始（运行中）：记录到模板 JSON
+    if status in (6, 9):
+        # 任务进行中：记录到模板 JSON
         # 匹配策略（两级）：
         #   1. 先按 deviceCode 匹配（负载任务）
         #   2. 没匹配到 → 按 order_id 匹配 deviceCode 为空的记录（空车任务，下发时无设备号）
@@ -1273,12 +1273,8 @@ def handle_status_report(data):
             print(f"[ReportStatus] status={status} 新增 | 模板={template_name} device={device_num}({device_code[-8:]}) order_id={order_id}")
         _save_json(template_file, tasks)
         
-        # status=10 表示任务已完成（ICS 可能不上报 status=8），触发统计
-        if status == 10:
-            _update_daily_stats(region_key, task_type)
-        
     else:
-        # 非 6/9/10 的状态（包括 8=完成 及其他状态）：执行清理逻辑
+        # status=8/10（任务完成）：清理模板 + 更新 currentCount
         # 从模板 JSON 中删除该设备记录
         # 匹配策略（三级，按优先级）：
         #   1. deviceCode + order_id 精确匹配（负载任务，同一设备可能有多个子任务）
@@ -1371,14 +1367,12 @@ def handle_status_report(data):
         
         cc_change = ', currentCount ' + '; '.join(cc_change_parts) if cc_change_parts else ''
         change_summary = f'模板-{template_name} -{template_removed}{cc_change}'
-        # 更新每日统计（status=8 完成时）
-        if status == 8:
+        # 更新每日统计（status=8/10 完成时）
+        if status in (8, 10):
             _update_daily_stats(region_key, task_type)
     
-    # 更新设备历史记录（只在实际完成移动时才记录）
-    # status=8 表示任务完成（设备确实移动到了目标区域）
-    # status=3/6/7/9/10 都不应该写 history（异常结束/进行中/下发失败 都没有物理移动确认）
-    if device_code and status == 8:
+    # 更新设备历史记录（实际完成移动时记录，status=8/10）
+    if device_code and status in (8, 10):
         try:
             _touch_device_history(region_key, device_code, device_num)
         except Exception as e:
