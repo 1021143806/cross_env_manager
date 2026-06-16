@@ -352,10 +352,34 @@ def get_rules_toml() -> str:
     return "# rules.toml\n"
 
 
+def _write_op_log(action: str, detail: str = ""):
+    """写入操作日志到 Postlook 自身日志文件"""
+    from datetime import datetime
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] [OpLog] {action}"
+    if detail:
+        line += f" | {detail}"
+    line += "\n"
+    # 写入 POSTLOOK_SELF_LOG 指向的日志文件
+    log_path = os.environ.get("POSTLOOK_SELF_LOG", "")
+    if log_path:
+        try:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(line)
+        except Exception:
+            pass
+    # 同时输出到 stdout（supervisor 日志也会捕获）
+    print(line.rstrip())
+
+
 def save_config_toml(content: str):
     """保存主配置并热更新（原子写入 + 备份保护）"""
     config_path = _get_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # 记录操作日志
+    lines_count = content.count('\n') + 1
+    _write_op_log("保存配置", f"路径={config_path.name}, 大小={len(content)}字节, {lines_count}行")
 
     # 1. 备份旧文件（如果存在且非空）
     bak_path = config_path.with_suffix('.toml.bak')
@@ -388,10 +412,28 @@ def save_config_toml(content: str):
 
 
 def save_rules_toml(content: str):
-    """保存 rules.toml 并热更新（独立热更）"""
+    """保存 rules.toml 并热更新（原子写入 + 操作日志）"""
     RULES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(RULES_PATH, "w", encoding="utf-8") as f:
-        f.write(content)
+
+    lines_count = content.count('\n') + 1
+    _write_op_log("保存规则", f"路径={RULES_PATH.name}, 大小={len(content)}字节, {lines_count}行")
+
+    # 原子写入
+    import tempfile
+    tmp_fd, tmp_path = tempfile.mkstemp(
+        suffix='.toml', prefix='rules_', dir=str(RULES_PATH.parent)
+    )
+    try:
+        with os.fdopen(tmp_fd, 'w', encoding='utf-8') as f:
+            f.write(content)
+        os.replace(tmp_path, RULES_PATH)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+        raise
+
     reload_rules()
 
 
