@@ -221,6 +221,9 @@ def reload_config():
     # 重扫日期查询配置
     reload_date_queries()
 
+    # 保护机制：检测拓扑是否意外丢失
+    _check_topology_health()
+
 
 # ---- 调试配置（v0.4.0）----
 
@@ -350,11 +353,37 @@ def get_rules_toml() -> str:
 
 
 def save_config_toml(content: str):
-    """保存主配置并热更新"""
+    """保存主配置并热更新（原子写入 + 备份保护）"""
     config_path = _get_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(config_path, "w", encoding="utf-8") as f:
-        f.write(content)
+
+    # 1. 备份旧文件（如果存在且非空）
+    bak_path = config_path.with_suffix('.toml.bak')
+    if config_path.exists() and config_path.stat().st_size > 0:
+        try:
+            import shutil
+            shutil.copy2(config_path, bak_path)
+        except Exception as e:
+            print(f"[Config] 备份失败: {e}")
+
+    # 2. 原子写入：先写临时文件，再 rename
+    import tempfile
+    tmp_fd, tmp_path = tempfile.mkstemp(
+        suffix='.toml', prefix='postlook_', dir=str(config_path.parent)
+    )
+    try:
+        with os.fdopen(tmp_fd, 'w', encoding='utf-8') as f:
+            f.write(content)
+        os.replace(tmp_path, config_path)  # 原子替换（Linux 保证不丢数据）
+    except Exception:
+        # 清理临时文件
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+        raise
+
+    # 3. 热更新
     reload_config()
 
 
@@ -500,6 +529,60 @@ def delete_date_query(filename: str) -> bool:
 def get_date_queries() -> List[Dict[str, Any]]:
     """获取所有快捷查询"""
     return list(_cached_date_queries)
+
+
+_topology_health_checked = False
+
+
+def _check_topology_health():
+    """检测拓扑/目录配置是否意外丢失，尝试从备份或模板恢复"""
+    global _topology_health_checked
+    if _topology_health_checked:
+        return
+    _topology_health_checked = True
+    has_server = bool(ROOT_DIRS)
+    has_topo = bool(_cached_topo_categories or _cached_topo_services)
+    has_dirs = bool(_cached_dirs_meta)
+
+    # 如果有服务配置但无拓扑/目录 → 配置可能损坏
+    if has_server and not has_topo and not has_dirs:
+        print("[Config] 检测到拓扑和目录配置为空，尝试自动恢复...")
+        recovered = False
+
+        # 1. 尝试从备份恢复
+        config_path = _get_config_path()
+        bak_path = config_path.with_suffix('.toml.bak')
+        if bak_path.exists():
+            try:
+                bak_cfg = _load_toml_file(bak_path)
+                bak_topo = bak_cfg.get("topology", {})
+                if bak_topo.get("category") or bak_topo.get("service") or bak_cfg.get("dir"):
+                    print(f"[Config] 从备份恢复: {bak_path}")
+                    import shutil
+                    shutil.copy2(bak_path, config_path)
+                    reload_config()  # 重载
+                    recovered = True
+            except Exception as e:
+                print(f"[Config] 备份恢复失败: {e}")
+
+        # 2. 从模板恢复
+        if not recovered:
+            template_path = CONFIG_TEMPLATE_PATH
+            if template_path.exists():
+                try:
+                    tpl_cfg = _load_toml_file(template_path)
+                    tpl_topo = tpl_cfg.get("topology", {})
+                    if tpl_topo.get("category") or tpl_topo.get("service") or tpl_cfg.get("dir"):
+                        print(f"[Config] 从模板恢复: {template_path}")
+                        import shutil
+                        shutil.copy2(template_path, config_path)
+                        reload_config()  # 重载
+                        recovered = True
+                except Exception as e:
+                    print(f"[Config] 模板恢复失败: {e}")
+
+        if not recovered:
+            print("[Config] 警告: 拓扑/目录配置丢失，且备份和模板均不可用")
 
 
 # 初始加载
