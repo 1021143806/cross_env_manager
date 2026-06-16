@@ -1408,12 +1408,17 @@
                     html += `<h6 class="mt-3 mb-2">子任务列表</h6>`;
                     subs.forEach((t,idx)=>{
                         const canPriority = [4,9].includes(t.status);
+                        const canCancel = [4,9].includes(t.status);
+                        const mainOrderId = main.orderId || '';
                         html += `<div class="task-item ${idx===0?'border-primary':''}"><div class="d-flex justify-content-between"><strong>子任务 ${t.taskSeq}</strong><span class="task-status status-${t.status}">${getStatusText(t.status)}</span></div>
                             <div class="small mt-2"><span class="fw-semibold">模板:</span> ${t.templateName}</div>
                             <div class="small"><span class="fw-semibold">子任务ID:</span> ${t.subOrderId} <i class="bi bi-clipboard copy-icon ms-1" data-copy="${(t.subOrderId||'').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" data-msg="子任务ID已复制" title="复制子任务ID"></i></div>
                             <div class="small"><span class="fw-semibold">服务地址:</span> ${t.serviceUrl}</div>
                             <div class="small"><span class="fw-semibold">任务路径:</span> ${t.taskPath||'无'}</div>
-                            ${idx===0 ? `<button class="btn btn-sm ${canPriority?'btn-warning':'btn-secondary'} mt-2" onclick="updateTaskPriority('${t.subOrderId}','${t.serviceUrl}',${t.status})" ${!canPriority?'disabled':''}><i class="bi bi-star-fill me-1"></i>优先执行</button>`:''}
+                            <div class="mt-2 d-flex gap-2">
+                                ${canCancel ? `<button class="btn btn-sm btn-outline-danger" onclick="cancelSubtaskFromAddtask('${escapeAttr(t.subOrderId)}','${escapeAttr(t.serviceUrl)}','${escapeAttr(mainOrderId)}',${t.status})"><i class="bi bi-x-circle me-1"></i>取消任务</button>` : ''}
+                                ${idx===0 ? `<button class="btn btn-sm ${canPriority?'btn-warning':'btn-secondary'} ${canCancel ? '' : ''}" onclick="updateTaskPriority('${escapeAttr(t.subOrderId)}','${escapeAttr(t.serviceUrl)}',${t.status})" ${!canPriority?'disabled':''}><i class="bi bi-star-fill me-1"></i>优先执行</button>`:''}
+                            </div>
                         </div>`;
                     });
                 } else {
@@ -1442,6 +1447,84 @@
                     priorityModalTitle.textContent = '错误';
                     priorityModalMessage.textContent = e.message;
                     priorityModal.show();
+                }
+            };
+
+            // HTML属性值转义（防止XSS/引号截断）
+            function escapeAttr(s) {
+                return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            }
+
+            // 取消子任务（addtask右侧面板）
+            window.cancelSubtaskFromAddtask = async function(subOrderId, serviceUrl, mainOrderId, currentStatus) {
+                if (event && event.target) {
+                    const btn = event.target.closest('button');
+                    if (btn) btn.disabled = true;
+                }
+                
+                try {
+                    // 提取服务器IP
+                    let serverIp = '10.68.2.32';
+                    try {
+                        const url = new URL(serviceUrl);
+                        serverIp = url.hostname;
+                    } catch {}
+                    
+                    // 步骤1: 重新查询任务状态（预检）
+                    let freshStatus = currentStatus;
+                    try {
+                        const res = await fetch('/addtask/query', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({orderId: mainOrderId, serverIp: serverIp})
+                        });
+                        const data = await res.json();
+                        if (data.success && data.subs) {
+                            const freshSub = data.subs.find(s => s.subOrderId === subOrderId);
+                            if (freshSub) {
+                                freshStatus = freshSub.status;
+                                if (![4,9].includes(freshSub.status)) {
+                                    const statusText = getStatusText(freshSub.status);
+                                    alert(`该任务已变为 ${statusText}(${freshSub.status})，已停止取消操作`);
+                                    // 刷新显示
+                                    if (data.mainTask) displayTaskDetails(data.mainTask, data.subs, data.detail_error);
+                                    return;
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        // 预检失败，询问是否继续
+                        if (!confirm(`状态预检失败(${e.message})，是否仍然尝试取消？`)) return;
+                    }
+                    
+                    // 步骤2: 确认取消
+                    if (!confirm(`确定要取消子任务吗？\n\n子任务ID: ${subOrderId}\n目标服务器: ${serverIp}\n当前状态: ${getStatusText(freshStatus)}`)) return;
+                    
+                    // 步骤3: 调用取消API
+                    const cancelRes = await fetch('/api/task/cancel-subtask', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({subOrderId: subOrderId, serverIp: serverIp})
+                    });
+                    const cancelData = await cancelRes.json();
+                    
+                    if (cancelData.success) {
+                        alert(`✅ ${cancelData.message || '取消成功'}\n耗时: ${cancelData.elapsed_ms || '?'}ms`);
+                        // 重新查询刷新显示
+                        const queryRes = await fetch('/addtask/query', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({orderId: mainOrderId, serverIp: serverIp})
+                        });
+                        const queryData = await queryRes.json();
+                        if (queryData.success && queryData.mainTask) {
+                            displayTaskDetails(queryData.mainTask, queryData.subs || [], queryData.detail_error);
+                        }
+                    } else {
+                        alert('❌ 取消失败: ' + (cancelData.error || '未知错误'));
+                    }
+                } catch (e) {
+                    alert('❌ 请求失败: ' + e.message);
                 }
             };
 
