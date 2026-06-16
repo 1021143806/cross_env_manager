@@ -66,6 +66,7 @@ async def query_logs(req: LogQueryRequest):
     在指定文件夹内按文件名、关键字、行数等条件搜索。
     """
     try:
+        from .app import __version__
         result = scan_logs(
             folder=req.folder,
             root_dirs=app_config.ROOT_DIRS,
@@ -76,6 +77,7 @@ async def query_logs(req: LogQueryRequest):
             line_start=req.line_start,
             line_end=req.line_end,
         )
+        result["postlook_version"] = __version__
 
         if result.get("error") and not result.get("results"):
             raise HTTPException(status_code=404, detail=result["error"])

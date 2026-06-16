@@ -477,6 +477,12 @@
     document.addEventListener('DOMContentLoaded', function() {
         cacheEls();
 
+        // 加载 Postlook 版本号
+        fetch('/api/help').then(function(r) { return r.json(); }).then(function(d) {
+            var el = document.getElementById('postlookVersion');
+            if (el && d.version) el.textContent = 'v' + d.version;
+        }).catch(function() {});
+
         // 规则加载
         loadRules(function(rules) {
             var container = els.rulesContainer;
