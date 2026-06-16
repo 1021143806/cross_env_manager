@@ -514,7 +514,9 @@
         });
 
         // 历史记录
+        var _justQueried = false;
         els.folder.addEventListener('focus', function() {
+            if (_justQueried) return;  // 查询刚触发，跳过
             historyRender(historyLoad());
         });
         els.folder.addEventListener('blur', function() {
@@ -559,11 +561,11 @@
         });
 
         // 查询按钮
-        els.btnQuery.addEventListener('click', function() { doQuery(); });
+        els.btnQuery.addEventListener('click', function() { _justQueried = true; setTimeout(function() { _justQueried = false; }, 500); doQuery(); });
 
         // 回车快捷
         els.folder.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); if (els.historyDropdown) els.historyDropdown.style.display = 'none'; doQuery(); }
+            if (e.key === 'Enter') { e.preventDefault(); _justQueried = true; setTimeout(function() { _justQueried = false; }, 500); if (els.historyDropdown) els.historyDropdown.style.display = 'none'; doQuery(); }
         });
     });
 })();
