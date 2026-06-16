@@ -447,12 +447,11 @@ function renderMemChart(data) {
     ctx = ctx.getContext('2d');
     
     var labels = data.timestamps;
-    var showLabels = labels.length <= 20 ? labels : labels.filter(function(_, i) {
-        return i % Math.ceil(labels.length / 15) === 0 || i === labels.length - 1;
+    // 24h 粒度：每 2 小时显示一个标签（12 个标签合理密度）
+    var labelStep = Math.max(1, Math.ceil(labels.length / 12));
+    var displayLabels = labels.map(function(t, i) {
+        return (i === 0 || i === labels.length - 1 || i % labelStep === 0) ? t : '';
     });
-    // 简化时间标签（只保留时分秒）
-    labels = labels.map(function(t) { return t.length > 5 ? t.slice(0, 5) : t; });
-    showLabels = showLabels.map(function(t) { return t.length > 5 ? t.slice(0, 5) : t; });
     
     if (memChart) {
         memChart.data.labels = labels;
@@ -491,11 +490,20 @@ function renderMemChart(data) {
                 plugins: {
                     legend: {
                         labels: { color: '#8b949e', font: { size: 11 }, usePointStyle: true, padding: 12 }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: function(ctx) { return ctx[0].label; },
+                            label: function(ctx) { return ctx.dataset.label + ': ' + ctx.raw + ' MB'; }
+                        }
                     }
                 },
                 scales: {
                     x: {
-                        ticks: { color: '#484f58', font: { size: 10 }, maxTicksLimit: 15, autoSkip: true },
+                        ticks: { 
+                            color: '#484f58', font: { size: 10 }, maxTicksLimit: 15,
+                            callback: function(val, index) { return displayLabels[index] || ''; }
+                        },
                         grid: { color: 'rgba(48,54,61,0.4)' }
                     },
                     y: {

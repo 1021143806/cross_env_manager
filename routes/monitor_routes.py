@@ -471,25 +471,40 @@ def api_process_monitor():
     })
 
 
-# ── 进程内存历史采样（环形缓冲区）──
+# ── 进程内存历史采样（10分钟粒度，环形缓冲区 24h）──
 
-_MAX_HISTORY = 360  # 保留 360 个点（10s 间隔 = 1 小时）
+_MAX_HISTORY = 144  # 24h / 10min = 144 个点
 _history_lock = _th.Lock()
 _history = {
     'timestamps': [],
     'cem_rss': [],
     'pl_rss': [],
 }
+_last_sample_slot = None  # 上一次采样的 10 分钟槽位
 
 
 def _record_process_sample(cem, pl):
-    """记录一次进程内存快照"""
+    """记录一次进程内存快照（10分钟粒度，同槽覆盖）"""
+    global _last_sample_slot
+    now = datetime.now()
+    # 计算当前 10 分钟槽（如 18:40、18:50）
+    slot = now.replace(minute=now.minute // 10 * 10, second=0, microsecond=0)
+    slot_str = slot.strftime('%H:%M')
+
     with _history_lock:
-        ts = datetime.now().strftime('%H:%M:%S')
-        _history['timestamps'].append(ts)
+        # 同一槽位覆盖最后一个点，避免重复
+        if _history['timestamps'] and _last_sample_slot == slot:
+            _history['cem_rss'][-1] = round(cem.get('memory_rss_mb', 0), 1)
+            _history['pl_rss'][-1] = round(pl.get('memory_rss_mb', 0), 1)
+            _history['timestamps'][-1] = slot_str
+            return
+
+        _last_sample_slot = slot
+        _history['timestamps'].append(slot_str)
         _history['cem_rss'].append(round(cem.get('memory_rss_mb', 0), 1))
         _history['pl_rss'].append(round(pl.get('memory_rss_mb', 0), 1))
-        # 环形裁剪
+
+        # 环形裁剪（保留最近 24h）
         if len(_history['timestamps']) > _MAX_HISTORY:
             _history['timestamps'] = _history['timestamps'][-_MAX_HISTORY:]
             _history['cem_rss'] = _history['cem_rss'][-_MAX_HISTORY:]
