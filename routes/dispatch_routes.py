@@ -233,12 +233,13 @@ def _save_cache_index(data):
 
 
 def _load_json(filepath):
-    """加载 JSON 文件，支持列表和字典。损坏时告警并返回空列表"""
+    """加载 JSON 文件（读锁保护），支持列表和字典。损坏时告警并返回空列表"""
     if not os.path.exists(filepath):
         return []
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        with _write_lock:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
         return data
     except json.JSONDecodeError as e:
         print(f"[Dispatch] _load_json JSON解析失败: {os.path.basename(filepath)}, error={e}, size={os.path.getsize(filepath)}")
