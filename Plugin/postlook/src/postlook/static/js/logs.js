@@ -127,7 +127,6 @@
     function startLive() {
         if (_liveActive) return;
         _liveActive = true;
-        els.btnLive.style.display = 'inline-flex';
         els.btnLive.classList.add('active');
         els.btnLive.classList.remove('auto-stop');
         _liveCountdown = LIVE_TIMEOUT;
@@ -145,7 +144,6 @@
         clearInterval(_liveCountdownId);
         els.btnLive.classList.remove('active','auto-stop');
         updateLiveLabel(0);
-        els.btnLive.style.display = 'none';
     }
 
     function updateLiveLabel(sec) {
