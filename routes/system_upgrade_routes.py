@@ -164,50 +164,57 @@ def api_rollback(backup_name):
 @upgrade_bp.route('/api/system/restart-postlook', methods=['POST'])
 @login_required
 def restart_postlook():
-    """强制重启 Postlook 服务（先从 supervisorctl，后备 pkill）"""
-    import subprocess as _sp
+    """强制重启 Postlook 服务（先 supervisorctl restart，再 start，最后 pkill）"""
+    import subprocess as _sp, os as _os, shutil, signal
+
     results = []
 
-    # 方法1: supervisorctl
-    for sctl in ['/usr/bin/supervisorctl', '/usr/local/bin/supervisorctl']:
+    # 方法1: supervisorctl restart（进程在跑时用 restart）
+    for sctl in ['/usr/bin/supervisorctl', '/usr/local/bin/supervisorctl', 'supervisorctl']:
+        try:
+            r = _sp.run([sctl, 'restart', 'postlook'], timeout=10, capture_output=True, text=True)
+            results.append(f"{sctl} restart: rc={r.returncode} out={r.stdout[:80]}")
+            if r.returncode == 0:
+                return jsonify({'success': True, 'message': 'Postlook 已重启 (supervisorctl restart)'})
+        except Exception as e:
+            results.append(f"{sctl} restart error: {e}")
+
+    # 方法2: supervisorctl start（进程已死时用 start）
+    for sctl in ['/usr/bin/supervisorctl', '/usr/local/bin/supervisorctl', 'supervisorctl']:
         try:
             r = _sp.run([sctl, 'start', 'postlook'], timeout=10, capture_output=True, text=True)
-            results.append(f"supervisorctl start: {r.returncode}")
+            results.append(f"{sctl} start: rc={r.returncode} out={r.stdout[:80]}")
             if r.returncode == 0:
-                return jsonify({'success': True, 'message': 'Postlook 启动成功'})
+                return jsonify({'success': True, 'message': 'Postlook 已启动 (supervisorctl start)'})
         except Exception as e:
-            results.append(f"supervisorctl error: {e}")
+            results.append(f"{sctl} start error: {e}")
 
-    # 方法2: 先清理缓存
-    import os as _os
-    cache_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                             'Plugin', 'postlook')
-    if os.path.exists(cache_dir):
-        import shutil
-        for root, dirs, files in os.walk(cache_dir):
+    # 方法3: 清理 __pycache__ + 强制 pkill
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cache_dir = os.path.join(root_dir, 'Plugin', 'postlook')
+    try:
+        for rt, dirs, _ in os.walk(cache_dir):
             for d in dirs:
                 if d == '__pycache__':
                     try:
-                        shutil.rmtree(os.path.join(root, d), ignore_errors=True)
+                        shutil.rmtree(os.path.join(rt, d), ignore_errors=True)
+                        results.append(f"cleaned pycache: {os.path.join(rt, d)}")
                     except Exception:
                         pass
-
-    # 方法3: 尝试 pgrep + kill（如果 postlook 僵死）
-    try:
-        r = _sp.run(['pgrep', '-f', 'uvicorn.*postlook'], capture_output=True, text=True, timeout=5)
-        if r.returncode == 0 and r.stdout.strip():
-            for pid in r.stdout.strip().split('\n'):
-                try:
-                    import signal
-                    os.kill(int(pid), signal.SIGKILL)
-                except Exception:
-                    pass
-            results.append("killed old postlook process")
     except Exception as e:
-        results.append(f"pgrep error: {e}")
+        results.append(f"pycache cleanup error: {e}")
+
+    # 方法4: 强制 pkill（多种模式匹配）
+    for pattern in ['uvicorn.*postlook', 'python.*postlook', 'postlook']:
+        try:
+            r = _sp.run(['pkill', '-f', pattern], timeout=5, capture_output=True, text=True)
+            if r.returncode == 0:
+                results.append(f"pkill -f '{pattern}' OK")
+        except Exception as e:
+            results.append(f"pkill '{pattern}' error: {e}")
 
     return jsonify({
         'success': False,
-        'message': 'Postlook 启动失败，请手动重启',
+        'message': '所有重启方式均失败，请手动 SSH 重启',
         'details': results
     }), 500
