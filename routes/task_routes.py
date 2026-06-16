@@ -9,7 +9,7 @@ TASK_VERSION = '2.4.1'
 
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, session
 from functools import wraps
-import sys, os
+import sys, os, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 task_bp = Blueprint('task', __name__)
