@@ -967,23 +967,33 @@ def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
                     if not _dc: _dc = rt.get('deviceCode', '')
                     if not _dn: _dn = rt.get('deviceNum', '')
                 
-                if _dc:
+                if _dc or _dn:
                     now_file = _get_region_file(rk, 'currentCount.json')
                     now_devices = _load_json(now_file)
+                    # 去重：优先用 deviceCode，降级用 deviceNum
+                    exists = any(
+                        (d.get('deviceCode') and _dc and d.get('deviceCode') == _dc) or
+                        (d.get('deviceNum') and _dn and d.get('deviceNum') == _dn)
+                        for d in now_devices
+                    )
                     if _is_in_direction(task_type):
                         # 来方向：写入 currentCount
-                        if not any(d.get('deviceCode') == _dc for d in now_devices):
+                        if not exists:
                             now_devices.append({
-                                'deviceCode': _dc, 'deviceNum': _dn or '',
+                                'deviceCode': _dc or _dn,  # 无 deviceCode 时用 deviceNum 兜底
+                                'deviceNum': _dn or '',
                                 'order_id': order_id, 'create_time': datetime.now().isoformat(),
                                 'state': 'pending'
                             })
                             _save_json(now_file, now_devices)
-                            print(f"[Dispatch] _clean_by_order_id: currentCount {rk} +1 (来方向)")
+                            print(f"[Dispatch] _clean_by_order_id: currentCount {rk} +1 (来方向) dc={_dc} dn={_dn}")
                     else:
                         # 回方向：从 currentCount 删除
                         old_cc = len(now_devices)
-                        now_devices = [d for d in now_devices if d.get('deviceCode') != _dc]
+                        now_devices = [d for d in now_devices if not (
+                            (_dc and d.get('deviceCode') == _dc) or
+                            (_dn and d.get('deviceNum') == _dn)
+                        )]
                         if len(now_devices) < old_cc:
                             _save_json(now_file, now_devices)
                             print(f"[Dispatch] _clean_by_order_id: currentCount {rk} -1 (回方向)")
