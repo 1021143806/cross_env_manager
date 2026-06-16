@@ -518,17 +518,17 @@ def trigger_restart(delay: int = 3):
         time.sleep(delay)
         sctl = _find_supervisorctl()
         for svc in ['cross_env_manager', 'postlook']:
-            # 方法1: supervisorctl restart
             try:
                 r = subprocess.run([sctl, 'restart', svc], timeout=10, capture_output=True, text=True)
                 if r.returncode == 0:
                     continue
-            except Exception as e:
-                print(f"[Upgrade] supervisorctl {svc} 失败: {e}")
-            # 方法2: 对于 postlook，用 pkill 强制重启（supervisor 会 auto-restart）
+            except Exception:
+                pass
+            # 备选：对 postlook 用 HTTP API 触发自重启
             if svc == 'postlook':
                 try:
-                    subprocess.run(['pkill', '-f', 'uvicorn.*postlook'], timeout=5)
+                    import urllib.request as _urllib
+                    _urllib.urlopen('http://127.0.0.1:5011/api/system/restart', data=b'{}', timeout=3)
                 except Exception:
                     pass
 

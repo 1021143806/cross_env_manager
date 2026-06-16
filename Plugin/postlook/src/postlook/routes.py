@@ -90,6 +90,21 @@ async def query_logs(req: LogQueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/api/system/restart")
+async def restart_postlook():
+    """重启 Postlook 自身（退出进程，依赖 supervisor auto-restart）"""
+    import os as _os
+    import signal as _signal
+    # 后台延迟退出，让当前请求返回响应
+    def _do_exit():
+        import time as _time
+        _time.sleep(0.5)
+        _os.kill(_os.getpid(), _signal.SIGTERM)
+    import threading as _threading
+    _threading.Thread(target=_do_exit, daemon=True).start()
+    return {"success": True, "message": "Postlook 即将重启..."}
+
+
 class ConfigUpdateRequest(BaseModel):
     """POST /api/config 请求体"""
     content: str = Field(..., description="TOML 配置内容")
