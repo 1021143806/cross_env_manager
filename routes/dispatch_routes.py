@@ -1339,8 +1339,10 @@ def handle_status_report(data):
         if status == 8:
             _update_daily_stats(region_key, task_type)
     
-    # 更新设备历史记录（记录这个区域48小时内来过哪些设备）
-    if device_code:
+    # 更新设备历史记录（只在实际完成移动时才记录）
+    # status=8 表示任务完成（设备确实移动到了目标区域）
+    # status=3/6/7/9/10 都不应该写 history（异常结束/进行中/下发失败 都没有物理移动确认）
+    if device_code and status == 8:
         try:
             _touch_device_history(region_key, device_code, device_num)
         except Exception as e:
