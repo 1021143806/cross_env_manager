@@ -514,14 +514,30 @@
         els.folder.addEventListener('blur', function() {
             setTimeout(function() { if (els.historyDropdown) els.historyDropdown.style.display = 'none'; }, 200);
         });
-        document.addEventListener('click', function(e) {
+        // 点击历史项 → 填入并关闭（mousedown 比 blur 先触发，更可靠）
+        document.addEventListener('mousedown', function(e) {
             var item = e.target.closest('.history-item');
-            if (!item) return;
-            var folder = item.getAttribute('data-folder');
-            if (folder) {
-                els.folder.value = folder;
-                els.historyDropdown.style.display = 'none';
-                chipAdd(folder, 'folder', folder);
+            if (item) {
+                var folder = item.getAttribute('data-folder');
+                if (folder) {
+                    els.folder.value = folder;
+                    els.historyDropdown.style.display = 'none';
+                    chipAdd(folder, 'folder', folder);
+                }
+                return;
+            }
+            // 点击下拉框和输入框以外的区域 → 关闭下拉
+            var dd = els.historyDropdown;
+            if (dd && dd.style.display !== 'none') {
+                if (!dd.contains(e.target) && e.target !== els.folder) {
+                    dd.style.display = 'none';
+                }
+            }
+        });
+        // Escape 关闭下拉
+        els.folder.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (els.historyDropdown) els.historyDropdown.style.display = 'none';
             }
         });
 
@@ -541,7 +557,7 @@
 
         // 回车快捷
         els.folder.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); doQuery(); }
+            if (e.key === 'Enter') { e.preventDefault(); if (els.historyDropdown) els.historyDropdown.style.display = 'none'; doQuery(); }
         });
     });
 })();
