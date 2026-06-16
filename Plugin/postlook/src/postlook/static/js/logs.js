@@ -10,6 +10,9 @@
     var _liveActive = false;
     var LIVE_INTERVAL = 3000;      // 刷新间隔 3s
     var LIVE_TIMEOUT = 60;         // 自动关闭倒计时 60s
+    var _seenLines = {};           // 已显示行号: { filename: Set(lineNumber) }
+    var _liveKeyword = null;       // 实时模式下首次查询的关键字（后续保持不变）
+    var _isLiveQuery = false;      // 标记当前是否为实时增量查询
 
     // ── DOM 引用 ──
     var els = {};
@@ -117,16 +120,40 @@
         if (!_liveActive) return;
         _liveTimer = setTimeout(function() {
             if (!_liveActive) return;
-            doQuery();
+            doLiveQuery();
         }, LIVE_INTERVAL);
+    }
+
+    function startLive() {
+        if (_liveActive) return;
+        _liveActive = true;
+        els.btnLive.style.display = 'inline-flex';
+        els.btnLive.classList.add('active');
+        els.btnLive.classList.remove('auto-stop');
+        _liveCountdown = LIVE_TIMEOUT;
+        updateLiveLabel(_liveCountdown);
+        clearInterval(_liveCountdownId);
+        _liveCountdownId = setInterval(tickCountdown, 1000);
+        // 先做一次全量查询，然后增量
+        doQuery();
+    }
+
+    function stopLive() {
+        _liveActive = false;
+        _isLiveQuery = false;
+        clearTimeout(_liveTimer);
+        clearInterval(_liveCountdownId);
+        els.btnLive.classList.remove('active','auto-stop');
+        updateLiveLabel(0);
+        els.btnLive.style.display = 'none';
     }
 
     function updateLiveLabel(sec) {
         if (sec > 0) {
-            els.btnLiveLabel.textContent = '实时 (' + sec + 's)';
+            els.btnLiveLabel.textContent = '滚动 (' + sec + 's)';
             if (sec <= 10) els.btnLive.classList.add('auto-stop');
         } else {
-            els.btnLiveLabel.textContent = '实时';
+            els.btnLiveLabel.textContent = '滚动';
         }
     }
 
@@ -139,29 +166,37 @@
         }
     }
 
-    // ── 执行查询 ──
+    // ── 执行全量查询（刷新整个结果区）──
     function doQuery() {
         if (queryLoading) return;
         var folder = els.folder.value.trim();
         if (!folder) return;
 
         queryLoading = true;
-        els.btnQuery.innerHTML = '<span class="spinner" style="display:inline-block;width:14px;height:14px;border-width:2px;"></span> 查询中...';
-        els.btnQuery.disabled = true;
-        els.logResults.innerHTML = '<div class="empty-state"><div class="spinner"></div><p>查询中...</p></div>';
+        if (!_isLiveQuery) {
+            els.btnQuery.innerHTML = '<span class="spinner" style="display:inline-block;width:14px;height:14px;border-width:2px;"></span> 查询中...';
+            els.btnQuery.disabled = true;
+            els.logResults.innerHTML = '<div class="empty-state"><div class="spinner"></div><p>查询中...</p></div>';
+        }
 
         var keyword = els.keyword.value.trim() || null;
+        // 实时模式下：首次查询记录关键字，后续沿用（避免关键字变化导致行号错乱）
+        if (!_isLiveQuery && _liveActive) {
+            _liveKeyword = keyword;
+        }
+        var useKeyword = _isLiveQuery ? _liveKeyword : keyword;
+
         var payload = {
             folder: folder,
             pattern: els.pattern.value || '*.log',
-            keyword: keyword,
+            keyword: useKeyword,
             line_start: 1,
             line_end: parseInt(els.lineCount.value) || 100,
             tail: els.tail.value === 'true',
-            recent_files: parseInt(els.recentFiles.value) || 10
+            recent_files: parseInt(els.recentFiles.value) || 2
         };
 
-        historyAdd(folder);
+        if (!_isLiveQuery) historyAdd(folder);
 
         var t0 = performance.now();
         fetch('/api/logs', {
@@ -170,25 +205,129 @@
             body: JSON.stringify(payload)
         }).then(function(r) { return r.json(); }).then(function(data) {
             var elapsed = Math.round(performance.now() - t0);
-            renderResults(data, keyword, elapsed);
-            // 查询成功后自动开启实时刷新
+            if (_isLiveQuery) {
+                appendLiveLines(data, useKeyword);
+            } else {
+                // 记录已显示行
+                _seenLines = {};
+                if (data.results) data.results.forEach(function(item) {
+                    var fn = item.file || '?';
+                    if (!_seenLines[fn]) _seenLines[fn] = {};
+                    _seenLines[fn][item.line] = true;
+                });
+                renderResults(data, useKeyword, elapsed);
+            }
+            // 全量查询完成后启动实时
+            if (!_liveActive && !_isLiveQuery) {
+                startLive();
+            }
             if (_liveActive) {
                 _liveCountdown = LIVE_TIMEOUT;
                 updateLiveLabel(_liveCountdown);
                 els.btnLive.classList.remove('auto-stop');
-            } else {
-                startLive();
+                scheduleNext();
             }
-            scheduleNext();
         }).catch(function(err) {
-            els.logResults.innerHTML = '<div class="empty-state"><p style="color:var(--danger)">请求失败: ' + err.message + '</p></div>';
-            els.queryTime.textContent = '';
+            if (!_isLiveQuery) {
+                els.logResults.innerHTML = '<div class="empty-state"><p style="color:var(--danger)">请求失败: ' + err.message + '</p></div>';
+                els.queryTime.textContent = '';
+            }
         }).finally(function() {
             queryLoading = false;
-            els.btnQuery.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> 查询';
-            els.btnQuery.disabled = false;
+            if (!_isLiveQuery) {
+                els.btnQuery.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> 查询';
+                els.btnQuery.disabled = false;
+            }
         });
     }
+
+    // ── 实时增量查询（静默，不清屏）──
+    function doLiveQuery() {
+        if (queryLoading) return;
+        var folder = els.folder.value.trim();
+        if (!folder) return;
+
+        _isLiveQuery = true;
+        queryLoading = true;
+
+        var payload = {
+            folder: folder,
+            pattern: els.pattern.value || '*.log',
+            keyword: _liveKeyword,
+            line_start: 1,
+            line_end: parseInt(els.lineCount.value) || 100,
+            tail: els.tail.value === 'true',
+            recent_files: parseInt(els.recentFiles.value) || 2
+        };
+
+        fetch('/api/logs', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        }).then(function(r) { return r.json(); }).then(function(data) {
+            appendLiveLines(data, _liveKeyword);
+            if (_liveActive) {
+                _liveCountdown = LIVE_TIMEOUT;
+                updateLiveLabel(_liveCountdown);
+                els.btnLive.classList.remove('auto-stop');
+                scheduleNext();
+            }
+        }).catch(function(err) {
+            // 静默失败，不影响界面
+        }).finally(function() {
+            queryLoading = false;
+            _isLiveQuery = false;
+        });
+    }
+
+    // ── 增量追加新行到已有结果 ──
+    function appendLiveLines(data, keyword) {
+        if (!data || !data.results || data.results.length === 0) return;
+        var hasNew = false;
+        data.results.forEach(function(item) {
+            var fn = item.file || '?';
+            if (!_seenLines[fn]) _seenLines[fn] = {};
+            if (_seenLines[fn][item.line]) return;  // 已显示过，跳过
+            _seenLines[fn][item.line] = true;
+            hasNew = true;
+            var groupId = 'fg_' + fn.replace(/[^a-zA-Z0-9]/g, '_');
+            var body = document.getElementById(groupId);
+            if (!body) {
+                // 新文件：创建文件组
+                body = createFileGroup(groupId, fn);
+            }
+            var content = escapeHtml(item.content);
+            var rendered = keyword ? highlightKeyword(content, keyword) : content;
+            rendered = applyRulesAndAnnotations(rendered, item.file);
+            var row = document.createElement('div');
+            row.className = 'log-row';
+            row.innerHTML = '<span class="lr-line">' + item.line + '</span><span class="lr-content">' + rendered + '</span>';
+            body.querySelector('.log-table').appendChild(row);
+        });
+        if (hasNew) {
+            var lastRow = document.querySelector('.log-row:last-child');
+            if (lastRow && lastRow.scrollIntoView) lastRow.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+    }
+
+    function createFileGroup(groupId, fileName) {
+        var group = document.createElement('div');
+        group.className = 'file-group';
+        group.innerHTML =
+            '<div class="file-group-header" onclick="toggleFileGroup(\'' + groupId + '\')">' +
+            '<span class="fg-arrow">▶</span><strong>' + escapeHtml(fileName) + '</strong>' +
+            '<span class="file-line-count"></span>' +
+            '<button class="btn-copy" onclick="event.stopPropagation();copyFileGroup(\'' + groupId + '\')">📋 复制</button>' +
+            '</div>' +
+            '<div class="file-group-body open" id="' + groupId + '"><div class="log-table"></div></div>';
+        els.logResults.appendChild(group);
+        return document.getElementById(groupId);
+    }
+
+    window.toggleFileGroup = function(groupId) {
+        var body = document.getElementById(groupId);
+        if (body) body.classList.toggle('open');
+    };
 
     // ── 渲染结果：按文件分组 ──
     function renderResults(data, keyword, elapsedMs) {
@@ -226,10 +365,10 @@
         var bodyHtml = '';
         fileKeys.forEach(function(fn, fi) {
             var lines = groups[fn];
-            var groupId = 'fg_' + fi;
+            var groupId = 'fg_' + fn.replace(/[^a-zA-Z0-9]/g, '_');
             bodyHtml += '<div class="file-group">' +
-                '<div class="file-group-header" onclick="document.getElementById(\'' + groupId + '\').classList.toggle(\'open\')">' +
-                '<span>\u25B6</span><strong>' + escapeHtml(fn) + '</strong>' +
+                '<div class="file-group-header" onclick="toggleFileGroup(\'' + groupId + '\')">' +
+                '<span class="fg-arrow">\u25B6</span><strong>' + escapeHtml(fn) + '</strong>' +
                 '<span class="file-line-count">' + lines.length + ' 行</span>' +
                 '<button class="btn-copy" onclick="event.stopPropagation();copyFileGroup(\'' + groupId + '\')">\uD83D\uDCCB 复制</button>' +
                 '</div>' +
@@ -270,6 +409,7 @@
     // ── 重置 ──
     window.resetFilters = function() {
         stopLive();
+        _seenLines = {};
         els.folder.value = '';
         els.pattern.value = '*.log';
         els.keyword.value = '';
