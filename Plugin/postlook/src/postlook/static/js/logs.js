@@ -105,7 +105,7 @@
         els.btnLive.style.display = 'none';
     }
 
-    function toggleLive() {
+    window.toggleLive = function() {
         if (_liveActive) {
             stopLive();
         } else {
