@@ -56,6 +56,7 @@ class LogQueryResponse(BaseModel):
     truncated: bool
     results: list
     shell_cmd: Optional[str] = None
+    postlook_version: Optional[str] = None
     keyword: Optional[str] = None
     error: Optional[str] = None
 

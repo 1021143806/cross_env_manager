@@ -388,4 +388,5 @@ def scan_logs(
         "truncated": truncated,
         "results": all_results,
         "shell_cmd": _build_shell_cmd(keyword, folder_path, pattern, line_end, tail, files),
+        "postlook_version": "2.0",
     }
