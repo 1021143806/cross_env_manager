@@ -5,7 +5,7 @@
 """
 
 # 调车模块版本号（修改本文件时递增末尾数字）
-DISPATCH_VERSION = '2.3.0'
+DISPATCH_VERSION = '2.3.1'
 
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response
 from functools import wraps
@@ -2817,6 +2817,7 @@ def _touch_device_history(region_key, device_code, device_num='', state=''):
             if state:
                 d['state'] = state
             d['update_time'] = now
+            d['confirmed'] = True  # status=8 确认设备确实移动过
             _save_device_history(region_key, history)
             return
     
@@ -2828,7 +2829,8 @@ def _touch_device_history(region_key, device_code, device_num='', state=''):
         'state': state,
         'battery': '',
         'create_time': now,
-        'update_time': now
+        'update_time': now,
+        'confirmed': True  # status=8 确认设备确实移动过
     })
     _save_device_history(region_key, history)
 
@@ -2861,8 +2863,9 @@ def _sync_device_history(region_key, api_devices):
     """将API返回的设备列表同步到 device_history.json
     
     - 匹配模式：更新 deviceCode 在 history 中已存在的设备
-    - 兜底初始化：history 为空时，将 API 设备全量加入（解决初始空历史无法自举问题）
     - 不删除任何记录（删除由48h清理负责）
+    - 不添加新设备：只有 status=8 确认移动过的设备才写入 history
+      防止 OOM/重启 后 history 清空导致误将全量 ICS 设备导入
     
     Returns:
         {'total': int, 'updated': int, 'added': int, 'skipped': int}
@@ -2875,7 +2878,6 @@ def _sync_device_history(region_key, api_devices):
     updated_count = 0
     added_count = 0
     skipped_count = 0
-    is_bootstrap = (len(history) == 0)  # 兜底初始化标志
     
     for dev in api_devices:
         dc = dev.get('deviceCode', '')
@@ -2893,21 +2895,8 @@ def _sync_device_history(region_key, api_devices):
             if dev_state not in ('Offline', 'Downlined'):
                 existing['update_time'] = now
             updated_count += 1
-        elif is_bootstrap:
-            # 兜底初始化：history 为空时，将 API 设备全量加入
-            dev_state = dev.get('state', '')
-            history.append({
-                'deviceCode': dc,
-                'deviceNum': dev.get('deviceName', ''),
-                'deviceName': dev.get('deviceName', ''),
-                'state': dev_state,
-                'battery': dev.get('battery', ''),
-                'create_time': now,
-                'update_time': now if dev_state not in ('Offline', 'Downlined') else ''
-            })
-            added_count += 1
         else:
-            # 不在 history 中，抛弃（匹配模式）
+            # 不在 history 中，抛弃（只有 status=8 才能写入 history）
             skipped_count += 1
     
     _save_device_history(region_key, history)
@@ -2926,6 +2915,8 @@ def _update_current_count_from_api(region_key, api_devices):
     # 加载历史设备，建立 deviceCode 白名单
     history = _load_device_history(region_key)
     history_codes = {d.get('deviceCode', '') for d in history if d.get('deviceCode')}
+    # 只有 status=8 确认移动过的设备才允许加入 currentCount
+    confirmed_codes = {d.get('deviceCode', '') for d in history if d.get('deviceCode') and d.get('confirmed')}
     if not history_codes:
         return {'updated': 0, 'added': 0, 'cleaned': 0}
     
@@ -2964,22 +2955,26 @@ def _update_current_count_from_api(region_key, api_devices):
             updated += 1
         new_now_devices.append(d)
     
-    # 2. 非离线设备不在 currentCount 中且在白名单中：自动添加
+    # 2. 非离线设备不在 currentCount 中且已确认：自动添加
+    #    只有 confirmed=True 的设备才允许补入（防止 bootstrap 污染）
     for dc, api_dev in api_map.items():
         new_state = api_dev.get('state', '')
         if new_state in ('Offline', 'Downlined'):
             continue
-        if dc not in cc_codes:
-            new_now_devices.append({
-                'deviceCode': dc,
-                'deviceNum': api_dev.get('deviceName', ''),
-                'order_id': '',
-                'shelfNumber': '',
-                'create_time': now,
-                'state': state_map.get(new_state, 'pending'),
-                'battery': api_dev.get('battery', '')
-            })
-            added += 1
+        if dc in cc_codes:
+            continue
+        if dc not in confirmed_codes:
+            continue  # 未确认设备，不加入 currentCount
+        new_now_devices.append({
+            'deviceCode': dc,
+            'deviceNum': api_dev.get('deviceName', ''),
+            'order_id': '',
+            'shelfNumber': '',
+            'create_time': now,
+            'state': state_map.get(new_state, 'pending'),
+            'battery': api_dev.get('battery', '')
+        })
+        added += 1
     
     _save_json(now_file, new_now_devices)
     
@@ -3027,14 +3022,18 @@ def _assign_devices_to_regions(api_devices, region_keys):
     for rk in region_keys:
         region_histories[rk] = _load_device_history(rk)
     
-    # 建立每个区域的 history_code -> update_time 映射
+    # 建立每个区域的 history_code -> update_time 映射 + confirmed 标记
     region_device_times = {}
+    region_device_confirmed = {}  # confirmed device codes per region
     for rk in region_keys:
         region_device_times[rk] = {}
+        region_device_confirmed[rk] = set()
         for d in region_histories[rk]:
             dc = d.get('deviceCode', '')
             if dc:
                 region_device_times[rk][dc] = d.get('update_time', '')
+                if d.get('confirmed'):
+                    region_device_confirmed[rk].add(dc)
     
     # 收集所有设备（去重）
     all_device_codes = set()
@@ -3062,6 +3061,10 @@ def _assign_devices_to_regions(api_devices, region_keys):
         
         if not best_region:
             continue  # 设备不在任何区域的 history 中，跳过
+        
+        # 只有 status=8 确认移动过的设备才允许加入 currentCount
+        if dc not in region_device_confirmed.get(best_region, set()):
+            continue
         
         api_dev = api_map.get(dc)
         if not api_dev:
