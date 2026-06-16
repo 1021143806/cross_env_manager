@@ -109,8 +109,15 @@
         if (_liveActive) {
             stopLive();
         } else {
-            startLive();
-            doQuery(); // 立即刷新一次
+            // 已有结果则直接增量，否则先做一次全量
+            var hasResults = document.querySelector('.file-group');
+            if (hasResults) {
+                startLive();
+                doLiveQuery();
+            } else {
+                startLive();
+                doQuery();
+            }
         }
     }
 
