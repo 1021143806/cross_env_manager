@@ -392,3 +392,175 @@ curl -s -X POST http://<postlook-tps>/api/logs \
    - 中期防范（同类问题预防）
    - 长期建设（可观测性/监控）
 ```
+
+---
+
+## 七、AGV 设备异常码排查方法论（五层递进）
+
+### 核心原则
+
+> **错误发生在哪一层，日志就在哪一层找。AGV 异常码从上层看板透传到下层固件，逐层下钻定位根因。**
+
+### 五层下钻模型
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Layer 0: 前端异常看板                                │
+│   来源: WMS/MES 异常页面截图 → 提取关键字段           │
+│   字段: 设备编号/序列号/区域/节点/坐标/ErrorCode      │
+└────────────────────────┬────────────────────────────┘
+                         │ 下钻
+┌────────────────────────▼────────────────────────────┐
+│ Layer 1: ICS 调度层 (10.68.2.40:7000)               │
+│   日志: /main/app/ics/logs/ICS*.log                 │
+│   搜索: alarmReson.ErrorCode + deviceCode            │
+│   关键字段: alarmCode/alarmType/HexReasonCode        │
+│   确认: 异常码来源(Ig固件/ICS内部)、首次发生时间       │
+└────────────────────────┬────────────────────────────┘
+                         │ 下钻（非ICS自身异常则往算法层）
+┌────────────────────────▼────────────────────────────┐
+│ Layer 2: RTPS 算法规划层 (rtpsp-N/logs)              │
+│   日志: rtps.log（算法决策）/ robot.log（设备状态）    │
+│   搜索: SendRobotEventOver + blackout + ErrorCode    │
+│   技巧: 历史数据在 .gz 文件中，需下载解压             │
+│   注意: rtpsp 目录需热更新加入 postlook 白名单        │
+└────────────────────────┬────────────────────────────┘
+                         │ 下钻
+┌────────────────────────▼────────────────────────────┐
+│ Layer 3: 定位数据层 (play.log)                       │
+│   日志: rtpsp-N/logs/play.log（实时定位流）           │
+│   搜索: deviceCode 查看类型10(定位)/13(状态)/16(任务) │
+│   确认: 异常时刻设备坐标、任务状态、状态码flags       │
+└────────────────────────┬────────────────────────────┘
+                         │ 下钻
+┌────────────────────────▼────────────────────────────┐
+│ Layer 4: 设备固件层 (AGV 设备本地日志)                │
+│   注意: 仅允许查看/下载，禁止修改                    │
+│   日志: /var/robot/log/agv/dhcomponent.log           │
+│        /var/robot/log/nav/nav.log                    │
+│   需通过 SCP 从 AGV 设备下载                         │
+└─────────────────────────────────────────────────────┘
+```
+
+### 查询实战模板
+
+#### Step 1 — 从异常截图提取关键信息
+```
+必提取字段:
+  - 设备编号 (deviceNum): 如 0001
+  - 设备序列号 (deviceCode): 如 CD12779BAK00005
+  - ErrorCode: 如 8504
+  - 区域: 如 A4包材 (→ areaId=5)
+  - 时间点: 如 2026-06-16 15:28:53
+  - 节点/坐标: 如 88660724 / [61895,-75686]
+```
+
+#### Step 2 — ICS 层搜索异常来源
+```bash
+# 搜索设备序列号+ErrorCode（优先在历史文件中搜索，大日志文件）
+curl -s -X POST http://10.68.2.40:5011/api/logs \
+  -H 'Content-Type: application/json' \
+  -d '{"folder":"/main/app/ics/logs","pattern":"ICS*.log","keyword":"CD12779BAK00005","recent_files":10}'
+
+# 关键日志格式:
+# alarmReson: {"ErrorCode":8504,"HexReasonCode":"0x2138","ReasonCode":"8504"}
+# alarmCode: robotBlackout_Unknown
+# alarmType: 23 (路径异常类)
+```
+
+**判断标准：**
+- `HexReasonCode` 存在且与 ErrorCode 互验 → 来自设备固件层
+- `alarmCode` 含 `Unknown` → 未定义的异常，需联系算法/固件
+- `alarmType` = 23 → 路径异常类（非业务异常）
+
+#### Step 3 — RTPS 算法层搜索（需先热更新白名单）
+```bash
+# 3a. 热更新 postlook 白名单添加 RTPS 目录
+# 先 GET 当前配置 → 修改 root_dirs 追加 RTPS 路径 → POST 热更新
+
+# 3b. 搜索算法规划日志
+curl -s -X POST http://10.68.2.40:5011/api/logs \
+  -H 'Content-Type: application/json' \
+  -d '{"folder":"/main/app/rtpsp-5/logs","pattern":"rtps.log","keyword":"CD12779BAK00005","recent_files":5}'
+
+# 3c. 如当前日志无结果，下载历史 gz 文件
+# 文件名时间戳匹配: play.log.20260616152425260.gz = 15:24:25创建
+curl -o /tmp/rtps.gz 'http://10.68.2.40:5011/api/download?path=/main/app/rtpsp-5/logs/rtps.log.20260616160433617.gz'
+gunzip -c /tmp/rtps.gz | grep 'CD12779BAK00005' | grep -E '15:2[5-9]|blackout|error|obstacle|block'
+
+# 3d. 搜索定位数据
+gunzip -c /tmp/play.gz | grep 'CD12779BAK00005' | grep '15:28'
+```
+
+**关键日志模式：**
+```
+# 算法层检测到8504:
+robot_analysis_plan.cpp: SendRobotEventOver → algo plan error 8504 is over
+
+# 障碍物检测:
+robot_analysis_plan.cpp: handleReportTaskEvent → Robot Obstacled and send pause task
+rdms_mgr.cpp: [TaskS: Paused] ErrNum:12803
+
+# 任务被取消:
+play.log type 16: deviceCode taskId Canceled Running errCode Unkown
+```
+
+#### Step 4 — play.log 定位数据确认
+```bash
+# 查看设备实时状态
+gunzip -c /tmp/play.gz | grep 'CD12779BAK00005' | grep -E '15:2[5-9]|15:3[0-2]'
+
+# 类型含义:
+# 10: 实时定位 (x,y,angle,battery,flags,IP)
+# 11: 货架定位
+# 13: 设备状态 (0=idle/异常)
+# 14: 路径多边形
+# 16: 任务状态 (status1,status2,errCode,desc)
+```
+
+#### Step 5 — 数据库辅助确认
+```sql
+-- 确认错误码是否在配置表中定义
+SELECT * FROM alarm_config WHERE alarmType = 23;  -- 路径异常类
+SELECT * FROM task_error_code WHERE error_code = '8504' OR error_desc LIKE '%未定义%';
+```
+
+### 典型排查案例：8504 (0x2138) 异常
+
+**时间线（本案）：**
+```
+15:12:42  设备被列为 DangerVeh（另一设备的 8023 异常阻塞）
+15:25:00  RTPS 检测到 algo plan error 8504，连续上报 robotBlackout
+15:25:02  障碍物检测(ErrNum:12803) → pause → resume → replan 失败
+15:28:53  任务 Canceled，设备停于节点88660724 坐标[61895,-75686]
+15:28:53  ICS 收到 DEVICEALARM_TOPIC 告警 → 前端异常看板显示
+15:33:00  设备恢复，执行新任务，状态正常
+```
+
+**根因链：**
+```
+前方设备阻塞(EJ99551AAK00002 8023异常)
+  → 0001 被列为 DangerVeh
+  → 路径受阻触发障碍物检测(12803)
+  → 重规划过程中算法内部异常(8504)
+  → robotBlackout_Unknown → 任务被取消
+  → WMS看板显示"未定义异常(8504)"
+```
+
+### 排查效率技巧
+
+1. **deviceCode + deviceNum 双搜**：生产日志中两字段可能混用
+2. **ErrorCode 与 HexReasonCode 互验**：0x2138 = 8504，互为验证真伪
+3. **gz 文件时间戳匹配**：文件名含创建时间戳，按时间定位历史文件
+4. **postlook recent_files 参数**：搜索历史文件时调大该参数（5→10→20）
+5. **白名单热更新不重启**：直接 POST /api/config 即可扩展搜索范围
+6. **先查 ICS 再查 RTPS**：ICS 日志量大但易搜索，先确认异常来源再下钻算法层
+
+### 常见异常分类速查
+
+| alarmType | 类别 | 典型原因 | 排查方向 |
+|-----------|------|----------|----------|
+| 23 | 路径异常 | 障碍物、路径规划失败 | RTPS → play.log |
+| 1-10 | 设备硬件 | 传感器/电机/电池 | 设备固件日志 |
+| 11-20 | 通信异常 | 网络/WiFi/协议 | Gateway/RDMS |
+| 21-30 | 任务异常 | 参数错误/容量不足 | TPS/ICS |

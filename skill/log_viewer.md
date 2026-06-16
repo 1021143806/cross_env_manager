@@ -86,6 +86,66 @@ curl -s -b /tmp/cookies.txt 'http://10.68.2.40:5000/api/dispatch/logs?lines=50'
 5. 排查特定设备问题时，使用 `/api/dispatch/device_info?deviceNum=XXX` 查询设备历史
 6. 排查自愈误清理时，使用 `/api/dispatch/logs?filter=SelfHeal` 查看控制台日志确认 `status in (6,10)` 是否生效
 
+## 通过 Postlook 查询算法日志 (RTPS)
+
+### RTPS 日志目录
+RTPS（实时定位与路径规划系统）是 AGV 的核心算法服务，分为：
+- `rtpsp-N`（定位服务，N=区域ID）：play.log 定位数据、robot.log 设备状态、rtps.log 算法规划
+- `rtpsa-N`（算法服务）：路径规划算法日志
+
+### postlook 白名单热更新添加 RTPS 目录
+```bash
+# 获取当前配置
+curl -s 'http://10.68.2.40:5011/api/config'
+
+# 追加 rtps 目录后热更新（参考 api_skill.md 配置管理章节）
+```
+
+### 查看算法日志
+```bash
+# 查看设备定位数据（play.log）
+curl -s -X POST http://10.68.2.40:5011/api/logs \
+  -H 'Content-Type: application/json' \
+  -d '{"folder":"/main/app/rtpsp-5/logs","pattern":"play.log","keyword":"CD12779BAK00005","recent_files":5}'
+
+# 查看设备状态变化（robot.log）
+curl -s -X POST http://10.68.2.40:5011/api/logs \
+  -H 'Content-Type: application/json' \
+  -d '{"folder":"/main/app/rtpsp-5/logs","pattern":"robot.log","keyword":"CD12779BAK00005","recent_files":10}'
+
+# 查看算法规划日志（rtps.log）
+curl -s -X POST http://10.68.2.40:5011/api/logs \
+  -H 'Content-Type: application/json' \
+  -d '{"folder":"/main/app/rtpsp-5/logs","pattern":"rtps.log","keyword":"CD12779BAK00005","recent_files":5}'
+```
+
+### 下载历史 gz 日志
+play.log / rtps.log 按小时滚动压缩为 .gz 文件，需下载后解压搜索：
+```bash
+# 下载指定时间段的 gz 文件
+curl -o /tmp/play.gz 'http://10.68.2.40:5011/api/download?path=/main/app/rtpsp-5/logs/play.log.20260616152425260.gz'
+gunzip -c /tmp/play.gz | grep 'CD12779BAK00005' | grep '15:28'
+```
+
+### play.log 数据格式
+| 类型 | 格式 | 说明 |
+|------|------|------|
+| 10 | `10 ts area deviceCode orderId ... x y angle battery flags ... IP` | 实时定位 |
+| 11 | `11 ts area shelfCode deviceCode x y angle ...` | 货架定位 |
+| 13 | `13 ts area deviceCode state` | 设备状态（0=idle/异常） |
+| 14 | `14 ts area deviceCode N x1 y1 ... (多边形顶点)` | 路径区域 |
+| 16 | `16 ts area deviceCode taskId status1 status2 errCode desc` | 任务状态 |
+
+### robot.log 状态码
+| STATE | 含义 |
+|-------|------|
+| 0→1 | 任务下发 |
+| 1 | offline |
+| 3 | substate not ok |
+| 21 | obstacle（障碍物） |
+| 22 | unplan（未规划） |
+| 23 | wait to be planned（等待规划） |
+
 ## ds 说
 - 远程服务器 10.68.2.40:5000 是生产环境，部署的是 cross_env_manager 调车模块
 - 两个账号：普通用户 375563/DHRTA@2018，管理员 admin/admin123456
@@ -95,4 +155,5 @@ curl -s -b /tmp/cookies.txt 'http://10.68.2.40:5000/api/dispatch/logs?lines=50'
 - `/api/dispatch/logs` 接口需要管理员权限（admin/admin123456），可查看 supervisor 控制台 print 输出
 - `_should_clean_device` 的决策日志通过 `write_global_log('self_heal_detail', ...)` 写入操作日志，可在页面搜索 `self_heal_detail` 查看
 - `logs/` 目录已加入 git 跟踪（`.gitkeep`），但 `.log` 文件被 `.gitignore` 排除
+- 2026-06-16: **AGV异常码排查五层法**总结。8504=0x2138 排查路径：前端看板(异常截图) → ICS DEVICEALARM_TOPIC (alarmReson.ErrorCode) → RTPS rtps.log (robot_analysis_plan.cpp SendRobotEventOver) → play.log (定位数据+任务状态) → robot.log (STATE变化)。关键技巧：deviceCode+deviceNum双搜、ErrorCode与HexReasonCode互验、gz历史文件下载解压、RTPS白名单热更新
 

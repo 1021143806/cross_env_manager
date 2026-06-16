@@ -359,6 +359,10 @@ venv/bin/python3 test/???.py
   - 全量包向后兼容（无 `from_version` 字段时跳过校验）
 - 2026-06-16: **全局日志保留天数延长**。`MAX_HOT_LOG=500`，`LOG_RETENTION_DAYS=30`。热日志 200→500 条，日归档取消 500 条上限，每次溢出时自动清理超过 30 天的归档文件。
 - 2026-06-16: **升级记录与备份分离**。`MAX_BACKUPS=10` 仅控制备份目录（回滚用），新增 `MAX_LOG_RECORDS=500` 独立控制升级日志记录。
+- 2026-06-16: **AGV异常码8504排查完成**。建立了五层递进排查方法论（前端看板→ICS DEVICEALARM→RTPS算法→play.log定位→固件层），并总结写入 `skill/log_viewer.md` 和 `Plugin/postlook/skill/troubleshoot_skill.md` 第七章。
+  - **8504(0x2138)根因**: RTPS算法在障碍物阻塞后重规划失败，触发 `robotBlackout_Unknown`。算法日志关键词：`SendRobotEventOver algo plan error 8504` + `handleReportTaskEvent Robot Obstacled`。
+  - **关键排查技巧**: ICS历史文件用 `recent_files` 大参数搜索；RTPS日志在gz历史文件中需下载解压；postlook白名单热更新添加rtpsp目录；HexReasonCode与ErrorCode互验(0x2138=8504)；play.log类型16查看任务Canceled状态。
+  - **数据流**: 设备固件(0x2138) → RTPS(robotBlackout) → REVENT → ICS(DEVICEALARM_TOPIC) → WMS前端看板("未定义异常8504")
 - 2026-06-16: **调车模块空车下发指定设备排查 (待复现)**。分析调车空车回方向设备指定逻辑及设备池管理机制。
   - **设备指定前置条件**：仅 `direction=out` 且非手动下发时，`_select_device_for_empty_return()` 从 `currentCount.json` 中选择设备。选择策略：排除 pending (status=6/9/10)，按 (未下发过优先、低电量优先、idle 优先) 排序，逐个实时查询 ICS 确认 Idle。
   - **设备进入 currentCount 的4条路径**：①任务完成上报(status=8来方向) ②全量API同步(_assign_devices_to_regions) ③分时段切换 ④跨区域清理
