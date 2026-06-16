@@ -395,6 +395,14 @@ def _get_cem_stats():
     rss_kb, vm_kb = _read_proc_status(pid)
     utime, stime, starttime = _read_proc_stat(pid)
 
+    # 尝试获取 CEM 版本（sys.modules 中 app 模块可能以不同名称注册）
+    version = '-'
+    for mod_name in ['app', '__main__', 'main']:
+        mod = sys.modules.get(mod_name)
+        if mod and hasattr(mod, 'APP_VERSION'):
+            version = mod.APP_VERSION
+            break
+
     return {
         'pid': pid,
         'status': 'running',
@@ -402,7 +410,7 @@ def _get_cem_stats():
         'memory_vm_mb': round(vm_kb / 1024, 1),
         'cpu_percent': _calc_cpu_percent('cem', pid),
         'uptime': _fmt_uptime(starttime),
-        'version': getattr(sys.modules.get('app'), 'APP_VERSION', '-'),
+        'version': version,
     }
 
 
