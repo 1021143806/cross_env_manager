@@ -1,0 +1,30 @@
+# ============================================================
+# postlook 报文调试连接配置 (v0.4.0)
+# 热更新：POST /api/debug/config 提交此文件内容即可生效
+# ============================================================
+
+[connection]
+# TCP 目标主机（IP 或域名）
+host = "10.68.2.40"
+# TCP 目标端口
+port = 8899
+# 连接超时（秒）
+timeout = 3.0
+# 接收超时（秒）
+recv_timeout = 1.0
+# 接收缓冲区大小（字节）
+recv_buffer = 4096
+
+[send]
+# 发送前自动转小写（与 auto_uppercase 二选一，都不选则保持原样）
+auto_lowercase = true
+# 发送前自动转大写（优先级高于 auto_lowercase）
+auto_uppercase = false
+# ascii 类型报文自动追加 \r\n（对 hex 类型无效）
+add_crlf_ascii = true
+
+[display]
+# 默认以 hex 格式显示接收数据
+show_hex = true
+# 显示毫秒时间戳
+show_timestamp = true

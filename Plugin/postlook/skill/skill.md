@@ -3,7 +3,7 @@
 ## 项目概述
 **postlook** — 轻量、安全的日志 HTTP 查询服务。通过 POST 请求在指定文件夹内按文件名、关键字、行号范围等条件查询日志，支持 Web UI、配置热更新、路径白名单安全机制。
 
-当前版本：v0.2.0
+当前版本：v0.4.0
 
 ## 技术栈
 | 层级 | 选型 | 说明 |
@@ -23,10 +23,23 @@ Plugin/postlook/
 │   ├── config.py               # 配置加载/热更新/环境变量覆盖
 │   ├── routes.py               # 全部 API 路由定义
 │   ├── scanner.py              # 文件扫描与内容读取核心
+│   ├── debug_service.py        # 报文调试：TCP发送/Ping检测/报文管理 (v0.4.0)
 │   └── static/                 # 前端 SPA
-│       ├── index.html          # 主页面（三面板布局）
+│       ├── index.html          # 主页面（六卡片布局）
 │       ├── style.css           # Mac 风格样式（暗黑/亮色）
-│       └── app.js              # 前端交互逻辑
+│       ├── logs.html           # 日志查询
+│       ├── config.html         # 配置管理
+│       ├── status.html         # 服务状态
+│       ├── topology.html       # 拓扑图
+│       ├── debug.html          # 报文调试 (v0.4.0)
+│       ├── app.js              # 旧版前端逻辑
+│       └── js/                 # 模块化 JS
+│           ├── common.js       # 公共（主题/SVG/工具）
+│           ├── logs.js         # 日志查询
+│           ├── config.js       # 配置管理
+│           ├── status.js       # 服务状态
+│           ├── topology.js     # 拓扑图
+│           └── debug.js        # 报文调试 (v0.4.0)
 ├── config/                     # 配置文件
 │   ├── env.toml                # 运行配置（.gitignore）
 │   └── template/env.toml       # 配置模板
@@ -63,6 +76,8 @@ Plugin/postlook/
 ├── report/                     # 排查报告（.gitignore）
 ├── backup/                     # 备份（.gitignore）
 └── dev/                        # 调试脚本（.gitignore）
+├── data/                       # 报文调试数据 (v0.4.0)
+│   └── messages.toml           # 报文分组配置（用户可编辑，支持热更新）
 ```
 
 ## API 接口（全部 9 个端点）
@@ -78,6 +93,16 @@ Plugin/postlook/
 | GET | `/api/files` | 列出白名单目录文件树 | `{directories[]}` |
 | GET | `/api/health` | 健康检查 | `{status, version}` |
 | GET | `/api/help` | 接口文档与使用说明 | 全量 endpoint 详情 |
+| GET | `/docs` | Swagger UI 交互式文档 |
+| — | — | **报文调试 (v0.4.0)** | — |
+| POST | `/api/debug/test-connection` | Ping + TCP 端口检测 | `{ping, port}` |
+| GET | `/api/debug/messages` | 获取报文分组数据 | `{groups[], count}` |
+| GET | `/api/debug/messages-toml` | 获取 messages.toml 原文 | 纯文本 |
+| POST | `/api/debug/messages` | 保存报文数据（热更新） | `{status}` |
+| POST | `/api/debug/reload` | 热重新加载报文配置 | `{status}` |
+| GET | `/api/debug/config` | 获取调试连接配置 | `{config, toml}` |
+| POST | `/api/debug/config` | 保存连接配置（热更新） | `{status}` |
+| POST | `/api/debug/send` | 发送 hex 报文（一连接一断） | `{sent_hex, received_hex, total_ms}` |
 
 ### POST /api/logs 详细参数
 
@@ -147,10 +172,19 @@ router                 → APIRouter(), 不含 prefix
 - `/api/files` 递归遍历白名单目录全部文件，按 mtime 降序
 - `/api/logs/self` 从 `POSTLOOK_SELF_LOG` 环境变量或默认路径读取
 
+### `debug_service.py` — 报文调试 Service (v0.4.0)
+- **`test_connection(host, port)`**: Ping + TCP 端口探测，先 ping 后 telnet
+- **`send_hex_message(hex_str)`**: 连接→发送→接收→断开（一连接一断），后端 500ms 防抖
+- **`load_messages()` / `save_messages()`**: 从 `data/messages.toml` 读写报文分组，TOML 格式
+- 大小写自动转换：发送前根据 `config/debug.toml` 的 `auto_lowercase`/`auto_uppercase` 处理
+
 ### 前端静态文件
-- **`index.html`**: 三面板 SPA（日志查询 / 配置管理 / 服务状态），毛玻璃卡片布局
+- **`index.html`**: 首页六卡片布局（日志查询/配置管理/服务状态/拓扑/报文调试）
+- **`logs.html` / `config.html` / `status.html` / `topology.html`**: 各功能页面，顶部导航栏
+- **`debug.html`**: 报文调试 SPA（v0.4.0），仿 SSCOM 多字符串面板，三区布局
 - **`style.css`**: ~900 行 Mac 风格，CSS 变量驱动暗黑/亮色切换，响应式设计
-- **`app.js`**: ~430 行，含主题持久化、面板导航、表单防抖、关键字高亮、XSS 防护、扫描目录添加到白名单、文件浏览器点击复制路径
+- **`js/`**: 模块化 JS 文件（common/debug/logs/config/status/topology）
+- **`app.js`**: 旧版三面板逻辑（兼容保留）
 
 ## 部署架构
 
@@ -225,3 +259,9 @@ sudo bash deploy/deploy.sh
 - app.js 中的 queryLoading 防抖机制防止短时间重复提交
 - 所有接口返回的 line 均为原始行号（1-based）
 - 报告文件放入 `report/` 目录，已 gitignore
+- **v0.4.0 新增**: 报文调试模块（/debug 页面 + 8 个 API 端点），支持 TCP Client 发送 hex 报文、Ping + Telnet 端口检测、报文分组管理（TOML 热更新）
+- 报文调试零新增依赖，全部使用 Python 标准库（socket/subprocess）
+- 报文数据文件 `data/messages.toml` 已提交 git 作为初始示例（电梯协议），用户可通过 TOML 编辑模态框热更新
+- 连接配置 `config/debug.toml` 在 .gitignore 中，首次从 `config/template/debug.toml` 模板复制
+- 发送模式为一连接一断，不保持长连接；前后端均有 500ms 防抖
+- 预留 seq/delay_ms 字段于 messages.toml，为后续循环发送做准备

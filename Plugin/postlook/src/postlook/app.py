@@ -13,7 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .routes import router
 
 # 版本号（唯一来源）
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 # CEM 来源（嵌入 iframe 时使用）
 _CEM_ORIGIN = "http://172.31.43.181:5001"
@@ -77,6 +77,11 @@ async def status_page():
 @app.get("/topology")
 async def topology_page():
     return FileResponse(_static / "topology.html")
+
+
+@app.get("/debug")
+async def debug_page():
+    return FileResponse(_static / "debug.html")
 
 
 # 挂载静态文件（必须在所有 API 路由之后）

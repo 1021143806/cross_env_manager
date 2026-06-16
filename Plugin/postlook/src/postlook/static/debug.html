@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>postlook · 报文调试</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* 调试页特有样式 */
+        .debug-layout {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            grid-template-rows: 1fr auto;
+            gap: 12px;
+            height: calc(100vh - 48px);
+            padding: 12px;
+        }
+        .debug-conn-panel {
+            grid-row: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            overflow-y: auto;
+            max-height: calc(100vh - 300px);
+        }
+        .debug-msg-panel {
+            grid-row: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .debug-log-panel {
+            grid-column: 1 / -1;
+            grid-row: 2;
+            height: 160px;
+            min-height: 160px;
+            overflow-y: auto;
+        }
+        @media (max-width: 768px) {
+            .debug-layout {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto 1fr auto;
+            }
+            .debug-conn-panel, .debug-msg-panel, .debug-log-panel {
+                grid-column: 1;
+                grid-row: auto;
+                max-height: none;
+            }
+        }
+        .debug-conn-panel .form-group { margin-bottom: 6px; }
+        .debug-conn-panel label {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .debug-conn-panel input {
+            width: 100%;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--card-radius-sm);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            font-size: 0.85rem;
+            font-family: "SF Mono", "Monaco", "Cascadia Code", monospace;
+            transition: border var(--transition);
+        }
+        .debug-conn-panel input:focus {
+            outline: none;
+            border-color: var(--glass-border-focus);
+        }
+
+        /* 连接测试按钮 */
+        .btn-test {
+            width: 100%;
+            padding: 7px 14px;
+            border-radius: var(--card-radius-sm);
+            border: 1px solid var(--glass-border);
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 500;
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .btn-test:hover { background: var(--accent-light); border-color: var(--accent); }
+        .btn-test:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* 测试结果 */
+        .test-result {
+            font-size: 0.78rem;
+            padding: 8px 10px;
+            border-radius: var(--card-radius-sm);
+            background: var(--bg-tertiary);
+            display: none;
+            line-height: 1.6;
+        }
+        .test-result.show { display: block; }
+        .test-result .item { display: flex; align-items: center; gap: 6px; }
+        .test-result .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .test-result .dot.ok { background: var(--success); }
+        .test-result .dot.fail { background: var(--danger); }
+        .test-result .dot.skip { background: var(--warning); }
+
+        /* 开关选项 */
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+        }
+        .toggle-row input[type="checkbox"] {
+            accent-color: var(--accent);
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+        }
+
+        /* 手动发送区 */
+        .manual-send {
+            display: flex;
+            gap: 6px;
+        }
+        .manual-send input {
+            flex: 1;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--card-radius-sm);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            font-size: 0.82rem;
+            font-family: "SF Mono", "Monaco", "Cascadia Code", monospace;
+        }
+        .manual-send input:focus {
+            outline: none;
+            border-color: var(--glass-border-focus);
+        }
+        .btn-send {
+            padding: 6px 12px;
+            border-radius: var(--card-radius-sm);
+            border: none;
+            background: var(--accent);
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 500;
+            white-space: nowrap;
+            transition: all var(--transition);
+        }
+        .btn-send:hover:not(:disabled) { background: var(--accent-hover); }
+        .btn-send:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-send.sending { background: var(--danger); }
+
+        /* 报文分组 */
+        .msg-group {
+            border-radius: var(--card-radius-sm);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--glass-border);
+            overflow: hidden;
+        }
+        .msg-group-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            user-select: none;
+            transition: background var(--transition);
+        }
+        .msg-group-header:hover { background: var(--accent-light); }
+        .msg-group-header .arrow {
+            transition: transform var(--transition);
+            font-size: 0.7rem;
+            opacity: 0.6;
+        }
+        .msg-group.collapsed .arrow { transform: rotate(-90deg); }
+        .msg-group.collapsed .msg-group-body { display: none; }
+        .msg-group-desc {
+            font-size: 0.7rem;
+            color: var(--text-tertiary);
+            padding: 0 12px 8px 12px;
+        }
+        .msg-group.collapsed .msg-group-desc { display: none; }
+        .msg-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 12px;
+            border-top: 1px solid var(--glass-border);
+            font-size: 0.78rem;
+            transition: background var(--transition);
+        }
+        .msg-row:hover { background: var(--accent-light); }
+        .msg-row .msg-name {
+            font-weight: 500;
+            color: var(--text-primary);
+            white-space: nowrap;
+            min-width: 80px;
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex-shrink: 0;
+        }
+        .msg-row .msg-hex {
+            font-family: "SF Mono", "Monaco", "Cascadia Code", monospace;
+            font-size: 0.7rem;
+            color: var(--text-tertiary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+        }
+        .msg-row .btn-send {
+            flex-shrink: 0;
+            padding: 3px 10px;
+            font-size: 0.72rem;
+        }
+
+        /* 快捷操作 */
+        .quick-actions {
+            display: flex;
+            gap: 6px;
+        }
+        .btn-quick {
+            flex: 1;
+            padding: 6px 8px;
+            border-radius: var(--card-radius-sm);
+            border: 1px solid var(--glass-border);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.72rem;
+            text-align: center;
+            transition: all var(--transition);
+            text-decoration: none;
+        }
+        .btn-quick:hover {
+            background: var(--accent-light);
+            color: var(--accent);
+            border-color: var(--accent);
+        }
+
+        /* 发送日志 */
+        .log-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 12px;
+            font-size: 0.7rem;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--glass-border);
+            position: sticky;
+            top: 0;
+            background: var(--bg-tertiary);
+            z-index: 1;
+        }
+        .log-entry {
+            padding: 4px 12px;
+            font-family: "SF Mono", "Monaco", "Cascadia Code", monospace;
+            font-size: 0.72rem;
+            border-bottom: 1px solid rgba(255,255,255,0.02);
+            line-height: 1.5;
+        }
+        .log-entry.sent { color: var(--info); }
+        .log-entry.recv { color: var(--success); }
+        .log-entry.error { color: var(--danger); }
+        .log-entry .ts { color: var(--text-tertiary); margin-right: 8px; }
+        .log-entry .dir { font-weight: 600; margin-right: 4px; }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            top: 56px;
+            right: 16px;
+            z-index: 9999;
+            padding: 8px 16px;
+            border-radius: var(--card-radius-sm);
+            font-size: 0.82rem;
+            font-weight: 500;
+            animation: toastIn 0.3s ease;
+            box-shadow: var(--shadow-md);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .toast.show { opacity: 1; }
+        .toast.error { background: var(--danger); color: #fff; }
+        .toast.success { background: var(--success); color: #000; }
+        .toast.info { background: var(--accent); color: #fff; }
+        @keyframes toastIn {
+            from { transform: translateX(100px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* 加载动画 */
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-top-color: var(--text-primary);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* 分割线 */
+        .divider {
+            border: none;
+            border-top: 1px solid var(--glass-border);
+            margin: 8px 0;
+        }
+
+        /* 配置编辑模态框 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal-box {
+            background: var(--bg-secondary);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--card-radius);
+            width: 90vw;
+            max-width: 800px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: var(--shadow-lg);
+        }
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--glass-border);
+            font-weight: 600;
+        }
+        .modal-header button {
+            background: none;
+            border: none;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 2px 6px;
+        }
+        .modal-header button:hover { color: var(--text-primary); }
+        .modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+        .modal-body textarea {
+            width: 100%;
+            height: 100%;
+            min-height: 400px;
+            background: var(--bg-primary);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--card-radius-sm);
+            color: var(--text-primary);
+            font-family: "SF Mono", "Monaco", "Cascadia Code", monospace;
+            font-size: 0.78rem;
+            padding: 12px;
+            resize: vertical;
+        }
+        .modal-body textarea:focus {
+            outline: none;
+            border-color: var(--glass-border-focus);
+        }
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding: 12px 16px;
+            border-top: 1px solid var(--glass-border);
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- 顶部导航 -->
+        <header class="topbar">
+            <div class="topbar-brand">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                <span>postlook</span>
+            </div>
+            <nav class="topbar-nav">
+                <a href="logs.html" class="topbar-tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span>日志查询</span></a>
+                <a href="config.html" class="topbar-tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>配置管理</span></a>
+                <a href="status.html" class="topbar-tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>服务状态</span></a>
+                <a href="topology.html" class="topbar-tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><line x1="12" y1="8" x2="5" y2="15"/><circle cx="19" cy="18" r="3"/><line x1="12" y1="8" x2="19" y2="15"/></svg><span>拓扑</span></a>
+                <a href="debug.html" class="topbar-tab active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span>调试</span></a>
+            </nav>
+            <button class="topbar-theme" id="themeBtn" title="切换主题">
+                <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+        </header>
+
+        <!-- 主布局 -->
+        <div class="debug-layout">
+            <!-- 左侧：连接面板 -->
+            <aside class="debug-conn-panel">
+                <div class="glass-card" style="padding:12px">
+                    <h4 style="margin-bottom:10px;font-size:0.85rem;font-weight:600">连接设置</h4>
+                    <div class="form-group">
+                        <label>目标主机</label>
+                        <input type="text" id="connHost" placeholder="10.68.2.40" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label>目标端口</label>
+                        <input type="number" id="connPort" placeholder="8899" min="1" max="65535">
+                    </div>
+                    <button class="btn-test" id="btnTestConn" title="Ping + 端口检测">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        测试连接
+                    </button>
+                    <div class="test-result" id="testResult"></div>
+                </div>
+
+                <div class="glass-card" style="padding:12px">
+                    <h4 style="margin-bottom:8px;font-size:0.85rem;font-weight:600">发送选项</h4>
+                    <div class="toggle-row">
+                        <span>自动转小写</span>
+                        <input type="checkbox" id="optLowercase" checked>
+                    </div>
+                    <div class="toggle-row">
+                        <span>自动转大写</span>
+                        <input type="checkbox" id="optUppercase">
+                    </div>
+                    <div class="toggle-row">
+                        <span>接收 hex 显示</span>
+                        <input type="checkbox" id="optShowHex" checked>
+                    </div>
+                    <div class="toggle-row">
+                        <span>显示时间戳</span>
+                        <input type="checkbox" id="optTimestamp" checked>
+                    </div>
+                    <!-- 预留循环发送 -->
+                    <hr class="divider">
+                    <div class="toggle-row" style="opacity:0.5">
+                        <span>定时循环（开发中）</span>
+                        <input type="checkbox" id="optLoop" disabled>
+                    </div>
+                    <div class="form-group" style="margin-top:4px;opacity:0.5">
+                        <label>间隔 (ms)</label>
+                        <input type="number" id="optLoopInterval" value="1000" min="100" disabled>
+                    </div>
+                </div>
+
+                <div class="glass-card" style="padding:12px">
+                    <h4 style="margin-bottom:8px;font-size:0.85rem;font-weight:600">手动发送</h4>
+                    <div class="manual-send">
+                        <input type="text" id="manualHex" placeholder="AB 66 00 00 03 01 00 FF FD 03" autocomplete="off">
+                        <button class="btn-send" id="btnManualSend">发送 ▸</button>
+                    </div>
+                </div>
+
+                <div class="glass-card" style="padding:12px">
+                    <h4 style="margin-bottom:8px;font-size:0.85rem;font-weight:600">快捷操作</h4>
+                    <div class="quick-actions">
+                        <button class="btn-quick" id="btnVisualEdit">可视化编辑</button>
+                        <button class="btn-quick" id="btnTomlEdit">TOML 源文件</button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 右侧：报文列表 -->
+            <section class="debug-msg-panel" id="msgPanel">
+                <div class="glass-card" style="padding:16px;text-align:center;color:var(--text-tertiary)">
+                    <span class="spinner"></span> 加载报文中...
+                </div>
+            </section>
+
+            <!-- 底部：发送日志 -->
+            <section class="debug-log-panel glass-card" style="display:flex;flex-direction:column">
+                <div class="log-header">
+                    <span>发送/接收日志</span>
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <label style="cursor:pointer;font-size:0.7rem;display:flex;align-items:center;gap:3px">
+                            <input type="checkbox" id="logHexToggle" checked> hex
+                        </label>
+                        <button id="btnClearLog" style="background:none;border:none;color:var(--text-tertiary);cursor:pointer;font-size:0.7rem">清空</button>
+                    </div>
+                </div>
+                <div id="logContainer" style="flex:1;overflow-y:auto;font-size:0"></div>
+            </section>
+        </div>
+
+        <!-- TOML 编辑模态框 -->
+        <div class="modal-overlay" id="tomlModal">
+            <div class="modal-box">
+                <div class="modal-header">
+                    <span id="tomlModalTitle">编辑 messages.toml</span>
+                    <button id="tomlModalClose">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <textarea id="tomlEditor" spellcheck="false"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" id="tomlModalCancel" style="padding:6px 14px;border:1px solid var(--glass-border);border-radius:var(--card-radius-sm);background:var(--bg-tertiary);color:var(--text-primary);cursor:pointer">取消</button>
+                    <button class="btn-primary" id="tomlModalSave" style="padding:6px 14px;border:none;border-radius:var(--card-radius-sm);background:var(--accent);color:#fff;cursor:pointer;font-weight:500">保存并热更新</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script src="js/common.js"></script>
+    <script src="js/debug.js"></script>
+</body>
+</html>

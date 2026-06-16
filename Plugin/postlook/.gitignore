@@ -4,6 +4,7 @@
 config/env.toml
 config/app.toml
 config/rules.toml
+config/debug.toml
 
 # 日志
 logs/
