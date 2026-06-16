@@ -21,7 +21,8 @@ import re
 import os
 import sys
 import time
-import tracemalloc
+# tracemalloc 已移除 — 生产环境长时间运行导致 7.9GB 内存泄漏 (OOM)
+# import tracemalloc
 import argparse
 import hashlib
 from datetime import datetime
@@ -185,8 +186,7 @@ app.json.ensure_ascii = False
 def inject_version():
     return {'app_version': APP_VERSION}
 
-# 启动内存追踪（监控页面使用）
-tracemalloc.start()
+# tracemalloc.start() 已移除 — 参见 app.py 顶部注释
 
 # 项目根目录
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

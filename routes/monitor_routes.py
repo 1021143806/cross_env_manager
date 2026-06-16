@@ -9,7 +9,8 @@ from datetime import datetime, timedelta
 import json
 import os
 import sys
-import tracemalloc
+import resource
+# tracemalloc 已移除 — 生产环境长时间运行导致内存泄漏
 
 monitor_bp = Blueprint('monitor', __name__, template_folder='../templates')
 
@@ -204,10 +205,14 @@ def _get_memory_stats():
              'log_file_kb': 0, 'dispatch_data_kb': 0}
     
     try:
-        # Python 进程内存（tracemalloc）
-        current, peak = tracemalloc.get_traced_memory()
-        stats['process_current_mb'] = round(current / 1024 / 1024, 1)
-        stats['process_peak_mb'] = round(peak / 1024 / 1024, 1)
+        # Python 进程内存（resource.getrusage，替代 tracemalloc 避免泄漏）
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        current_kb = usage.ru_maxrss  # Linux: KB, macOS: bytes
+        # macOS 上 ru_maxrss 单位是 bytes，需要转换
+        if sys.platform == 'darwin':
+            current_kb = current_kb // 1024
+        stats['process_current_mb'] = round(current_kb / 1024, 1)
+        stats['process_peak_mb'] = round(current_kb / 1024, 1)  # ru_maxrss 即最大 RSS
     except Exception:
         pass
     
