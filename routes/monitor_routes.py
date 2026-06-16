@@ -250,3 +250,210 @@ def _get_memory_stats():
         pass
     
     return stats
+
+
+# ════════════════════════════════════════════════════════════
+#  进程监控 (CEM + Postlook)
+# ════════════════════════════════════════════════════════════
+
+import time as _time
+import subprocess as _sp
+import threading as _th
+
+# CPU 计算缓存
+_cpu_cache = {'cem': {}, 'postlook': {}}
+_cpu_lock = _th.Lock()
+
+
+def _read_proc_status(pid):
+    """读取 /proc/{pid}/status 中的 VmRSS 和 VmSize（单位 KB）"""
+    try:
+        with open(f'/proc/{pid}/status', 'r') as f:
+            content = f.read()
+        rss = vm = 0
+        for line in content.split('\n'):
+            if line.startswith('VmRSS:'):
+                rss = int(line.split()[1])
+            elif line.startswith('VmSize:'):
+                vm = int(line.split()[1])
+        return rss, vm
+    except Exception:
+        return 0, 0
+
+
+def _read_proc_stat(pid):
+    """读取 /proc/{pid}/stat 中的 utime, stime, starttime（单位：jiffies）"""
+    try:
+        with open(f'/proc/{pid}/stat', 'r') as f:
+            fields = f.read().split()
+        # field 13=utime, 14=stime, 21=starttime
+        utime = int(fields[13])
+        stime = int(fields[14])
+        starttime = int(fields[21])
+        return utime, stime, starttime
+    except Exception:
+        return 0, 0, 0
+
+
+def _get_clock_ticks():
+    """获取系统时钟频率（通常 100 Hz）"""
+    try:
+        return os.sysconf(os.sysconf_names['SC_CLK_TCK'])
+    except Exception:
+        return 100
+
+
+def _find_postlook_pid():
+    """扫描 /proc 查找 Postlook 进程 PID"""
+    try:
+        # 优先用 pgrep
+        result = _sp.run(['pgrep', '-f', 'uvicorn.*5011'],
+                        capture_output=True, text=True, timeout=2)
+        if result.returncode == 0 and result.stdout.strip():
+            return int(result.stdout.strip().split('\n')[0])
+    except Exception:
+        pass
+
+    # 兜底：扫 /proc
+    try:
+        for entry in os.listdir('/proc'):
+            if not entry.isdigit():
+                continue
+            try:
+                with open(f'/proc/{entry}/cmdline', 'rb') as f:
+                    cmdline = f.read().decode(errors='replace')
+                if '5011' in cmdline and 'uvicorn' in cmdline.lower():
+                    return int(entry)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+def _calc_cpu_percent(label, pid):
+    """计算进程 CPU 占用百分比（基于两次采样差值）"""
+    ticks = _get_clock_ticks()
+    now = _time.time()
+    utime, stime, _ = _read_proc_stat(pid)
+    total = utime + stime
+
+    with _cpu_lock:
+        prev = _cpu_cache[label]
+        prev_total = prev.get('total', 0)
+        prev_time = prev.get('time', now)
+        prev_cpu = prev.get('cpu', 0.0)
+
+    delta_total = total - prev_total
+    delta_time = now - prev_time
+
+    if delta_time < 0.5 or delta_total <= 0:
+        # 采样间隔太短，返回上次值
+        return prev_cpu
+
+    cpu = (delta_total / ticks) / delta_time * 100
+
+    # 衰减平滑
+    smoothed = prev_cpu * 0.6 + cpu * 0.4 if prev_cpu > 0 else cpu
+    smoothed = round(min(smoothed, 100 * os.cpu_count()), 1)
+
+    with _cpu_lock:
+        _cpu_cache[label] = {'total': total, 'time': now, 'cpu': smoothed}
+
+    return smoothed
+
+
+def _fmt_uptime(starttime_jiffies):
+    """格式化运行时长（starttime_jiffies = /proc/pid/stat field 21，相对系统启动时间）"""
+    ticks = _get_clock_ticks()
+    if ticks == 0:
+        return '-'
+    # 读取系统启动以来的秒数
+    try:
+        with open('/proc/uptime', 'r') as f:
+            uptime_sys = float(f.read().split()[0])
+    except Exception:
+        return '-'
+    # 进程已运行秒数 = 系统已运行秒数 - 进程启动时的系统秒数
+    proc_uptime_s = int(uptime_sys - starttime_jiffies / ticks)
+    if proc_uptime_s < 0:
+        return '-'
+    if proc_uptime_s < 60:
+        return f'{proc_uptime_s}s'
+    if proc_uptime_s < 3600:
+        return f'{proc_uptime_s // 60}m {proc_uptime_s % 60}s'
+    if proc_uptime_s < 86400:
+        return f'{proc_uptime_s // 3600}h {(proc_uptime_s % 3600) // 60}m'
+    d = proc_uptime_s // 86400
+    h = (proc_uptime_s % 86400) // 3600
+    return f'{d}d {h}h'
+
+
+def _get_cem_stats():
+    """获取 CEM 自身进程统计"""
+    pid = os.getpid()
+    rss_kb, vm_kb = _read_proc_status(pid)
+    utime, stime, starttime = _read_proc_stat(pid)
+
+    return {
+        'pid': pid,
+        'status': 'running',
+        'memory_rss_mb': round(rss_kb / 1024, 1),
+        'memory_vm_mb': round(vm_kb / 1024, 1),
+        'cpu_percent': _calc_cpu_percent('cem', pid),
+        'uptime': _fmt_uptime(starttime),
+        'version': getattr(sys.modules.get('app'), 'APP_VERSION', '-'),
+    }
+
+
+def _get_postlook_stats():
+    """获取 Postlook 进程统计"""
+    pid = _find_postlook_pid()
+    if pid is None:
+        return {
+            'pid': None,
+            'status': 'stopped',
+            'health': 'unreachable',
+            'version': '-',
+            'memory_rss_mb': 0,
+            'memory_vm_mb': 0,
+            'cpu_percent': 0,
+            'uptime': '-',
+        }
+
+    rss_kb, vm_kb = _read_proc_status(pid)
+    utime, stime, starttime = _read_proc_stat(pid)
+
+    # HTTP 健康检查
+    health = 'unreachable'
+    version = '-'
+    try:
+        import urllib.request
+        req = urllib.request.Request('http://127.0.0.1:5011/api/health')
+        resp = urllib.request.urlopen(req, timeout=3)
+        data = json.loads(resp.read().decode())
+        health = 'ok' if data.get('status') == 'ok' else 'error'
+        version = data.get('version', '-')
+    except Exception:
+        pass
+
+    return {
+        'pid': pid,
+        'status': 'running',
+        'health': health,
+        'version': version,
+        'memory_rss_mb': round(rss_kb / 1024, 1),
+        'memory_vm_mb': round(vm_kb / 1024, 1),
+        'cpu_percent': _calc_cpu_percent('postlook', pid),
+        'uptime': _fmt_uptime(starttime),
+    }
+
+
+@monitor_bp.route('/api/system/process-monitor')
+@login_required
+def api_process_monitor():
+    """进程监控数据"""
+    return jsonify({
+        'cem': _get_cem_stats(),
+        'postlook': _get_postlook_stats(),
+    })

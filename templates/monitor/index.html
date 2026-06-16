@@ -227,6 +227,38 @@
         }
         .monitor-topbar { gap: 0.8rem; font-size: 0.7rem; }
     }
+    /* ── 进程健康卡片 ── */
+    .proc-health {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        background: var(--monitor-card);
+        border-bottom: 1px solid var(--monitor-border);
+    }
+    .proc-card {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.6rem 0.8rem;
+        background: rgba(22,27,34,0.6);
+        border: 1px solid var(--monitor-border);
+        border-radius: 8px;
+        font-size: 0.78rem;
+    }
+    .proc-dot {
+        width: 10px; height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        box-shadow: 0 0 6px;
+    }
+    .proc-dot.online { background: var(--monitor-green); box-shadow: 0 0 8px var(--monitor-green); }
+    .proc-dot.offline { background: var(--monitor-red); box-shadow: 0 0 8px var(--monitor-red); }
+    .proc-info { flex: 1; min-width: 0; }
+    .proc-info .proc-name { font-weight: 600; color: var(--monitor-text); }
+    .proc-info .proc-meta { color: var(--monitor-dim); font-size: 0.7rem; margin-top: 0.15rem; display: flex; gap: 0.6rem; flex-wrap: wrap; }
+    .proc-info .proc-meta span { white-space: nowrap; }
+    .proc-cpu { font-size: 0.85rem; font-weight: 600; color: var(--monitor-blue); flex-shrink: 0; }
 </style>
 {% endblock %}
 
@@ -263,6 +295,34 @@
                 <input type="checkbox" id="autoRefresh" checked onchange="toggleAutoRefresh()" style="accent-color:var(--monitor-green);">
                 自动
             </label>
+        </div>
+    </div>
+
+    <!-- 进程健康 -->
+    <div class="proc-health">
+        <div class="proc-card" id="procCem">
+            <div class="proc-dot online" id="procCemDot"></div>
+            <div class="proc-info">
+                <div class="proc-name">CEM <span style="font-weight:400;color:var(--monitor-dim);" id="procCemVer">-</span></div>
+                <div class="proc-meta">
+                    <span>PID <b id="procCemPid">-</b></span>
+                    <span>RSS <b id="procCemRss">-</b></span>
+                    <span id="procCemUptime">-</span>
+                </div>
+            </div>
+            <div class="proc-cpu" id="procCemCpu">-%</div>
+        </div>
+        <div class="proc-card" id="procPostlook">
+            <div class="proc-dot online" id="procPlDot"></div>
+            <div class="proc-info">
+                <div class="proc-name">Postlook <span style="font-weight:400;color:var(--monitor-dim);" id="procPlVer">-</span></div>
+                <div class="proc-meta">
+                    <span>PID <b id="procPlPid">-</b></span>
+                    <span>RSS <b id="procPlRss">-</b></span>
+                    <span id="procPlUptime">-</span>
+                </div>
+            </div>
+            <div class="proc-cpu" id="procPlCpu">-%</div>
         </div>
     </div>
 
@@ -324,13 +384,15 @@ function refreshData() {
     const window = document.getElementById('windowSelect').value;
     document.getElementById('statusText').textContent = '刷新中...';
     
-    // 并行请求：监控数据 + 操作日志
+    // 并行请求：监控数据 + 操作日志 + 进程健康
     Promise.all([
         fetch('/api/system/monitor?window=' + window).then(r => r.json()),
-        fetch('/api/dispatch/global_log?_=' + Date.now()).then(r => r.json())
-    ]).then(([monitor, logData]) => {
+        fetch('/api/dispatch/global_log?_=' + Date.now()).then(r => r.json()),
+        fetch('/api/system/process-monitor').then(r => r.json()).catch(() => null)
+    ]).then(([monitor, logData, procData]) => {
         renderTopbar(monitor.summary, monitor.memory_stats);
         renderLogStream(logData.logs || []);
+        if (procData) renderProcHealth(procData);
         document.getElementById('statusText').textContent = 
             '更新于 ' + new Date().toLocaleTimeString();
     }).catch(err => {
@@ -367,6 +429,28 @@ function renderTopbar(s, mem) {
             document.getElementById('tplCount').textContent = d.db_stats.total_templates || 0;
         }
     }).catch(() => {});
+}
+
+function renderProcHealth(data) {
+    if (!data) return;
+    ['cem','postlook'].forEach(function(type) {
+        var p = data[type];
+        if (!p) return;
+        var online = p.status === 'running' && (type === 'cem' || p.health === 'ok');
+        var dot = document.getElementById(type === 'cem' ? 'procCemDot' : 'procPlDot');
+        var verEl = document.getElementById(type === 'cem' ? 'procCemVer' : 'procPlVer');
+        var pidEl = document.getElementById(type === 'cem' ? 'procCemPid' : 'procPlPid');
+        var rssEl = document.getElementById(type === 'cem' ? 'procCemRss' : 'procPlRss');
+        var uptEl = document.getElementById(type === 'cem' ? 'procCemUptime' : 'procPlUptime');
+        var cpuEl = document.getElementById(type === 'cem' ? 'procCemCpu' : 'procPlCpu');
+        
+        if (dot) { dot.className = 'proc-dot ' + (online ? 'online' : 'offline'); }
+        if (verEl) verEl.textContent = 'v' + (p.version || '-');
+        if (pidEl) pidEl.textContent = p.pid || '-';
+        if (rssEl) rssEl.textContent = (p.memory_rss_mb || 0) + ' MB';
+        if (uptEl) uptEl.textContent = '上线 ' + (p.uptime || '-');
+        if (cpuEl) cpuEl.textContent = (p.cpu_percent || 0) + '%';
+    });
 }
 
 function renderLogStream(logs) {
