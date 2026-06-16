@@ -91,11 +91,34 @@ def _get_git_commit() -> str:
 
 
 def get_version_info() -> dict:
-    """获取服务器版本信息"""
-    return {
+    """获取服务器版本信息（含可回退版本列表）"""
+    info = {
         'app_version': _get_app_version(),
         'git_commit': _get_git_commit(),
     }
+    # 从升级日志提取可回退版本
+    try:
+        records = _read_upgrade_log()
+        candidates = []
+        seen = set()
+        for r in records:
+            if r.get('status') != 'success':
+                continue
+            old_ver = r.get('old_version', '')
+            old_commit = r.get('from_commit', '')
+            if old_ver and old_ver not in seen and old_commit:
+                seen.add(old_ver)
+                candidates.append({
+                    'version': old_ver,
+                    'commit': old_commit,
+                    'timestamp': r.get('timestamp', ''),
+                    'backup_name': r.get('backup_name', ''),
+                })
+        if candidates:
+            info['rollback_candidates'] = candidates
+    except Exception:
+        pass
+    return info
 
 
 def _get_app_version() -> str:
@@ -192,8 +215,32 @@ def _trim_upgrade_log():
 
 
 def get_upgrade_records() -> list:
-    """获取升级记录列表"""
-    return _read_upgrade_log()
+    """获取升级记录列表（同版本连续记录自动合并）"""
+    records = _read_upgrade_log()
+    if len(records) < 2:
+        return records
+    merged = []
+    prev = None
+    for r in records:
+        if prev and r.get('old_version') == prev.get('old_version') and r.get('new_version') == prev.get('new_version') and r.get('status') == 'success' and prev.get('status') == 'success':
+            # 合并：累加文件数，合并 release_notes
+            prev['files_overlay'] = (prev.get('files_overlay', 0) or 0) + (r.get('files_overlay', 0) or 0)
+            prev['files_skipped'] = (prev.get('files_skipped', 0) or 0) + (r.get('files_skipped', 0) or 0)
+            if r.get('files_deleted'):
+                prev['files_deleted'] = (prev.get('files_deleted', 0) or 0) + r['files_deleted']
+            # 合并 release_notes：去重
+            prev_notes = prev.get('release_notes') or []
+            r_notes = r.get('release_notes') or []
+            if r_notes:
+                for note in r_notes:
+                    if note not in prev_notes:
+                        prev_notes.append(note)
+                prev['release_notes'] = prev_notes
+            prev['merged_count'] = (prev.get('merged_count', 1) + 1)
+        else:
+            merged.append(r)
+            prev = r
+    return merged
 
 
 def _read_version_json(extract_dir: str) -> dict:
@@ -302,6 +349,10 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
 
         # 7.1 增量包：清理被删除的文件
         deleted_paths = files_changed.get('D', []) if isinstance(files_changed, dict) else []
+        # 回退包：额外删除 version.json 中标记的 delete_list（原 A 文件）
+        rollback_deletes = version_info.get('delete_list', [])
+        if rollback_deletes:
+            deleted_paths = deleted_paths + rollback_deletes
         delete_count = 0
         for rel_path in deleted_paths:
             dst_path = os.path.join(BASE_DIR, rel_path.replace('\\', '/'))
@@ -326,11 +377,19 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
             'release_notes': release_notes,
         }
         # 增量包特有信息
+        pkg_type = version_info.get('type', 'incremental')
         if from_version:
-            record['upgrade_type'] = 'incremental'
+            record['upgrade_type'] = pkg_type
             record['from_version'] = from_version
         if delete_count:
             record['files_deleted'] = delete_count
+        # 记录 commit 信息（用于回退）
+        src_commit = version_info.get('from_commit', '')
+        dst_commit = version_info.get('to_commit', '')
+        if src_commit:
+            record['from_commit'] = src_commit
+        if dst_commit:
+            record['to_commit'] = dst_commit
         # 清理空字段
         if not record['release_notes']:
             record.pop('release_notes', None)
