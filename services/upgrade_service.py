@@ -324,6 +324,9 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
                 shutil.copy2(src_path, dst_path)
                 overlay_count += 1
 
+        # 7.0 清理 Python 字节码缓存（避免旧代码运行）
+        _clear_pycache()
+
         # 7.1 增量包：清理被删除的文件
         deleted_paths = files_changed.get('D', []) if isinstance(files_changed, dict) else []
         delete_count = 0
@@ -404,6 +407,21 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
     if delete_count:
         result['files_deleted'] = delete_count
     return result
+
+
+def _clear_pycache():
+    """清理 Plugin/postlook 下的所有 __pycache__ 目录（强制 Python 重新编译）"""
+    postlook_src = os.path.join(BASE_DIR, 'Plugin', 'postlook', 'src')
+    if not os.path.isdir(postlook_src):
+        return
+    for root, dirs, files in os.walk(postlook_src):
+        for d in dirs:
+            if d == '__pycache__':
+                cache_dir = os.path.join(root, d)
+                try:
+                    shutil.rmtree(cache_dir, ignore_errors=True)
+                except Exception:
+                    pass
 
 
 def _backup_project_files(backup_path: str):
