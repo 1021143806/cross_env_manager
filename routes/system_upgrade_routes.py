@@ -83,6 +83,7 @@ def upgrade_page():
         project_dir=svc['BASE_DIR'],
         exclude_patterns=svc['EXCLUDE_PATTERNS'],
         max_backups=svc['MAX_BACKUPS'],
+    )
 
 
 @upgrade_bp.route('/system/plugins', methods=['GET'])
@@ -90,7 +91,6 @@ def upgrade_page():
 def plugins_page():
     """插件管理页面"""
     return render_template('system/plugins.html')
-    )
 
 
 # ========== API ==========
@@ -298,4 +298,3 @@ def api_postlook_logs():
             return jsonify({'success': True, 'data': json.loads(data)})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 502
-    }), 500
