@@ -118,6 +118,73 @@ def find_files(
     return files[:recent_files]
 
 
+def expand_keyword_with_rules(keyword: str) -> str:
+    """
+    规则感知关键字扩展。
+    如果 keyword 匹配任意规则的 name 或 annotation，
+    自动将该规则的 match 模式追加为 OR 条件。
+    
+    例: "开门" → "开门|AB66000003030110E903|AB66000003040110E803"
+         "电梯" → 匹配所有电梯相关规则的 hex 模式
+    
+    仅扩展第一个关键字段（管道前），保留用户指定的 grep 管道。
+    """
+    if not keyword:
+        return keyword
+
+    # 只扩展第一个关键字段，保留管道语法
+    parts = keyword.split("|", 1)
+    first = parts[0].strip()
+
+    # 第一段已含 OR (|) → 用户明确指定，不扩展
+    if "|" in first:
+        return keyword
+
+    try:
+        from .config import get_rules
+        rules = get_rules()
+    except Exception:
+        return keyword
+
+    kw_lower = first.lower()
+    expanded = [first]
+
+    for rule in rules:
+        name = (rule.get("name") or "").lower()
+        annotation = (rule.get("annotation") or "").lower()
+        rtype = rule.get("type", "")
+
+        # 匹配规则名称或注解（子串匹配）
+        if kw_lower not in name and kw_lower not in annotation:
+            continue
+
+        match = (rule.get("match") or "").strip()
+        if not match:
+            continue
+
+        # 仅扩展 hex 和 keyword 类型规则（regex 的占位符不适合直接搜索）
+        if rtype not in ("hex", "keyword"):
+            continue
+
+        # hex 类型：去掉空格便于搜索
+        if rtype == "hex":
+            match = match.replace(" ", "")
+
+        if match.lower() in (e.lower() for e in expanded):
+            continue  # 去重
+
+        expanded.append(match)
+
+    if len(expanded) == 1:
+        return keyword  # 无匹配规则，原样返回
+
+    # 重建：扩展后的第一段 + 剩余管道
+    expanded_first = "|".join(expanded)
+    if len(parts) > 1:
+        return expanded_first + " | " + parts[1]
+    return expanded_first
+
+
 def parse_grep_pipeline(keyword: Optional[str]) -> tuple:
     """
     解析 grep 管道语法，返回 (filters, shell_cmd)
@@ -132,7 +199,17 @@ def parse_grep_pipeline(keyword: Optional[str]) -> tuple:
         return [], ""
     
     keyword = keyword.strip()
-    parts = [p.strip() for p in keyword.split("|")]
+    
+    # 检测是否含 grep 管道语法（非普通 OR）
+    has_grep = bool(re.search(r'\|\s*grep\b', keyword, re.IGNORECASE))
+    
+    if has_grep:
+        # 管道模式：按 grep 边界拆分
+        parts = re.split(r'\|\s*(?=grep\b)', keyword, flags=re.IGNORECASE)
+        parts = [p.strip() for p in parts]
+    else:
+        # 普通模式：整体作为一个 pattern（支持内部 | 作为 OR）
+        parts = [keyword]
     
     filters = []
     cmd_parts = []
@@ -157,13 +234,10 @@ def parse_grep_pipeline(keyword: Optional[str]) -> tuple:
                 cmd_flags += "v" if cmd_flags else "-v"
             cmd_parts.append(f"grep {cmd_flags} '{pattern}'" if cmd_flags else f"grep '{pattern}'")
         else:
-            # 普通关键字，可能含 |
-            if "|" in p:
-                p_clean = p.strip()
-                # 已经 split 过了，这里不应该出现 |
-                pass
+            # 普通关键字，支持内部 | 作为 OR
             cmd_flags = "-iE" if "|" in pattern else "-i"
-            cmd_parts.append(f"grep {cmd_flags} '{pattern}'")
+            quoted = f"'{pattern}'"
+            cmd_parts.append(f"grep {cmd_flags} {quoted}")
         
         filters.append((pattern, invert, case_insensitive))
     
@@ -172,20 +246,24 @@ def parse_grep_pipeline(keyword: Optional[str]) -> tuple:
 
 
 def _line_matches_pipeline(line: str, filters: list) -> bool:
-    """检查一行是否通过所有过滤器"""
+    """检查一行是否通过所有过滤器。同时支持空格敏感和忽略空格的匹配。"""
     for pattern, invert, ci in filters:
         test_line = line.lower() if ci else line
         test_pat = pattern.lower() if ci else pattern
+        
+        # 也准备忽略空格的版本（用于 hex 模式匹配）
+        test_line_nosp = test_line.replace(" ", "")
         
         # 支持 | (OR) 在单个 pattern 中
         if "|" in pattern:
             or_patterns = [p.strip() for p in pattern.split("|")]
             matched = any(
                 (p.lower() if ci else p) in test_line
+                or (p.lower() if ci else p) in test_line_nosp
                 for p in or_patterns
             )
         else:
-            matched = test_pat in test_line
+            matched = test_pat in test_line or test_pat in test_line_nosp
         
         if invert:
             if matched:
@@ -328,6 +406,9 @@ def scan_logs(
     # 关键字搜索上限
     MAX_KEYWORD_RESULTS = 500
 
+    # 规则感知关键字扩展（将 "开门" 自动展开为 "开门|AB6600...|AB6600..."）
+    expanded_keyword = expand_keyword_with_rules(keyword) if keyword else None
+
     # 解析目录
     try:
         folder_path = resolve_folder(folder, root_dirs)
@@ -369,7 +450,7 @@ def scan_logs(
 
     # 搜索内容
     all_results = []
-    limit = MAX_KEYWORD_RESULTS if keyword else None
+    limit = MAX_KEYWORD_RESULTS if expanded_keyword else None
 
     for file_path in files:
         if limit and len(all_results) >= limit:
@@ -377,7 +458,7 @@ def scan_logs(
         remaining = (limit - len(all_results)) if limit else None
         file_results = search_lines(
             file_path,
-            keyword=keyword,
+            keyword=expanded_keyword,
             max_lines=remaining if remaining else (line_end - line_start + 1),
             tail=tail,
             line_start=line_start,
@@ -385,7 +466,7 @@ def scan_logs(
         )
         all_results.extend(file_results)
 
-    truncated = bool(keyword and len(all_results) >= MAX_KEYWORD_RESULTS)
+    truncated = bool(expanded_keyword and len(all_results) >= MAX_KEYWORD_RESULTS)
     if truncated:
         all_results = all_results[:MAX_KEYWORD_RESULTS]
 
@@ -393,6 +474,6 @@ def scan_logs(
         "total_lines": len(all_results),
         "truncated": truncated,
         "results": all_results,
-        "shell_cmd": _build_shell_cmd(keyword, folder_path, pattern, line_end, tail, files),
+        "shell_cmd": _build_shell_cmd(expanded_keyword, folder_path, pattern, line_end, tail, files),
         "postlook_version": "2.0",
     }
