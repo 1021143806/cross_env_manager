@@ -30,3 +30,4 @@ venv/
 # IDE
 .vscode/
 .idea/
+old/
