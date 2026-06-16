@@ -235,6 +235,101 @@ def api_delete_backup(backup_name):
 
 
 # ═══════════════════════════════════════════════════════════════
+# 配置版本管理页面 & 增量升级 API
+# ═══════════════════════════════════════════════════════════════
+
+@config_bp.route('/addtask/config-history')
+@login_required
+def config_history():
+    """配置版本管理页面（增量更新 + 对比 + 回退）"""
+    return render_template('addTask/config_history.html')
+
+
+@config_bp.route('/api/config/diff')
+@login_required
+def api_config_diff():
+    """对比两个版本的对象级差异"""
+    try:
+        v1 = request.args.get('v1', type=int)
+        v2 = request.args.get('v2', type=int)
+        if v1 is None or v2 is None:
+            return jsonify({'success': False, 'error': '缺少 v1 或 v2 参数'}), 400
+
+        diff = _config_service.diff_versions(v1, v2)
+        if diff is None:
+            return jsonify({'success': False, 'error': '版本不存在或加载失败'}), 404
+
+        return jsonify({'success': True, 'data': diff})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@config_bp.route('/api/config/upgrade', methods=['POST'])
+@login_required
+@admin_required
+def api_config_upgrade():
+    """
+    应用增量配置补丁
+    请求体: {
+        "title": "变更说明",
+        "changes": [{"path": "areas.xxx.tasks.yyy", "value": {...}}],
+        "removals": ["areas.xxx.tasks.old_task"]
+    }
+    """
+    try:
+        body = request.get_json(force=True)
+        if not body:
+            return jsonify({'success': False, 'error': '请求体不能为空'}), 400
+
+        changes = body.get('changes', [])
+        removals = body.get('removals', [])
+        title = body.get('title', '')
+
+        if not changes and not removals:
+            return jsonify({'success': False, 'error': 'changes 和 removals 不能同时为空'}), 400
+
+        result = _config_service.apply_upgrade(body, message=title)
+        return jsonify({
+            'success': True,
+            'data': result,
+            'message': f"配置已更新（{result.get('added', 0)} 新增, "
+                       f"{result.get('modified', 0)} 修改, {result.get('removed', 0)} 删除）"
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@config_bp.route('/api/config/export')
+@login_required
+def api_config_export():
+    """导出指定版本为 JSON（支持 ?v= 参数，不传则导出当前版本）"""
+    try:
+        version = request.args.get('v', type=int)
+        if version is not None:
+            data = _config_service._load_version(version)
+            if data is None:
+                return jsonify({'success': False, 'error': f'版本 {version} 不存在'}), 404
+        else:
+            data = _config_service.load_config()
+            version = data.get('_version', 0)
+
+        # 去除内部字段
+        for key in ('_version', '_features'):
+            data.pop(key, None)
+
+        return jsonify({
+            'success': True,
+            'data': data,
+            'version': version,
+            'filename': f'config_v{version}_export.json'
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════════
 # 兼容旧版路由（重定向到 API）
 # ═══════════════════════════════════════════════════════════════
 

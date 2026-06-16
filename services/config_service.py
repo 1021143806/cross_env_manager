@@ -259,3 +259,172 @@ class ConfigService:
             return False
         os.remove(path)
         return True
+
+    # ─── 版本对比 ────────────────────────────────────────────
+
+    def diff_versions(self, v1: int, v2: int) -> dict:
+        """
+        对比两个版本的对象级差异
+        返回: {v1, v2, added, modified, removed}
+        """
+        data1 = self._load_version(v1)
+        data2 = self._load_version(v2)
+        if data1 is None or data2 is None:
+            return None
+
+        areas1 = data1.get('areas', {})
+        areas2 = data2.get('areas', {})
+
+        added = []      # {area, task, path}
+        modified = []   # {area, task, path, old_value, new_value}
+        removed = []    # {area, task, path}
+
+        all_areas = sorted(set(list(areas1.keys()) + list(areas2.keys())))
+
+        for area in all_areas:
+            tasks1 = areas1.get(area, {}).get('tasks', {})
+            tasks2 = areas2.get(area, {}).get('tasks', {})
+
+            if area not in areas1:
+                # 整个区域是新增
+                for task in sorted(tasks2.keys()):
+                    added.append({'area': area, 'task': task, 'path': f'areas.{area}.tasks.{task}'})
+                continue
+            if area not in areas2:
+                # 整个区域被删除
+                for task in sorted(tasks1.keys()):
+                    removed.append({'area': area, 'task': task, 'path': f'areas.{area}.tasks.{task}'})
+                continue
+
+            all_tasks = sorted(set(list(tasks1.keys()) + list(tasks2.keys())))
+            for task in all_tasks:
+                t1 = tasks1.get(task)
+                t2 = tasks2.get(task)
+                prefix = f'areas.{area}.tasks.{task}'
+
+                if t1 is None:
+                    added.append({'area': area, 'task': task, 'path': prefix})
+                elif t2 is None:
+                    removed.append({'area': area, 'task': task, 'path': prefix})
+                elif t1 != t2:
+                    # 任务级别修改：列出变化的字段
+                    all_fields = set(list(t1.keys()) + list(t2.keys()))
+                    for field in sorted(all_fields):
+                        v1_val = t1.get(field)
+                        v2_val = t2.get(field)
+                        if v1_val != v2_val:
+                            modified.append({
+                                'area': area, 'task': task,
+                                'path': f'{prefix}.{field}',
+                                'old_value': v1_val,
+                                'new_value': v2_val
+                            })
+
+        return {
+            'v1': v1,
+            'v2': v2,
+            'added': added,
+            'modified': modified,
+            'removed': removed
+        }
+
+    def _load_version(self, version: int) -> dict:
+        """加载指定版本的配置"""
+        current = self.load_config()
+        if current.get('_version') == version:
+            return current
+
+        # 从备份中查找
+        backup_dir = self._get_backup_dir()
+        if os.path.exists(backup_dir):
+            for filename in sorted(os.listdir(backup_dir), reverse=True):
+                if not filename.endswith('.json'):
+                    continue
+                try:
+                    with open(os.path.join(backup_dir, filename), 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    if data.get('_version') == version or data.get('__meta__', {}).get('version') == version:
+                        if '__meta__' in data:
+                            del data['__meta__']
+                        return data
+                except Exception:
+                    continue
+        return None
+
+    # ─── 增量升级 ────────────────────────────────────────────
+
+    def apply_upgrade(self, patch: dict, message: str = '') -> dict:
+        """
+        应用增量补丁
+        :param patch: {title, changes: [{path, value}], removals: [path]}
+        :param message: 提交说明
+        :return: {new_version, backup_name, applied: {added, modified, removed, errors}}
+        """
+        config = self.load_config()
+        result = {'added': 0, 'modified': 0, 'removed': 0, 'errors': []}
+
+        # 处理 changes
+        for item in patch.get('changes', []):
+            path = item.get('path', '')
+            value = item.get('value')
+            if not path:
+                result['errors'].append('missing path in change item')
+                continue
+            try:
+                self._set_nested(config, path, value, result)
+            except Exception as e:
+                result['errors'].append(f'{path}: {str(e)}')
+
+        # 处理 removals
+        for path in patch.get('removals', []):
+            try:
+                self._remove_nested(config, path, result)
+            except Exception as e:
+                result['errors'].append(f'{path}: {str(e)}')
+
+        # 保存
+        save_result = self.save_config(config, commit_message=message or patch.get('title', '增量升级'))
+        result.update(save_result)
+        return result
+
+    def _set_nested(self, config: dict, path: str, value, result: dict):
+        """按路径设置嵌套值，自动创建中间节点"""
+        parts = path.split('.')
+        if not parts:
+            return
+
+        # 按 parts 深入
+        current = config
+        for i, part in enumerate(parts[:-1]):
+            if isinstance(current, dict) and part not in current:
+                current[part] = {}
+            current = current[part]
+            if current is None:
+                raise ValueError(f'中间路径 {parts[:i+1]} 为 null')
+
+        last = parts[-1]
+        if isinstance(current, dict):
+            if last in current:
+                result['modified'] += 1
+            else:
+                result['added'] += 1
+            current[last] = value
+        else:
+            raise ValueError(f'目标路径不可写')
+
+    def _remove_nested(self, config: dict, path: str, result: dict):
+        """按路径删除嵌套值"""
+        parts = path.split('.')
+        if not parts:
+            return
+
+        current = config
+        for i, part in enumerate(parts[:-1]):
+            current = current.get(part, {})
+            if not isinstance(current, dict):
+                return  # 路径不存在，忽略
+
+        last = parts[-1]
+        if isinstance(current, dict) and last in current:
+            del current[last]
+            result['removed'] += 1

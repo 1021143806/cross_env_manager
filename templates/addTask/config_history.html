@@ -1,0 +1,719 @@
+{% extends "base.html" %}
+{% block title %}配置版本管理{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/png" href="/static/img/agv/favicon-dispatch.png?v=1">
+{% endblock %}
+{% block extra_css %}
+<style>
+    .upgrade-section {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 1.25rem;
+        overflow: hidden;
+    }
+    .upgrade-section .section-header {
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .upgrade-section .section-body {
+        padding: 1rem 1.25rem;
+    }
+
+    /* 版本信息 */
+    .version-info {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.5rem;
+    }
+    .version-info .info-item {
+        flex: 1 1 140px;
+    }
+    .version-info .info-item .label {
+        font-size: 0.75rem;
+        opacity: 0.6;
+        margin-bottom: 0.15rem;
+    }
+    .version-info .info-item .value {
+        font-size: 0.95rem;
+        font-weight: 600;
+        font-family: 'SF Mono', 'Cascadia Code', monospace;
+    }
+
+    /* 上传区 */
+    .upload-zone {
+        border: 2px dashed var(--border-color);
+        border-radius: 12px;
+        padding: 2rem 1.5rem;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color 0.2s, background 0.2s;
+        position: relative;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+        border-color: var(--accent);
+        background: var(--accent-light);
+    }
+    .upload-zone .icon {
+        font-size: 2.5rem;
+        color: var(--accent);
+        margin-bottom: 0.5rem;
+    }
+    .upload-zone .hint {
+        font-size: 0.85rem;
+        opacity: 0.7;
+    }
+    .upload-zone input[type="file"] {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+    }
+
+    /* 文件信息 */
+    .file-info {
+        display: none;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.6rem 1rem;
+        background: var(--accent-light);
+        border-radius: 8px;
+        margin-top: 0.75rem;
+    }
+    .file-info.show { display: flex; }
+    .file-info .name { flex: 1; font-weight: 500; font-size: 0.85rem; }
+    .file-info .size { font-size: 0.8rem; opacity: 0.6; font-family: 'SF Mono', monospace; }
+
+    /* 记录表格 */
+    .record-table {
+        width: 100%;
+        font-size: 0.82rem;
+    }
+    .record-table th {
+        opacity: 0.6;
+        font-weight: 600;
+        padding: 0.5rem 0.6rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .record-table td {
+        padding: 0.5rem 0.6rem;
+        border-bottom: 1px solid var(--border-light);
+        vertical-align: middle;
+    }
+    .record-table tr:last-child td { border-bottom: none; }
+    .record-table tr.selected { background: var(--accent-light); }
+    .record-table .version-tag {
+        font-family: 'SF Mono', monospace;
+        font-size: 0.8rem;
+    }
+
+    /* 按钮 */
+    #btnUpgrade, #btnPreview {
+        padding: 0.6rem;
+        border-radius: 8px;
+        margin-top: 1rem;
+        font-weight: 600;
+    }
+    #btnUpgrade { width: 100%; }
+    #btnPreview { margin-left: 0.5rem; }
+
+    /* 结果提示 */
+    .result-box {
+        display: none;
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        margin-top: 0.75rem;
+        font-size: 0.85rem;
+    }
+    .result-box.show { display: block; }
+    .result-box.success {
+        background: rgba(52, 211, 153, 0.12);
+        border: 1px solid rgba(52, 211, 153, 0.3);
+        color: #34d399;
+    }
+    .result-box.error {
+        background: rgba(239, 68, 68, 0.12);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        color: #ef4444;
+    }
+
+    /* diff 预览 */
+    .diff-preview {
+        display: none;
+        margin-top: 1rem;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .diff-preview.show { display: block; }
+    .diff-preview .diff-header {
+        padding: 0.5rem 1rem;
+        background: var(--accent-light);
+        font-weight: 600;
+        font-size: 0.85rem;
+    }
+    .diff-preview .diff-body {
+        padding: 0.75rem 1rem;
+        max-height: 300px;
+        overflow-y: auto;
+        font-size: 0.8rem;
+        font-family: 'SF Mono', monospace;
+    }
+    .diff-added { color: #34d399; }
+    .diff-removed { color: #ef4444; }
+    .diff-modified { color: #f59e0b; }
+
+    /* 模态框 diff 内容 */
+    #diffContent pre {
+        background: var(--bg-secondary);
+        padding: 1rem;
+        border-radius: 8px;
+        max-height: 400px;
+        overflow-y: auto;
+        font-size: 0.78rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <h5 class="mb-3" style="font-weight:600;"><i class="bi bi-journal-code me-2"></i>配置版本管理</h5>
+
+    <!-- 当前版本 -->
+    <div class="upgrade-section">
+        <div class="section-header"><i class="bi bi-info-circle me-2"></i>当前配置版本</div>
+        <div class="section-body">
+            <div class="version-info">
+                <div class="info-item">
+                    <div class="label">版本号</div>
+                    <div class="value" id="currentVersion">加载中...</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">文件大小</div>
+                    <div class="value" id="currentSize">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">区域数</div>
+                    <div class="value" id="currentAreas">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">任务总数</div>
+                    <div class="value" id="currentTasks">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">历史备份</div>
+                    <div class="value" id="backupCount">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 增量更新 -->
+    <div class="upgrade-section">
+        <div class="section-header"><i class="bi bi-patch-plus me-2"></i>增量更新</div>
+        <div class="section-body">
+            <div class="upload-zone" id="uploadZone">
+                <div class="icon"><i class="bi bi-filetype-json"></i></div>
+                <div><strong>点击选择或拖拽 .json 增量补丁文件</strong></div>
+                <div class="hint">支持 .json / .patch 格式</div>
+                <input type="file" id="fileInput" accept=".json,.patch">
+            </div>
+
+            <div class="file-info" id="fileInfo">
+                <i class="bi bi-filetype-json" style="font-size:1.2rem;"></i>
+                <span class="name" id="fileName"></span>
+                <span class="size" id="fileSize"></span>
+                <button class="btn btn-sm btn-outline-secondary" id="btnClearFile" title="移除文件">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+
+            <div class="diff-preview" id="diffPreview">
+                <div class="diff-header"><i class="bi bi-eye me-2"></i>变更预览</div>
+                <div class="diff-body" id="diffBody"></div>
+            </div>
+
+            <div class="result-box" id="resultBox"></div>
+
+            <div class="d-flex">
+                <button class="btn btn-primary" id="btnUpgrade" disabled>
+                    <i class="bi bi-rocket-takeoff me-1"></i>应用升级
+                </button>
+                <button class="btn btn-outline-info" id="btnPreview" disabled>
+                    <i class="bi bi-eye me-1"></i>预览变更
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- API 调用说明 -->
+    <div class="upgrade-section">
+        <div class="section-header">
+            <i class="bi bi-terminal me-2"></i>API 调用方式
+            <button class="btn btn-sm btn-outline-secondary" onclick="toggleApiHelp()">
+                <i class="bi bi-chevron-down"></i>
+            </button>
+        </div>
+        <div class="section-body" id="apiHelpBody" style="display:none;">
+            <pre style="background:var(--bg-secondary);padding:0.75rem;border-radius:8px;font-size:0.8rem;overflow-x:auto;">
+<span style="color:var(--accent);"># 增量升级（上传 JSON 补丁）</span>
+curl -X POST http://{{ request.host }}/api/config/upgrade \
+  -H "Content-Type: application/json" \
+  -H "Cookie: session=你的SESSION_COOKIE" \
+  -d '{
+    "title": "新增A1-1区域辊筒任务",
+    "changes": [
+      {"path": "areas.A1-1 PCBA.tasks.CKD辊筒运输", "value": {
+        "code": "unLoading1",
+        "base_url": "http://10.68.2.32:7000/ics/taskOrder/addTask",
+        "roller_task": true,
+        "roller_point": "66000553",
+        "requires_shelf": false,
+        "requires_task_path": false,
+        "task_path_options": []
+      }}
+    ]
+  }'
+
+<span style="color:var(--accent);"># 对比版本差异</span>
+curl "http://{{ request.host }}/api/config/diff?v1=120&v2=125" \
+  -H "Cookie: session=你的SESSION_COOKIE"
+
+<span style="color:var(--accent);"># 导出指定版本</span>
+curl "http://{{ request.host }}/api/config/export?v=125" \
+  -H "Cookie: session=你的SESSION_COOKIE"
+
+<span style="color:var(--accent);"># 查看备份列表</span>
+curl "http://{{ request.host }}/api/config/backups" \
+  -H "Cookie: session=你的SESSION_COOKIE"
+
+<span style="color:var(--accent);"># 回退到指定备份</span>
+curl -X POST http://{{ request.host }}/api/config/backup/config_v120_xxx.json/restore \
+  -H "Cookie: session=你的SESSION_COOKIE"
+            </pre>
+        </div>
+    </div>
+
+    <!-- 版本历史 -->
+    <div class="upgrade-section">
+        <div class="section-header">
+            <i class="bi bi-clock-history me-2"></i>版本历史
+            <div>
+                <button class="btn btn-sm btn-outline-primary" id="btnCompare" disabled onclick="openDiffModal()">
+                    <i class="bi bi-arrow-left-right me-1"></i>对比选中
+                </button>
+                <button class="btn btn-sm btn-outline-info ms-1" onclick="loadBackups()">
+                    <i class="bi bi-arrow-clockwise me-1"></i>刷新
+                </button>
+            </div>
+        </div>
+        <div class="section-body" style="padding:0;">
+            <table class="record-table" id="backupTable">
+                <thead>
+                    <tr>
+                        <th style="width:30px;">选</th>
+                        <th>版本</th>
+                        <th>时间</th>
+                        <th>提交备注</th>
+                        <th>大小</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="backupTbody">
+                    <tr><td colspan="6" class="text-center py-3 text-muted">
+                        <div class="spinner-border spinner-border-sm me-2"></div>加载中...
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 版本对比模态 -->
+<div class="modal fade" id="diffModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-arrow-left-right me-2"></i>版本对比</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="diffContent">
+                <div class="text-center py-3 text-muted">
+                    <div class="spinner-border spinner-border-sm me-2"></div>加载中...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ========== 状态 ==========
+let backups = [];
+let selectedBackups = new Set();
+let selectedFile = null;
+let patchData = null;
+const diffModal = new bootstrap.Modal(document.getElementById('diffModal'));
+
+// ========== 初始化 ==========
+document.addEventListener('DOMContentLoaded', () => {
+    loadCurrentVersion();
+    loadBackups();
+});
+
+async function loadCurrentVersion() {
+    try {
+        const res = await fetch('/api/config');
+        const json = await res.json();
+        if (!json.success) return;
+        const config = json.data;
+        const areas = config.areas || {};
+        let taskCount = 0;
+        for (const a of Object.values(areas)) {
+            taskCount += Object.keys(a.tasks || {}).length;
+        }
+        document.getElementById('currentVersion').textContent = 'v' + (config._version || 0);
+        document.getElementById('currentAreas').textContent = Object.keys(areas).length;
+        document.getElementById('currentTasks').textContent = taskCount;
+        document.getElementById('currentSize').textContent = formatSize(JSON.stringify(config).length);
+    } catch (e) {
+        document.getElementById('currentVersion').textContent = '加载失败';
+    }
+}
+
+async function loadBackups() {
+    const tbody = document.getElementById('backupTbody');
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>加载中...</td></tr>';
+    try {
+        const res = await fetch('/api/config/backups');
+        const json = await res.json();
+        if (!json.success) return;
+        backups = json.data || [];
+        document.getElementById('backupCount').textContent = backups.length;
+        renderBackupTable();
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">加载失败: ' + e.message + '</td></tr>';
+    }
+}
+
+function renderBackupTable() {
+    const tbody = document.getElementById('backupTbody');
+    if (backups.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted"><i class="bi bi-inbox d-block mb-2" style="font-size:2rem;"></i>暂无版本历史</td></tr>';
+        return;
+    }
+    let html = '';
+    backups.forEach((b, idx) => {
+        const ts = new Date(b.timestamp);
+        const timeStr = ts.getFullYear() + '-' +
+            String(ts.getMonth()+1).padStart(2,'0') + '-' +
+            String(ts.getDate()).padStart(2,'0') + ' ' +
+            String(ts.getHours()).padStart(2,'0') + ':' +
+            String(ts.getMinutes()).padStart(2,'0') + ':' +
+            String(ts.getSeconds()).padStart(2,'0');
+        const checked = selectedBackups.has(b.name) ? 'checked' : '';
+        const rowClass = selectedBackups.has(b.name) ? 'selected' : '';
+        html += `<tr class="${rowClass}">
+            <td><input type="checkbox" class="form-check-input backup-check" data-name="${b.name}" ${checked}></td>
+            <td><span class="version-tag">v${b.version}</span></td>
+            <td style="white-space:nowrap;">${timeStr}</td>
+            <td style="font-size:0.78rem;max-width:200px;">${escapeHtml(b.message || '-')}</td>
+            <td style="font-family:'SF Mono',monospace;font-size:0.78rem;">${formatSize(b.size)}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary py-0 px-2" onclick="exportVersion(${b.version})" title="导出此版本">
+                    <i class="bi bi-download"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-warning py-0 px-2" onclick="rollback('${b.name}')" title="回退到此版本">
+                    <i class="bi bi-arrow-counterclockwise"></i>
+                </button>
+            </td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+
+    // 绑定 checkbox 事件
+    document.querySelectorAll('.backup-check').forEach(cb => {
+        cb.addEventListener('change', function() {
+            if (this.checked) {
+                if (selectedBackups.size >= 2) {
+                    // 取消最早选中的
+                    const first = selectedBackups.values().next().value;
+                    selectedBackups.delete(first);
+                }
+                selectedBackups.add(this.dataset.name);
+            } else {
+                selectedBackups.delete(this.dataset.name);
+            }
+            updateCompareButton();
+            document.querySelectorAll('tr').forEach(tr => {
+                const cb2 = tr.querySelector('.backup-check');
+                if (cb2) tr.classList.toggle('selected', cb2.checked);
+            });
+        });
+    });
+}
+
+function updateCompareButton() {
+    document.getElementById('btnCompare').disabled = selectedBackups.size !== 2;
+}
+
+// ========== 版本导出 ==========
+function exportVersion(version) {
+    window.open('/api/config/export?v=' + version, '_blank');
+}
+
+// ========== 回退 ==========
+async function rollback(backupName) {
+    if (!confirm(`确认回退到备份 "${backupName}"？\n当前版本将自动备份。`)) return;
+
+    const btn = event.target.closest('button');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    try {
+        const res = await fetch('/api/config/backup/' + encodeURIComponent(backupName) + '/restore', {
+            method: 'POST'
+        });
+        const json = await res.json();
+        if (json.success) {
+            alert('✅ 配置已回退成功');
+            selectedBackups.clear();
+            updateCompareButton();
+            loadCurrentVersion();
+            loadBackups();
+        } else {
+            alert('❌ ' + (json.error || '回退失败'));
+        }
+    } catch (e) {
+        alert('❌ 请求失败: ' + e.message);
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i>';
+}
+
+// ========== 版本对比 ==========
+async function openDiffModal() {
+    if (selectedBackups.size !== 2) return;
+
+    const [name1, name2] = selectedBackups.values();
+    const b1 = backups.find(b => b.name === name1);
+    const b2 = backups.find(b => b.name === name2);
+    if (!b1 || !b2) return;
+
+    const [older, newer] = b1.version < b2.version ? [b1, b2] : [b2, b1];
+
+    const content = document.getElementById('diffContent');
+    content.innerHTML = '<div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>对比中...</div>';
+    diffModal.show();
+
+    try {
+        const res = await fetch(`/api/config/diff?v1=${older.version}&v2=${newer.version}`);
+        const json = await res.json();
+        if (!json.success) {
+            content.innerHTML = '<div class="text-danger">❌ ' + (json.error || '对比失败') + '</div>';
+            return;
+        }
+        const diff = json.data;
+        let html = `<h6>v${older.version} → v${newer.version}</h6>`;
+
+        if (diff.added.length > 0) {
+            html += `<div class="mb-2"><strong class="diff-added">+ 新增 (${diff.added.length})</strong></div>`;
+            html += '<pre>';
+            diff.added.forEach(a => { html += `<span class="diff-added">+ ${a.path}</span>\n`; });
+            html += '</pre>';
+        }
+        if (diff.modified.length > 0) {
+            html += `<div class="mb-2"><strong class="diff-modified">~ 修改 (${diff.modified.length})</strong></div>`;
+            html += '<pre>';
+            diff.modified.forEach(m => {
+                html += `<span class="diff-modified">~ ${m.path}</span>\n`;
+                html += `  <span class="text-danger">- ${JSON.stringify(m.old_value)}</span>\n`;
+                html += `  <span class="text-success">+ ${JSON.stringify(m.new_value)}</span>\n`;
+            });
+            html += '</pre>';
+        }
+        if (diff.removed.length > 0) {
+            html += `<div class="mb-2"><strong class="diff-removed">- 删除 (${diff.removed.length})</strong></div>`;
+            html += '<pre>';
+            diff.removed.forEach(r => { html += `<span class="diff-removed">- ${r.path}</span>\n`; });
+            html += '</pre>';
+        }
+        if (diff.added.length === 0 && diff.modified.length === 0 && diff.removed.length === 0) {
+            html += '<div class="text-muted">两个版本完全相同</div>';
+        }
+        content.innerHTML = html;
+    } catch (e) {
+        content.innerHTML = '<div class="text-danger">❌ ' + e.message + '</div>';
+    }
+}
+
+// ========== 文件上传 & 增量升级 ==========
+const fileInput = document.getElementById('fileInput');
+const uploadZone = document.getElementById('uploadZone');
+const fileInfo = document.getElementById('fileInfo');
+const fileName = document.getElementById('fileName');
+const fileSize = document.getElementById('fileSize');
+const btnUpgrade = document.getElementById('btnUpgrade');
+const btnPreview = document.getElementById('btnPreview');
+const btnClearFile = document.getElementById('btnClearFile');
+const resultBox = document.getElementById('resultBox');
+const diffPreview = document.getElementById('diffPreview');
+const diffBody = document.getElementById('diffBody');
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+    return (bytes/(1024*1024)).toFixed(1) + ' MB';
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function handleFile(file) {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.json') && !file.name.toLowerCase().endsWith('.patch')) {
+        alert('仅支持 .json 或 .patch 格式');
+        return;
+    }
+    selectedFile = file;
+    fileName.textContent = file.name;
+    fileSize.textContent = formatSize(file.size);
+    fileInfo.classList.add('show');
+    btnUpgrade.disabled = false;
+    btnPreview.disabled = false;
+    resultBox.classList.remove('show');
+    diffPreview.classList.remove('show');
+
+    // 尝试解析 JSON
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            patchData = JSON.parse(e.target.result);
+        } catch (err) {
+            patchData = null;
+        }
+    };
+    reader.readAsText(file);
+}
+
+fileInput.addEventListener('change', function(e) {
+    handleFile(e.target.files[0]);
+});
+
+btnClearFile.addEventListener('click', function() {
+    selectedFile = null;
+    patchData = null;
+    fileInput.value = '';
+    fileInfo.classList.remove('show');
+    btnUpgrade.disabled = true;
+    btnPreview.disabled = true;
+    resultBox.classList.remove('show');
+    diffPreview.classList.remove('show');
+});
+
+uploadZone.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    this.classList.add('dragover');
+});
+uploadZone.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    this.classList.remove('dragover');
+});
+uploadZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    this.classList.remove('dragover');
+    handleFile(e.dataTransfer.files[0]);
+});
+
+// 预览变更
+btnPreview.addEventListener('click', function() {
+    if (!patchData) { alert('请先选择 JSON 补丁文件'); return; }
+    const changes = patchData.changes || [];
+    const removals = patchData.removals || [];
+    let html = '';
+    if (patchData.title) {
+        html += `<div class="mb-2" style="font-weight:600;">${escapeHtml(patchData.title)}</div>`;
+    }
+    if (changes.length > 0) {
+        html += `<div class="mb-1"><span class="diff-added">+ 变更 (${changes.length})</span></div>`;
+        changes.forEach(c => {
+            html += `<div class="diff-modified" style="margin-left:1rem;">~ ${escapeHtml(c.path)}</div>`;
+        });
+    }
+    if (removals.length > 0) {
+        html += `<div class="mb-1"><span class="diff-removed">- 删除 (${removals.length})</span></div>`;
+        removals.forEach(r => {
+            html += `<div class="diff-removed" style="margin-left:1rem;">- ${escapeHtml(r)}</div>`;
+        });
+    }
+    if (changes.length === 0 && removals.length === 0) {
+        html += '<div class="text-muted">补丁文件为空</div>';
+    }
+    diffBody.innerHTML = html;
+    diffPreview.classList.add('show');
+});
+
+// 应用升级
+btnUpgrade.addEventListener('click', async function() {
+    if (!patchData) { alert('请先选择 JSON 补丁文件'); return; }
+    if (!confirm(`确认应用此增量补丁？\n\n${patchData.title || '无标题'}\n新增/修改: ${(patchData.changes||[]).length} 项\n删除: ${(patchData.removals||[]).length} 项`)) return;
+
+    btnUpgrade.disabled = true;
+    btnUpgrade.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>升级中...';
+    btnPreview.disabled = true;
+    resultBox.classList.remove('show');
+    diffPreview.classList.remove('show');
+
+    try {
+        const res = await fetch('/api/config/upgrade', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(patchData)
+        });
+        const json = await res.json();
+
+        resultBox.classList.add('show');
+        if (json.success) {
+            resultBox.className = 'result-box show success';
+            resultBox.innerHTML = `<i class="bi bi-check-circle me-1"></i> ${json.message || '升级成功'}`;
+            // 清空文件
+            btnClearFile.click();
+            // 刷新
+            loadCurrentVersion();
+            loadBackups();
+        } else {
+            resultBox.className = 'result-box show error';
+            resultBox.innerHTML = `<i class="bi bi-exclamation-circle me-1"></i> ${json.error || '升级失败'}`;
+        }
+    } catch (e) {
+        resultBox.className = 'result-box show error';
+        resultBox.innerHTML = `<i class="bi bi-exclamation-circle me-1"></i> 请求失败: ${e.message}`;
+    }
+
+    btnUpgrade.disabled = false;
+    btnUpgrade.innerHTML = '<i class="bi bi-rocket-takeoff me-1"></i>应用升级';
+    btnPreview.disabled = false;
+});
+
+// API 帮助折叠
+function toggleApiHelp() {
+    const body = document.getElementById('apiHelpBody');
+    const icon = event.currentTarget.querySelector('i');
+    if (body.style.display === 'none') {
+        body.style.display = 'block';
+        icon.className = 'bi bi-chevron-up';
+    } else {
+        body.style.display = 'none';
+        icon.className = 'bi bi-chevron-down';
+    }
+}
+</script>
+{% endblock %}
