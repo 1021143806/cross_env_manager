@@ -438,11 +438,17 @@ def main():
     parser.add_argument('--from', dest='from_ref', help='基线版本号或 commit hash（如 v2.4.2）')
     parser.add_argument('--to', dest='to_version', help='目标版本号（默认从 app.py 读取）')
     parser.add_argument('--rollback-to', dest='rollback_to', help='回退到指定版本（如 v2.4.5）')
-    parser.add_argument('--notes', default='', help='升级说明，用分号分隔多条')
+    parser.add_argument('--notes', default='', help='升级说明，用分号分隔多条（--upload 时必填）')
     parser.add_argument('--upload', action='store_true', help='打包后自动上传到服务器')
     parser.add_argument('--output', default=BASE_DIR, help='升级包输出目录（默认项目根目录）')
     
     args = parser.parse_args()
+    
+    # --upload 时强制要求 --notes
+    if args.upload and not args.notes.strip():
+        print("错误: --upload 时必须提供 --notes 升级说明")
+        print("示例: --notes \"fix: 修复xxx; feat: 新增xxx\"")
+        sys.exit(1)
     
     print("=" * 55)
     print("  CEM 增量升级包构建工具")
