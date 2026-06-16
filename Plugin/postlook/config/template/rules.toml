@@ -1,10 +1,241 @@
 # ============================================================
-# postlook 自定义规则 v0.3.0
+# postlook 自定义规则 v0.5.0
 # 热更新：POST /api/rules 提交此文件内容即可生效
 #
 # 同名规则（name）会覆盖内置规则，不同名的追加到末尾。
 # 内置规则不可见的规则不受影响。
 # ============================================================
+
+# ════════════════════════════════════════════════════════════
+# RTPS 算法日志着色规则 (play.log / robot.log / rtps.log)
+# ════════════════════════════════════════════════════════════
+
+# ── play.log: 实时定位数据流 ──
+
+[[rule]]
+name = "RTPS-设备异常状态(state=0)"
+type = "regex"
+match = "^13 \\d+ \\d+ \\w+ 0\\s*$"
+file = "play*.log"
+color = "#ef4444"
+background = "rgba(239,68,68,0.08)"
+annotation = "⚡ 设备异常"
+
+[[rule]]
+name = "RTPS-任务已取消(Canceled)"
+type = "regex"
+match = "Canceled"
+file = "play*.log"
+color = "#ef4444"
+background = "rgba(239,68,68,0.10)"
+annotation = "❌ 已取消"
+
+[[rule]]
+name = "RTPS-任务执行中(Running)"
+type = "keyword"
+match = "Running"
+file = "play*.log"
+color = "#22c55e"
+annotation = "▶ 运行中"
+
+[[rule]]
+name = "RTPS-任务已完成(Finished)"
+type = "keyword"
+match = "Finished"
+file = "play*.log"
+color = "#06b6d4"
+annotation = "✅ 已完成"
+
+[[rule]]
+name = "RTPS-定位数据(类型10)"
+type = "regex"
+match = "^10 \\d+ \\d+ \\w+"
+file = "play*.log"
+color = "#3b82f6"
+
+[[rule]]
+name = "RTPS-路径区域(类型14)"
+type = "regex"
+match = "^14 \\d+ \\d+ \\w+"
+file = "play*.log"
+color = "#6b7280"
+
+# ── robot.log: 设备状态变化 ──
+
+[[rule]]
+name = "RTPS-障碍物(obstacle)"
+type = "keyword"
+match = "obstacle"
+file = "robot*.log"
+color = "#ef4444"
+background = "rgba(239,68,68,0.10)"
+bold = true
+annotation = "🚧 障碍物"
+
+[[rule]]
+name = "RTPS-未规划(unplan)"
+type = "keyword"
+match = "unplan"
+file = "robot*.log"
+color = "#f59e0b"
+background = "rgba(245,158,11,0.08)"
+annotation = "⚠ 未规划"
+
+[[rule]]
+name = "RTPS-子状态异常(substate not ok)"
+type = "keyword"
+match = "substate not ok"
+file = "robot*.log"
+color = "#eab308"
+annotation = "⚠ 子状态异常"
+
+[[rule]]
+name = "RTPS-等待规划(wait to be planned)"
+type = "keyword"
+match = "wait to be planned"
+file = "robot*.log"
+color = "#3b82f6"
+annotation = "⏳ 等待规划"
+
+[[rule]]
+name = "RTPS-设备离线(offline)"
+type = "keyword"
+match = "offline"
+file = "robot*.log"
+color = "#6b7280"
+annotation = "⬇ 离线"
+
+[[rule]]
+name = "RTPS-任务下发(start STATE)"
+type = "regex"
+match = "start STATE \\d+"
+file = "robot*.log"
+color = "#22c55e"
+
+# ── rtps.log: 算法规划决策 ──
+
+[[rule]]
+name = "RTPS-路径黑障(robotBlackout)"
+type = "keyword"
+match = "robotBlackout"
+file = "rtps*.log"
+color = "#ef4444"
+background = "rgba(239,68,68,0.12)"
+bold = true
+annotation = "⚡ Blackout"
+
+[[rule]]
+name = "RTPS-规划错误(algo plan error)"
+type = "keyword"
+match = "algo plan error"
+file = "rtps*.log"
+color = "#ef4444"
+background = "rgba(239,68,68,0.10)"
+bold = true
+annotation = "🚫 规划错误"
+
+[[rule]]
+name = "RTPS-障碍物暂停(Robot Obstacled)"
+type = "keyword"
+match = "Robot Obstacled"
+file = "rtps*.log"
+color = "#f59e0b"
+annotation = "🚧 障碍暂停"
+
+[[rule]]
+name = "RTPS-任务暂停(pause task)"
+type = "keyword"
+match = "pause task"
+file = "rtps*.log"
+color = "#f59e0b"
+annotation = "⏸ 暂停"
+
+[[rule]]
+name = "RTPS-任务恢复(resume task)"
+type = "keyword"
+match = "resume task"
+file = "rtps*.log"
+color = "#22c55e"
+annotation = "▶ 恢复"
+
+[[rule]]
+name = "RTPS-重规划(replan)"
+type = "keyword"
+match = "replan"
+file = "rtps*.log"
+color = "#a855f7"
+annotation = "🔄 重规划"
+
+[[rule]]
+name = "RTPS-路径切片发送(send.*slice)"
+type = "regex"
+match = "send \\[algo\\] slice"
+file = "rtps*.log"
+color = "#3b82f6"
+
+[[rule]]
+name = "RTPS-DangerVeh(危险车辆)"
+type = "keyword"
+match = "DangerVeh"
+file = "rtps*.log"
+color = "#ef4444"
+annotation = "⚠ DangerVeh"
+
+# ── ICS 调度层 ──
+
+[[rule]]
+name = "ICS-未定义异常(robotBlackout)"
+type = "keyword"
+match = "robotBlackout_Unknown"
+file = "ICS*.log"
+color = "#ef4444"
+background = "rgba(239,68,68,0.10)"
+bold = true
+annotation = "⚡ 未定义异常"
+
+[[rule]]
+name = "ICS-路径异常告警(ErrorCode)"
+type = "regex"
+match = "ErrorCode[:\"]+\\d+"
+file = "ICS*.log"
+color = "#ef4444"
+
+[[rule]]
+name = "ICS-设备告警推送(DEVICEALARM)"
+type = "keyword"
+match = "DEVICEALARM_TOPIC"
+file = "ICS*.log"
+color = "#f59e0b"
+annotation = "🔔 告警"
+
+[[rule]]
+name = "ICS-更新任务状态(updateTaskStatus)"
+type = "keyword"
+match = "UpdateTaskStatus"
+file = "ICS*.log"
+color = "#3b82f6"
+
+# ── TPS 任务处理层 ──
+
+[[rule]]
+name = "TPS-容量不足(not enough capacity)"
+type = "keyword"
+match = "not enough capacity"
+file = "TPS*.log"
+color = "#f59e0b"
+annotation = "📦 容量不足"
+
+[[rule]]
+name = "TPS-任务下发(addTask)"
+type = "regex"
+match = "carry addTask\\{"
+file = "TPS*.log"
+color = "#3b82f6"
+annotation = "📤 下发"
+
+# ════════════════════════════════════════════════════════════
+# 示例：覆盖内置规则 / 自定义规则
+# ════════════════════════════════════════════════════════════
 
 # 示例：覆盖内置的"错误/严重"规则，改为自己的颜色
 # [[rule]]

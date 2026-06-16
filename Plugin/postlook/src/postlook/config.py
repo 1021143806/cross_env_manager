@@ -88,6 +88,12 @@ _BUILTIN_RULES: List[Dict[str, Any]] = [
     {"name":"错误/严重","type":"keyword","match":"ERROR|FATAL","color":"#ef4444","background":"rgba(239,68,68,0.10)","bold":True},
     {"name":"警告","type":"keyword","match":"WARN","color":"#f59e0b","background":"rgba(245,158,11,0.08)"},
     {"name":"异常","type":"keyword","match":"Exception","color":"#ef4444","background":"rgba(239,68,68,0.06)"},
+    # ── RTPS/ICS 算法层核心着色（全局）──
+    {"name":"RTPS-路径黑障(robotBlackout)","type":"keyword","match":"robotBlackout","color":"#ef4444","background":"rgba(239,68,68,0.12)","bold":True,"annotation":"⚡ Blackout"},
+    {"name":"RTPS-规划错误(algo plan error)","type":"keyword","match":"algo plan error","color":"#ef4444","background":"rgba(239,68,68,0.10)","bold":True,"annotation":"🚫 规划错误"},
+    {"name":"RTPS-障碍物(Robot Obstacled)","type":"keyword","match":"Robot Obstacled","color":"#f59e0b","annotation":"🚧 障碍"},
+    {"name":"RTPS-设备离线上线","type":"keyword","match":"online after offline","color":"#f59e0b","annotation":"🔌 恢复连线"},
+    {"name":"ICS-未定义异常(robotBlackout_Unknown)","type":"keyword","match":"robotBlackout_Unknown","color":"#ef4444","background":"rgba(239,68,68,0.10)","bold":True,"annotation":"⚡ 未定义异常(8504)"},
     # ── 内置快捷查询（侧栏按钮）──
     {"name":"Gateway 错误","type":"keyword","match":"ERROR|Exception","folder":"/main/app/gateway/logs","pattern":"GATEWAY.log","color":"#ef4444","desc":"网关所有异常日志"},
     {"name":"系统 OOM","type":"keyword","match":"oom_kill|Out of memory|Killed process","folder":"/var/log","pattern":"messages*","color":"#dc2626","bold":True,"desc":"查找 OOM Killer 记录"},
