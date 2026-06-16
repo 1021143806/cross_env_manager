@@ -159,6 +159,7 @@
     }
 
     function updateLiveLabel(sec, interval) {
+        if (!els.btnLiveLabel) return;
         var intervalSec = interval || _liveInterval;
         var ivStr = (intervalSec >= 1000) ? (intervalSec / 1000).toFixed(0) + 's' : '';
         if (sec > 0) {
@@ -446,6 +447,7 @@
     var _lastShellCmd = '';
 
     function showShellCmd(cmd) {
+        if (!els.shellCmdBar || !els.shellCmdText) return;
         if (!cmd) { els.shellCmdBar.style.display = 'none'; return; }
         _lastShellCmd = cmd;
         els.shellCmdText.textContent = '$ ' + cmd;
