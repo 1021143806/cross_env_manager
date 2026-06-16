@@ -357,4 +357,13 @@ venv/bin/python3 test/???.py
   - `scripts/build_upgrade.py` 构建工具：查询服务器版本 → `git diff` 找基线 → 仅打包变更文件 → 生成 `upgrade_vX_to_vY.zip`（62KB vs 3.1MB 全量）
   - 增量包 `version.json` 结构：`from_version`/`to_version`/`from_commit`/`to_commit`/`type: incremental`/`files_changed: {A,M,D}`
   - 全量包向后兼容（无 `from_version` 字段时跳过校验）
+- 2026-06-16: **全局日志保留天数延长**。`MAX_HOT_LOG=500`，`LOG_RETENTION_DAYS=30`。热日志 200→500 条，日归档取消 500 条上限，每次溢出时自动清理超过 30 天的归档文件。
+- 2026-06-16: **升级记录与备份分离**。`MAX_BACKUPS=10` 仅控制备份目录（回滚用），新增 `MAX_LOG_RECORDS=500` 独立控制升级日志记录。
+- 2026-06-16: **调车模块空车下发指定设备排查 (待复现)**。分析调车空车回方向设备指定逻辑及设备池管理机制。
+  - **设备指定前置条件**：仅 `direction=out` 且非手动下发时，`_select_device_for_empty_return()` 从 `currentCount.json` 中选择设备。选择策略：排除 pending (status=6/9/10)，按 (未下发过优先、低电量优先、idle 优先) 排序，逐个实时查询 ICS 确认 Idle。
+  - **设备进入 currentCount 的4条路径**：①任务完成上报(status=8来方向) ②全量API同步(_assign_devices_to_regions) ③分时段切换 ④跨区域清理
+  - **设备进入 device_history 的2条路径**：①`_touch_device_history`（状态上报时写入匹配区域）②`_sync_device_history` bootstrap模式（history为空时全量写入）
+  - **关键设计缺陷**：`_assign_devices_to_regions` L3062 `continue`——不在任何 history 中的设备跳过不处理，既不新增也不移除，导致设备"滞留"在 currentCount 中。`_clean_stale_device_history` 仅清理 history(48h)，不清理 currentCount。
+  - **跨区域设备串扰**：当多个区域共享同一 `(api_path, areaId)` 组时（如 A4-3 行业一部/二部 共享 `10.68.2.40:7000|3`），`_assign_devices_to_regions` 按各区域 device_history.update_time 分配设备到 currentCount，导致设备在不同区域间漂移。`_select_device_for_empty_return` 不区分设备原始模板归属。
+  - **7J03DB1PA400005 被指定排查结论**：该设备**从未出现在 CEM 日志中**（全局日志 0 条记录）。CEM 下发时 `_select_device_for_empty_return` 返回 None（currentCount 无可用设备），请求不携带 deviceCode，ICS 自行分配了该设备。真正待查问题是 A4-3 行业二部设备池为空的原因。
 - 2026-06-12: **辊筒任务模块 (v1.7.0)** 完成。`dispatch_config.json` 新增 `_features.enable_roller_task` 全局开关 + 任务级 `roller_task/roller_point/roller_point_label` 字段。前端 `addtask.js` 增加辊筒分组 `⏏️ 辊筒任务`、已下发缓存管理（localStorage + 15秒轮询 + 状态8自动释放 + capacity 满容阻止）、orderId 前缀 `RLLR_`。后端 `app.py` 新增 `_query_roller_task()` 函数，`/addtask/query` 按前缀 `RLLR_` → `:7000`（非跨环境）、`CEM_` → `:8315`（跨环境失败回退到辊筒 API）。`services/config_service.py` 的 `save_config()` 自动补全 `_features` 字段确保不缺失。`/config-editor` 跳转到 `/addtask/config-view`。区域列表双击重命名。配置编辑器 `ensureConfigCompatibility` 自动补全 `_features`。
