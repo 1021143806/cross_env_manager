@@ -1157,6 +1157,11 @@ function renderAreas(areas) {
                               ▶ 恢复调度
                           </button>
                           ` : ''}
+                          ${!area.deadlock_cancel_frequent && area.deadlock_cooldown ? `
+                          <button class="btn btn-sm" style="background:transparent;color:#ffc107;border:1px solid #ffc107;border-radius:6px;padding:0.2rem 0.6rem;font-size:0.8rem;font-weight:600;white-space:nowrap;cursor:pointer;" onclick="resumeScheduling('${area.region_key}')" title="手动解除冷却">
+                              ▶ 解除冷却
+                          </button>
+                          ` : ''}
                       </div>
                       ` : ''}
                      <div class="device-grid" id="devices-${area.region_key}">
