@@ -948,6 +948,15 @@ def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
                 task_type = _normalize_task_type(t)
                 cleaned_task_types.append(task_type)
                 print(f"[Dispatch] _clean_by_order_id: 按order_id清理 {rk}/{t.get('code', t.get('name', ''))} 删除了{removed}条")
+            elif old_count > 0:
+                # 诊断：列出模板中现有 order_id（帮助排查为何未匹配）
+                existing_orders = list(set(
+                    task.get('order_id', '')[:40] for task in tasks 
+                    if task.get('status') in (6, 9, 10) and task.get('order_id')
+                ))[:5]
+                if existing_orders:
+                    print(f"[Dispatch] _clean_by_order_id: 未匹配 {rk}/{t.get('code', t.get('name', ''))} "
+                          f"现有{old_count}条, status=(6,9,10)的orders={existing_orders}")
                 
                 # 根据模板类型操作 currentCount
                 _dc = device_code
@@ -987,7 +996,10 @@ def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
                     removed2 = len(tasks) - len(new_tasks2)
                     cleaned += removed2
                     print(f"[Dispatch] _clean_by_order_id: 按deviceCode清理 {rk}/{t.get('code', t.get('name', ''))} 删除了{removed2}条")
-    print(f"[Dispatch] _clean_by_order_id_across_all_regions: 共清理{cleaned}条")
+    if cleaned == 0 and order_id:
+        print(f"[Dispatch] _clean_by_order_id_across_all_regions: 无匹配! order_id={order_id}, device={device_code}({device_num}), 已遍历所有区域")
+    else:
+        print(f"[Dispatch] _clean_by_order_id_across_all_regions: 共清理{cleaned}条")
     return cleaned, cleaned_task_types
 
 
