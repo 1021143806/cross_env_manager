@@ -204,7 +204,7 @@
             pattern: els.pattern.value || '*.log',
             keyword: useKeyword,
             line_start: 1,
-            line_end: parseInt(els.lineCount.value) || 100,
+            line_end: parseInt(els.lineCount.value) || 50,
             tail: els.tail.value === 'true',
             recent_files: parseInt(els.recentFiles.value) || 2
         };
@@ -265,7 +265,7 @@
             pattern: els.pattern.value || '*.log',
             keyword: _liveKeyword,
             line_start: 1,
-            line_end: parseInt(els.lineCount.value) || 100,
+            line_end: parseInt(els.lineCount.value) || 50,
             tail: els.tail.value === 'true',
             recent_files: parseInt(els.recentFiles.value) || 2
         };
@@ -320,8 +320,13 @@
             body.querySelector('.log-table').appendChild(row);
         });
         if (hasNew) {
-            var lastRow = document.querySelector('.log-row:last-child');
-            if (lastRow && lastRow.scrollIntoView) lastRow.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            // 仅在用户已在底部时自动滚动（模拟 tail -f 行为）
+            var scrollPos = window.scrollY + window.innerHeight;
+            var pageHeight = document.documentElement.scrollHeight;
+            if (pageHeight - scrollPos < 200) {
+                var lastRow = document.querySelector('.log-row:last-child');
+                if (lastRow && lastRow.scrollIntoView) lastRow.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            }
         }
         return hasNew;
     }
@@ -431,7 +436,7 @@
         els.folder.value = '';
         els.pattern.value = '*.log';
         els.keyword.value = '';
-        els.lineCount.value = '100';
+        els.lineCount.value = '50';
         els.tail.value = 'true';
         els.recentFiles.value = '2';
         chipClearAll();
