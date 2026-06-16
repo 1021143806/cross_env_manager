@@ -461,7 +461,48 @@ def _get_postlook_stats():
 @login_required
 def api_process_monitor():
     """进程监控数据"""
+    cem = _get_cem_stats()
+    pl = _get_postlook_stats()
+    # 采样存入历史
+    _record_process_sample(cem, pl)
     return jsonify({
-        'cem': _get_cem_stats(),
-        'postlook': _get_postlook_stats(),
+        'cem': cem,
+        'postlook': pl,
     })
+
+
+# ── 进程内存历史采样（环形缓冲区）──
+
+_MAX_HISTORY = 360  # 保留 360 个点（10s 间隔 = 1 小时）
+_history_lock = _th.Lock()
+_history = {
+    'timestamps': [],
+    'cem_rss': [],
+    'pl_rss': [],
+}
+
+
+def _record_process_sample(cem, pl):
+    """记录一次进程内存快照"""
+    with _history_lock:
+        ts = datetime.now().strftime('%H:%M:%S')
+        _history['timestamps'].append(ts)
+        _history['cem_rss'].append(round(cem.get('memory_rss_mb', 0), 1))
+        _history['pl_rss'].append(round(pl.get('memory_rss_mb', 0), 1))
+        # 环形裁剪
+        if len(_history['timestamps']) > _MAX_HISTORY:
+            _history['timestamps'] = _history['timestamps'][-_MAX_HISTORY:]
+            _history['cem_rss'] = _history['cem_rss'][-_MAX_HISTORY:]
+            _history['pl_rss'] = _history['pl_rss'][-_MAX_HISTORY:]
+
+
+@monitor_bp.route('/api/system/process-monitor/history')
+@login_required
+def api_process_history():
+    """进程内存历史数据（用于折线图）"""
+    with _history_lock:
+        return jsonify({
+            'timestamps': list(_history['timestamps']),
+            'cem_rss_mb': list(_history['cem_rss']),
+            'postlook_rss_mb': list(_history['pl_rss']),
+        })

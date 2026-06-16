@@ -326,6 +326,11 @@
         </div>
     </div>
 
+    <!-- 内存趋势折线图 -->
+    <div style="padding:0.75rem 1rem;background:var(--monitor-card);border-bottom:1px solid var(--monitor-border);">
+        <canvas id="memChart" height="160"></canvas>
+    </div>
+
     <!-- 表头 -->
     <div class="monitor-thead">
         <span>时间</span>
@@ -353,7 +358,9 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="/static/vendor/chart.js/chart.min.js"></script>
 <script>
+let memChart = null;
 let refreshTimer = null;
 const REFRESH_INTERVAL = 10000;
 
@@ -384,15 +391,17 @@ function refreshData() {
     const window = document.getElementById('windowSelect').value;
     document.getElementById('statusText').textContent = '刷新中...';
     
-    // 并行请求：监控数据 + 操作日志 + 进程健康
+    // 并行请求：监控数据 + 操作日志 + 进程健康 + 历史
     Promise.all([
         fetch('/api/system/monitor?window=' + window).then(r => r.json()),
         fetch('/api/dispatch/global_log?_=' + Date.now()).then(r => r.json()),
-        fetch('/api/system/process-monitor').then(r => r.json()).catch(() => null)
-    ]).then(([monitor, logData, procData]) => {
+        fetch('/api/system/process-monitor').then(r => r.json()).catch(() => null),
+        fetch('/api/system/process-monitor/history').then(r => r.json()).catch(() => null)
+    ]).then(([monitor, logData, procData, histData]) => {
         renderTopbar(monitor.summary, monitor.memory_stats);
         renderLogStream(logData.logs || []);
         if (procData) renderProcHealth(procData);
+        if (histData) renderMemChart(histData);
         document.getElementById('statusText').textContent = 
             '更新于 ' + new Date().toLocaleTimeString();
     }).catch(err => {
@@ -429,6 +438,76 @@ function renderTopbar(s, mem) {
             document.getElementById('tplCount').textContent = d.db_stats.total_templates || 0;
         }
     }).catch(() => {});
+}
+
+function renderMemChart(data) {
+    if (!data || !data.timestamps || data.timestamps.length === 0) return;
+    var ctx = document.getElementById('memChart');
+    if (!ctx) return;
+    ctx = ctx.getContext('2d');
+    
+    var labels = data.timestamps;
+    var showLabels = labels.length <= 20 ? labels : labels.filter(function(_, i) {
+        return i % Math.ceil(labels.length / 15) === 0 || i === labels.length - 1;
+    });
+    // 简化时间标签（只保留时分秒）
+    labels = labels.map(function(t) { return t.length > 5 ? t.slice(0, 5) : t; });
+    showLabels = showLabels.map(function(t) { return t.length > 5 ? t.slice(0, 5) : t; });
+    
+    if (memChart) {
+        memChart.data.labels = labels;
+        memChart.data.datasets[0].data = data.cem_rss_mb || [];
+        memChart.data.datasets[1].data = data.postlook_rss_mb || [];
+        memChart.update('none');
+    } else {
+        memChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'CEM RSS (MB)',
+                    data: data.cem_rss_mb || [],
+                    borderColor: '#58a6ff',
+                    backgroundColor: 'rgba(88,166,255,0.08)',
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    tension: 0.3,
+                    fill: true
+                }, {
+                    label: 'Postlook RSS (MB)',
+                    data: data.postlook_rss_mb || [],
+                    borderColor: '#3fb950',
+                    backgroundColor: 'rgba(63,185,80,0.06)',
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    tension: 0.3,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#8b949e', font: { size: 11 }, usePointStyle: true, padding: 12 }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#484f58', font: { size: 10 }, maxTicksLimit: 15, autoSkip: true },
+                        grid: { color: 'rgba(48,54,61,0.4)' }
+                    },
+                    y: {
+                        ticks: { color: '#484f58', font: { size: 10 }, callback: function(v) { return v + ' MB'; } },
+                        grid: { color: 'rgba(48,54,61,0.4)' },
+                        beginAtZero: true
+                    }
+                },
+                interaction: { intersect: false, mode: 'index' }
+            }
+        });
+    }
 }
 
 function renderProcHealth(data) {
