@@ -20,7 +20,7 @@
     var els = {};
     function cacheEls() {
         ['folder','pattern','keyword','lineCount','tail','recentFiles',
-         'chipFilters','btnQuery','btnLive','btnLiveLabel','queryTime','logResults','historyDropdown','rulesContainer',
+         'chipFilters','btnQuery','btnLive','btnLiveLabel','queryTime','logResults','historyDropdown','dateQueriesContainer',
           'shellCmdBar','shellCmdText'].forEach(function(id) {
             els[id] = document.getElementById(id);
         });
@@ -473,6 +473,138 @@
         document.execCommand('copy'); document.body.removeChild(ta);
     };
 
+    // ── 快捷查询管理 (date/) ──
+    var _dateQueries = [];
+    var _editingFilename = null;  // 编辑模式下暂存原文件名
+
+    function loadDateQueries() {
+        fetch('/api/date-queries').then(function(r) { return r.json(); }).then(function(d) {
+            _dateQueries = d.queries || [];
+            renderDateQueries();
+        }).catch(function() {
+            els.dateQueriesContainer.innerHTML = '<div style="font-size:0.75rem;color:var(--text-tertiary);padding:4px">加载失败</div>';
+        });
+    }
+
+    function renderDateQueries() {
+        var container = els.dateQueriesContainer;
+        if (!container) return;
+        if (_dateQueries.length === 0) {
+            container.innerHTML = '<div style="font-size:0.75rem;color:var(--text-tertiary);padding:4px">暂无保存</div>';
+            return;
+        }
+        var html = '';
+        _dateQueries.forEach(function(q, i) {
+            var tooltip = (q.desc ? q.desc + ' | ' : '') + (q.folder || '?') + (q.keyword ? ' · ' + q.keyword : '');
+            html += '<div class="dq-item" data-idx="' + i + '" title="' + escapeHtml(tooltip) + '">' +
+                '<span class="dq-name">' + escapeHtml(q.name || '?') + '</span>' +
+                '<button class="dq-delete" data-idx="' + i + '" title="删除">✕</button>' +
+                '</div>';
+        });
+        container.innerHTML = html;
+    }
+
+    // 侧栏绑定事件
+    if (els.dateQueriesContainer) {
+        els.dateQueriesContainer.addEventListener('click', function(e) {
+            var delBtn = e.target.closest('.dq-delete');
+            if (delBtn) {
+                e.stopPropagation();
+                var idx = parseInt(delBtn.getAttribute('data-idx'));
+                deleteDateQuery(idx);
+                return;
+            }
+            var item = e.target.closest('.dq-item');
+            if (!item) return;
+            var idx = parseInt(item.getAttribute('data-idx'));
+            var q = _dateQueries[idx];
+            if (!q) return;
+            applyDateQuery(q);
+        });
+    }
+
+    function applyDateQuery(q) {
+        if (q.folder) els.folder.value = q.folder;
+        if (q.pattern) els.pattern.value = q.pattern;
+        if (q.keyword) els.keyword.value = q.keyword;
+        if (q.line_count) els.lineCount.value = String(q.line_count);
+        if (q.tail !== undefined && q.tail !== null) els.tail.value = q.tail ? 'true' : 'false';
+        if (q.recent_files) els.recentFiles.value = String(q.recent_files);
+        stopLive();
+        chipClearAll();
+        if (q.folder) chipAdd(q.name || q.folder, 'folder', q.folder);
+        doQuery();
+    }
+
+    window.openSaveDialog = function() {
+        var folder = els.folder.value.trim();
+        if (!folder) return;
+        _editingFilename = null;
+        document.getElementById('saveName').value = '';
+        document.getElementById('saveDesc').value = '';
+        document.getElementById('saveOverlay').style.display = 'flex';
+    };
+
+    window.closeSaveDialog = function() {
+        document.getElementById('saveOverlay').style.display = 'none';
+        _editingFilename = null;
+    };
+
+    window.doSaveQuery = function() {
+        var name = document.getElementById('saveName').value.trim();
+        if (!name) { alert('请输入查询名称'); return; }
+        var folder = els.folder.value.trim();
+        if (!folder) { alert('请先选择日志路径'); return; }
+
+        var btn = document.getElementById('btnSaveConfirm');
+        btn.disabled = true;
+        btn.textContent = '保存中...';
+
+        var payload = {
+            name: name,
+            folder: folder,
+            pattern: els.pattern.value || '*.log',
+            keyword: els.keyword.value.trim(),
+            line_count: parseInt(els.lineCount.value) || 50,
+            tail: els.tail.value === 'true',
+            recent_files: parseInt(els.recentFiles.value) || 2,
+            desc: document.getElementById('saveDesc').value.trim(),
+        };
+        if (_editingFilename) payload.filename = _editingFilename;
+
+        fetch('/api/date-queries', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        }).then(function(r) { return r.json(); }).then(function(d) {
+            _dateQueries = d.queries || [];
+            renderDateQueries();
+            closeSaveDialog();
+        }).catch(function(err) {
+            alert('保存失败: ' + err.message);
+        }).finally(function() {
+            btn.disabled = false;
+            btn.textContent = '保存';
+        });
+    };
+
+    function deleteDateQuery(idx) {
+        var q = _dateQueries[idx];
+        if (!q) return;
+        var filename = q.filename;
+        if (!filename) return;
+        if (!confirm('确定删除快捷查询「' + q.name + '」？')) return;
+
+        fetch('/api/date-queries/' + encodeURIComponent(filename), { method: 'DELETE' })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                _dateQueries = d.queries || [];
+                renderDateQueries();
+            }).catch(function(err) {
+                alert('删除失败: ' + err.message);
+            });
+    }
+
     // ── 初始化 ──
     document.addEventListener('DOMContentLoaded', function() {
         cacheEls();
@@ -483,35 +615,10 @@
             if (el && d.version) el.textContent = 'v' + d.version;
         }).catch(function() {});
 
-        // 规则加载
-        loadRules(function(rules) {
-            var container = els.rulesContainer;
-            if (!container) return;
-            var queryRules = rules.filter(function(r) { return r.folder; });
-            if (queryRules.length === 0) {
-                container.innerHTML = '<div style="font-size:0.75rem;color:var(--text-tertiary);padding:4px">无规则</div>';
-                return;
-            }
-            var html = '';
-            queryRules.forEach(function(rule, i) {
-                html += '<button class="sb-btn rule-btn" title="' + (rule.desc || '') + '" data-idx="' + i + '">' + (rule.name || '?') + '</button>';
-            });
-            container.innerHTML = html;
+        // 加载快捷查询（date/）
+        loadDateQueries();
 
-            // 绑定规则点击
-            container.addEventListener('click', function(e) {
-                var btn = e.target.closest('.rule-btn');
-                if (!btn) return;
-                var idx = parseInt(btn.getAttribute('data-idx'));
-                var rule = queryRules[idx];
-                if (!rule) return;
-                if (rule.folder) els.folder.value = rule.folder;
-                if (rule.pattern) els.pattern.value = rule.pattern;
-                if (rule.match) els.keyword.value = rule.match;
-                if (rule.folder) chipAdd(rule.name || rule.folder, 'folder', rule.folder);
-                autoQueryImmediate();
-            });
-        });
+        // 历史记录
 
         // 历史记录
         var _justQueried = false;

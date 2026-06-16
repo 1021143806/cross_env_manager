@@ -16,6 +16,7 @@ RULES_PATH = PROJECT_ROOT / "config" / "rules.toml"
 RULES_TEMPLATE_PATH = PROJECT_ROOT / "config" / "template" / "rules.toml"
 DEBUG_CONFIG_PATH = PROJECT_ROOT / "config" / "debug.toml"
 DEBUG_CONFIG_TEMPLATE_PATH = PROJECT_ROOT / "config" / "template" / "debug.toml"
+DATE_DIR = PROJECT_ROOT / "config" / "date"
 
 # 线程锁
 _lock = threading.Lock()
@@ -37,6 +38,7 @@ _cached_rules: List[Dict[str, Any]] = []
 _cached_topo_categories: List[Dict[str, Any]] = []
 _cached_topo_services: List[Dict[str, Any]] = []
 _cached_dirs_meta: List[Dict[str, Any]] = []
+_cached_date_queries: List[Dict[str, Any]] = []
 
 # ---- 调试配置缓存 (v0.4.0) ----
 _cached_debug_config: Dict[str, Any] = {
@@ -216,6 +218,8 @@ def reload_config():
 
     # 单独加载规则文件
     reload_rules()
+    # 重扫日期查询配置
+    reload_date_queries()
 
 
 # ---- 调试配置（v0.4.0）----
@@ -360,6 +364,142 @@ def save_rules_toml(content: str):
     with open(RULES_PATH, "w", encoding="utf-8") as f:
         f.write(content)
     reload_rules()
+
+
+# ---- 快捷查询配置 (date/) ----
+
+
+def _sanitize_filename(name: str) -> str:
+    """将名称转为安全文件名（仅保留中文/字母/数字/下划线/连字符）"""
+    import re
+    safe = re.sub(r'[^\w\u4e00-\u9fff\-]', '_', name).strip('_')
+    return safe if safe else 'unnamed'
+
+
+def _seed_date_queries():
+    """从内置规则中提取含 folder 的条目，写入 date/ 目录作为初始种子"""
+    DATE_DIR.mkdir(parents=True, exist_ok=True)
+    from datetime import datetime
+    for rule in _BUILTIN_RULES:
+        if not rule.get("folder"):
+            continue
+        name = rule.get("name", "未命名")
+        filename = _sanitize_filename(name) + ".toml"
+        filepath = DATE_DIR / filename
+        if filepath.exists():
+            continue  # 同名文件已存在，跳过
+        query = {
+            "name": name,
+            "folder": rule.get("folder", ""),
+            "pattern": rule.get("pattern", "*.log"),
+            "keyword": rule.get("match", ""),
+            "line_count": DEFAULT_LINES,
+            "tail": True,
+            "recent_files": DEFAULT_RECENT_FILES,
+            "desc": rule.get("desc", ""),
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        _write_date_file(filepath, query)
+
+
+def _write_date_file(filepath: Path, query: dict):
+    """写入单个 date/{name}.toml 文件"""
+    lines = ["[query]"]
+    # 保证顺序
+    keys = ["name", "folder", "pattern", "keyword", "line_count", "tail", "recent_files", "desc", "created_at"]
+    for k in keys:
+        v = query.get(k)
+        if v is None:
+            continue
+        if isinstance(v, str):
+            # TOML 转义：\ → \\ 和 " → \"
+            escaped = v.replace("\\", "\\\\").replace('"', '\\"')
+            lines.append(f'{k} = "{escaped}"')
+        elif isinstance(v, bool):
+            lines.append(f"{k} = {'true' if v else 'false'}")
+        else:
+            lines.append(f"{k} = {v}")
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def reload_date_queries():
+    """重新扫描 date/ 目录，若为空则种子化，更新 _cached_date_queries"""
+    global _cached_date_queries
+    DATE_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 检查是否有文件，没有则种子化
+    existing = list(DATE_DIR.glob("*.toml"))
+    if not existing:
+        _seed_date_queries()
+        existing = list(DATE_DIR.glob("*.toml"))
+
+    queries = []
+    for fp in sorted(existing, key=lambda p: p.stat().st_mtime, reverse=True):
+        cfg = _load_toml_file(fp)
+        q = cfg.get("query", {})
+        if not q.get("name"):
+            q["name"] = fp.stem
+        q["filename"] = fp.name  # 附加文件名，用于删除/更新
+        queries.append(q)
+
+    with _lock:
+        _cached_date_queries = queries
+
+
+def save_date_query(data: dict) -> dict:
+    """保存一条快捷查询（新增或覆盖），返回更新后的完整条目"""
+    name = data.get("name", "").strip()
+    if not name:
+        raise ValueError("查询名称不能为空")
+    filename = _sanitize_filename(name) + ".toml"
+    filepath = DATE_DIR / filename
+
+    from datetime import datetime
+    query = {
+        "name": name,
+        "folder": data.get("folder", ""),
+        "pattern": data.get("pattern", "*.log"),
+        "keyword": data.get("keyword", ""),
+        "line_count": int(data.get("line_count", DEFAULT_LINES)),
+        "tail": bool(data.get("tail", True)),
+        "recent_files": int(data.get("recent_files", DEFAULT_RECENT_FILES)),
+        "desc": data.get("desc", ""),
+        "created_at": data.get("created_at") or datetime.now().isoformat(timespec="seconds"),
+    }
+    _write_date_file(filepath, query)
+
+    # 即时更新缓存
+    query["filename"] = filename
+    with _lock:
+        # 覆盖或追加
+        for i, q in enumerate(_cached_date_queries):
+            if q.get("filename") == filename:
+                _cached_date_queries[i] = query
+                break
+        else:
+            _cached_date_queries.insert(0, query)
+
+    return query
+
+
+def delete_date_query(filename: str) -> bool:
+    """删除一条快捷查询，返回是否成功"""
+    filepath = DATE_DIR / filename
+    if not filepath.exists() or filepath.suffix != ".toml":
+        return False
+    filepath.unlink()
+
+    with _lock:
+        global _cached_date_queries
+        _cached_date_queries = [q for q in _cached_date_queries if q.get("filename") != filename]
+    return True
+
+
+def get_date_queries() -> List[Dict[str, Any]]:
+    """获取所有快捷查询"""
+    return list(_cached_date_queries)
 
 
 # 初始加载

@@ -1,0 +1,13 @@
+# 快捷查询模板 — 保存到 config/date/ 目录
+# 文件名即为查询标识，支持中文
+
+[query]
+name = "示例查询"
+folder = "/var/log"
+pattern = "*.log"
+keyword = "error"
+line_count = 50
+tail = true
+recent_files = 2
+desc = "示例描述"
+created_at = "2026-01-01T00:00:00"

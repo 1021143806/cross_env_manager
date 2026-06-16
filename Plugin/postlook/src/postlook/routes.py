@@ -440,6 +440,32 @@ async def api_help():
                 "method": "POST",
                 "path": "/api/system/reload",
                 "description": "重启 Postlook 进程（退出后由 supervisor 自动拉起）"
+            },
+            {
+                "method": "GET",
+                "path": "/api/date-queries",
+                "description": "获取所有保存的快捷查询（首次自动种子化）"
+            },
+            {
+                "method": "POST",
+                "path": "/api/date-queries",
+                "description": "新增或覆盖快捷查询",
+                "parameters": {
+                    "name": "string (必填) - 查询名称",
+                    "folder": "string (必填) - 日志目录",
+                    "pattern": "string (默认 *.log) - 文件通配符",
+                    "keyword": "string (可选) - 搜索关键字",
+                    "line_count": "int (默认 50) - 返回行数",
+                    "tail": "bool (默认 true) - 从尾部读取",
+                    "recent_files": "int (默认 2) - 最近文件数",
+                    "desc": "string (可选) - 描述",
+                    "filename": "string (可选) - 覆盖时传入旧文件名"
+                }
+            },
+            {
+                "method": "DELETE",
+                "path": "/api/date-queries/{filename}",
+                "description": "删除指定快捷查询"
             }
         ],
         "usage": {
@@ -504,6 +530,62 @@ async def reload_postlook():
     # 延迟 500ms 退出，确保 HTTP 响应先发出去
     Timer(0.5, _do_exit).start()
     return {"status": "ok", "message": "Postlook 正在重启，新代码即将生效"}
+
+
+# ════════════════════════════════════════════════════════════
+#  快捷查询配置 (date/) v0.6.0
+# ════════════════════════════════════════════════════════════
+
+class DateQuerySaveRequest(BaseModel):
+    """保存快捷查询请求体"""
+    name: str = Field(..., description="查询名称")
+    folder: str = Field(..., description="日志目录")
+    pattern: str = Field(default="*.log", description="文件通配符")
+    keyword: str = Field(default="", description="搜索关键字")
+    line_count: int = Field(default=50, ge=1, description="返回行数")
+    tail: bool = Field(default=True, description="从尾部读取")
+    recent_files: int = Field(default=2, ge=1, le=50, description="最近文件数")
+    desc: str = Field(default="", description="描述")
+    filename: Optional[str] = Field(default=None, description="覆盖时传入原文件名")
+
+
+@router.get("/api/date-queries")
+async def get_date_queries():
+    """获取所有保存的快捷查询"""
+    from .config import get_date_queries as _get_dq
+    queries = _get_dq()
+    return {"queries": queries, "count": len(queries)}
+
+
+@router.post("/api/date-queries")
+async def save_date_query(req: DateQuerySaveRequest):
+    """新增或覆盖保存快捷查询"""
+    from .config import save_date_query as _save_dq, get_date_queries as _get_dq
+    try:
+        data = req.model_dump()
+        # 覆盖时传入旧文件名，先删除再保存
+        old_filename = data.pop("filename", None)
+        if old_filename:
+            from .config import delete_date_query as _del_dq
+            _del_dq(old_filename)
+        _save_dq(data)
+        return {"status": "ok", "message": "快捷查询已保存", "queries": _get_dq(), "count": len(_get_dq())}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/api/date-queries/{filename:path}")
+async def delete_date_query(filename: str):
+    """删除指定快捷查询"""
+    from .config import delete_date_query as _del_dq, get_date_queries as _get_dq
+    if not filename.endswith(".toml"):
+        raise HTTPException(status_code=400, detail="文件名必须以 .toml 结尾")
+    ok = _del_dq(filename)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"未找到快捷查询: {filename}")
+    return {"status": "ok", "message": f"快捷查询 {filename} 已删除", "queries": _get_dq(), "count": len(_get_dq())}
 
 
 # ════════════════════════════════════════════════════════════
