@@ -159,3 +159,55 @@ def api_rollback(backup_name):
         })
     else:
         return jsonify({'success': False, 'error': result.get('error', '回滚失败')}), 500
+
+
+@upgrade_bp.route('/api/system/restart-postlook', methods=['POST'])
+@login_required
+def restart_postlook():
+    """强制重启 Postlook 服务（先从 supervisorctl，后备 pkill）"""
+    import subprocess as _sp
+    results = []
+
+    # 方法1: supervisorctl
+    for sctl in ['/usr/bin/supervisorctl', '/usr/local/bin/supervisorctl']:
+        try:
+            r = _sp.run([sctl, 'start', 'postlook'], timeout=10, capture_output=True, text=True)
+            results.append(f"supervisorctl start: {r.returncode}")
+            if r.returncode == 0:
+                return jsonify({'success': True, 'message': 'Postlook 启动成功'})
+        except Exception as e:
+            results.append(f"supervisorctl error: {e}")
+
+    # 方法2: 先清理缓存
+    import os as _os
+    cache_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             'Plugin', 'postlook')
+    if os.path.exists(cache_dir):
+        import shutil
+        for root, dirs, files in os.walk(cache_dir):
+            for d in dirs:
+                if d == '__pycache__':
+                    try:
+                        shutil.rmtree(os.path.join(root, d), ignore_errors=True)
+                    except Exception:
+                        pass
+
+    # 方法3: 尝试 pgrep + kill（如果 postlook 僵死）
+    try:
+        r = _sp.run(['pgrep', '-f', 'uvicorn.*postlook'], capture_output=True, text=True, timeout=5)
+        if r.returncode == 0 and r.stdout.strip():
+            for pid in r.stdout.strip().split('\n'):
+                try:
+                    import signal
+                    os.kill(int(pid), signal.SIGKILL)
+                except Exception:
+                    pass
+            results.append("killed old postlook process")
+    except Exception as e:
+        results.append(f"pgrep error: {e}")
+
+    return jsonify({
+        'success': False,
+        'message': 'Postlook 启动失败，请手动重启',
+        'details': results
+    }), 500
