@@ -233,21 +233,34 @@ def _save_cache_index(data):
 
 
 def _load_json(filepath):
-    """加载 JSON 文件，支持列表和字典"""
+    """加载 JSON 文件，支持列表和字典。损坏时告警并返回空列表"""
     if not os.path.exists(filepath):
         return []
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
         return data
-    except:
+    except json.JSONDecodeError as e:
+        print(f"[Dispatch] _load_json JSON解析失败: {os.path.basename(filepath)}, error={e}, size={os.path.getsize(filepath)}")
+        return []
+    except Exception as e:
+        print(f"[Dispatch] _load_json 读取失败: {os.path.basename(filepath)}, error={e}")
         return []
 
 
 def _save_json(filepath, data, max_retries=3):
-    """保存 JSON 文件（原子写入），失败时自动重试"""
+    """保存 JSON 文件（原子写入 + 备份保护），失败时自动重试"""
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     tmp = filepath + '.tmp'
+    bak = filepath + '.bak'
+    
+    # 先备份原有有效文件（数据最后防线）
+    if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+        try:
+            import shutil
+            shutil.copy2(filepath, bak)
+        except Exception as e:
+            print(f"[Dispatch] _save_json 备份失败: {os.path.basename(filepath)}, error={e}")
     
     for attempt in range(max_retries):
         try:
@@ -280,7 +293,7 @@ def _save_json(filepath, data, max_retries=3):
                     print(f"[Dispatch] _save_json safe 模式也失败: {os.path.basename(filepath)}, error={e2}")
             else:
                 print(f"[Dispatch] _save_json 写入失败(重试{max_retries}次): {os.path.basename(filepath)}, error={e}")
-            return  # safe 模式失败或重试用完，放弃
+            return  # safe 模式失败或重试用完，放弃，原文件保留
 
 
 def _get_region_file(region_key, filename):
