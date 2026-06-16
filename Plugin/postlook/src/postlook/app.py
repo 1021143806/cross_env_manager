@@ -13,7 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .routes import router
 
 # 版本号（唯一来源）
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 # CEM 来源（嵌入 iframe 时使用）
 _CEM_ORIGIN = "http://172.31.43.181:5001"
