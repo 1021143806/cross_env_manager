@@ -320,12 +320,17 @@
             body.querySelector('.log-table').appendChild(row);
         });
         if (hasNew) {
-            // 仅在用户已在底部时自动滚动（模拟 tail -f 行为）
-            var scrollPos = window.scrollY + window.innerHeight;
-            var pageHeight = document.documentElement.scrollHeight;
-            if (pageHeight - scrollPos < 200) {
-                var lastRow = document.querySelector('.log-row:last-child');
-                if (lastRow && lastRow.scrollIntoView) lastRow.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            // 仅在用户已在底部时自动滚动（仅滚卡片内部，不影响页面）
+            var container = document.getElementById('logScrollContainer');
+            if (container) {
+                var threshold = 200;
+                var atBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < threshold;
+                if (atBottom) {
+                    // 使用 requestAnimationFrame 确保 DOM 渲染完成后滚动
+                    requestAnimationFrame(function() {
+                        container.scrollTop = container.scrollHeight;
+                    });
+                }
             }
         }
         return hasNew;
