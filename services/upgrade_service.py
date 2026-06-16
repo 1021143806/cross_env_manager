@@ -328,6 +328,9 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
         _clear_pycache()
         _kill_postlook()
 
+        # 7.0.1 验证关键文件写入成功
+        verify_errors = _verify_postlook_files()
+
         # 7.1 增量包：清理被删除的文件
         deleted_paths = files_changed.get('D', []) if isinstance(files_changed, dict) else []
         delete_count = 0
@@ -402,6 +405,7 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
         'backup': backup_name,
         'release_title': release_title,
         'release_notes': release_notes,
+        'verify_warnings': verify_errors,
     }
     if from_version:
         result['upgrade_type'] = 'incremental'
@@ -414,7 +418,6 @@ def _kill_postlook():
     """强制杀死 Postlook 进程（依赖 supervisor auto-restart 重启新代码）"""
     try:
         import signal as _signal
-        # 找到 uvicorn postlook 进程的 PID
         result = subprocess.run(
             ['pgrep', '-f', 'uvicorn.*postlook'],
             capture_output=True, text=True, timeout=5
@@ -427,6 +430,31 @@ def _kill_postlook():
                     pass
     except Exception:
         pass
+
+
+def _verify_postlook_files():
+    """校验 Postlook 关键 Python 文件是否包含预期代码特征"""
+    warnings = []
+    checks = {
+        'scanner.py': ('shell_cmd', 'parse_grep_pipeline'),
+        'routes.py': ('shell_cmd', 'postlook_version'),
+        'config.py': ('_BUILTIN_SERVICES', 'get_topology_config'),
+    }
+    postlook_dir = os.path.join(BASE_DIR, 'Plugin', 'postlook', 'src', 'postlook')
+    for filename, markers in checks.items():
+        filepath = os.path.join(postlook_dir, filename)
+        if not os.path.isfile(filepath):
+            warnings.append(f'{filename} 文件不存在')
+            continue
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                content = f.read()
+            missing = [m for m in markers if m not in content]
+            if missing:
+                warnings.append(f'{filename} 缺少预期代码: {", ".join(missing)}')
+        except Exception as e:
+            warnings.append(f'{filename} 读取失败: {e}')
+    return warnings
 
 
 def _clear_pycache():
