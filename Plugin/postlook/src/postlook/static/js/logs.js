@@ -8,11 +8,13 @@
     var _debounceTimer = null;
     var _liveTimer = null, _liveCountdown = null;
     var _liveActive = false;
-    var LIVE_INTERVAL = 3000;      // 刷新间隔 3s
-    var LIVE_TIMEOUT = 60;         // 自动关闭倒计时 60s
-    var _seenLines = {};           // 已显示行号: { filename: Set(lineNumber) }
-    var _liveKeyword = null;       // 实时模式下首次查询的关键字（后续保持不变）
-    var _isLiveQuery = false;      // 标记当前是否为实时增量查询
+    var LIVE_INTERVAL_MIN = 3000;   // 最短间隔 3s
+    var LIVE_INTERVAL_MAX = 30000;  // 最长间隔 30s
+    var _liveInterval = LIVE_INTERVAL_MIN;  // 当前间隔
+    var LIVE_TIMEOUT = 60;          // 自动关闭倒计时 60s
+    var _seenLines = {};            // 已显示行号: { filename: Set(lineNumber) }
+    var _liveKeyword = null;
+    var _isLiveQuery = false;
 
     // ── DOM 引用 ──
     var els = {};
@@ -128,16 +130,17 @@
         _liveTimer = setTimeout(function() {
             if (!_liveActive) return;
             doLiveQuery();
-        }, LIVE_INTERVAL);
+        }, _liveInterval);
     }
 
     function startLive() {
         if (_liveActive) return;
         _liveActive = true;
+        _liveInterval = LIVE_INTERVAL_MIN;
         els.btnLive.classList.add('active');
         els.btnLive.classList.remove('auto-stop');
         _liveCountdown = LIVE_TIMEOUT;
-        updateLiveLabel(_liveCountdown);
+        updateLiveLabel(_liveCountdown, _liveInterval);
         clearInterval(_liveCountdownId);
         _liveCountdownId = setInterval(tickCountdown, 1000);
         // 先做一次全量查询，然后增量
@@ -150,12 +153,15 @@
         clearTimeout(_liveTimer);
         clearInterval(_liveCountdownId);
         els.btnLive.classList.remove('active','auto-stop');
-        updateLiveLabel(0);
+        _liveInterval = LIVE_INTERVAL_MIN;
+        updateLiveLabel(0, _liveInterval);
     }
 
-    function updateLiveLabel(sec) {
+    function updateLiveLabel(sec, interval) {
+        var intervalSec = interval || _liveInterval;
+        var ivStr = (intervalSec >= 1000) ? (intervalSec / 1000).toFixed(0) + 's' : '';
         if (sec > 0) {
-            els.btnLiveLabel.textContent = '滚动 (' + sec + 's)';
+            els.btnLiveLabel.textContent = '滚动 ' + ivStr + ' (' + sec + 's)';
             if (sec <= 10) els.btnLive.classList.add('auto-stop');
         } else {
             els.btnLiveLabel.textContent = '滚动';
@@ -224,7 +230,8 @@
             }
             if (_liveActive) {
                 _liveCountdown = LIVE_TIMEOUT;
-                updateLiveLabel(_liveCountdown);
+                _liveInterval = LIVE_INTERVAL_MIN;
+                updateLiveLabel(_liveCountdown, _liveInterval);
                 els.btnLive.classList.remove('auto-stop');
                 scheduleNext();
             }
@@ -266,10 +273,15 @@
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         }).then(function(r) { return r.json(); }).then(function(data) {
-            appendLiveLines(data, _liveKeyword);
+            var hadNew = appendLiveLines(data, _liveKeyword);
             if (_liveActive) {
-                _liveCountdown = LIVE_TIMEOUT;
-                updateLiveLabel(_liveCountdown);
+                if (hadNew) {
+                    _liveInterval = LIVE_INTERVAL_MIN;  // 有新内容 → 重置间隔
+                    _liveCountdown = LIVE_TIMEOUT;
+                } else {
+                    _liveInterval = Math.min(_liveInterval * 2, LIVE_INTERVAL_MAX);  // 无新内容 → 加倍
+                }
+                updateLiveLabel(_liveCountdown, _liveInterval);
                 els.btnLive.classList.remove('auto-stop');
                 scheduleNext();
             }
@@ -283,7 +295,7 @@
 
     // ── 增量追加新行到已有结果 ──
     function appendLiveLines(data, keyword) {
-        if (!data || !data.results || data.results.length === 0) return;
+        if (!data || !data.results || data.results.length === 0) return false;
         var hasNew = false;
         data.results.forEach(function(item) {
             var fn = item.file || '?';
@@ -309,6 +321,7 @@
             var lastRow = document.querySelector('.log-row:last-child');
             if (lastRow && lastRow.scrollIntoView) lastRow.scrollIntoView({ behavior: 'smooth', block: 'end' });
         }
+        return hasNew;
     }
 
     function createFileGroup(groupId, fileName) {
