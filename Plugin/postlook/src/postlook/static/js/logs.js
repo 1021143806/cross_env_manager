@@ -222,10 +222,6 @@
                 });
                 renderResults(data, useKeyword, elapsed);
             }
-            // 全量查询完成后启动实时
-            if (!_liveActive && !_isLiveQuery) {
-                startLive();
-            }
             if (_liveActive) {
                 _liveCountdown = LIVE_TIMEOUT;
                 updateLiveLabel(_liveCountdown);
