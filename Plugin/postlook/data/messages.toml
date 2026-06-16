@@ -1,0 +1,105 @@
+# ============================================================
+# postlook 报文调试数据 v1.0
+# 热更新：POST /api/debug/messages 或直接编辑此文件后 POST /api/debug/reload
+#
+# 字段说明:
+#   name       - 报文名称（显示在发送按钮上）
+#   type       - "hex" 十六进制 | "ascii" 文本字符串
+#   hex        - 十六进制报文内容（type=hex 时使用）
+#   annotation - 注释说明（鼠标悬停 tooltip 显示）
+#   seq        - 循环发送顺序号（0=不参与循环，预留字段）
+#   delay_ms   - 发送后延时毫秒数（预留字段）
+#   color      - 可选的自定义颜色
+# ============================================================
+
+# ── 富阳梯博士 召梯指令 ──
+[[group]]
+name = "富阳梯博士 召梯指令"
+desc = "控制电梯召唤到指定楼层，倒数第2字节为楼层号(01-08)，末字节为校验码"
+
+[[group.message]]
+name = "召梯到1楼"
+type = "hex"
+hex = "AB 66 00 00 04 02 01 00 01 F8 03"
+annotation = "【召梯到1楼】校验码 F8"
+
+[[group.message]]
+name = "召梯到2楼"
+type = "hex"
+hex = "AB 66 00 00 04 02 01 00 02 F7 03"
+annotation = "【召梯到2楼】校验码 F7"
+
+[[group.message]]
+name = "召梯到3楼"
+type = "hex"
+hex = "AB 66 00 00 04 02 01 00 03 F6 03"
+annotation = "【召梯到3楼】校验码 F6"
+
+[[group.message]]
+name = "召梯到4楼"
+type = "hex"
+hex = "AB 66 00 00 04 02 01 00 04 F5 03"
+annotation = "【召梯到4楼】校验码 F5"
+
+[[group.message]]
+name = "召梯到5楼"
+type = "hex"
+hex = "AB 66 00 00 04 02 01 00 05 F4 03"
+annotation = "【召梯到5楼】校验码 F4"
+
+[[group.message]]
+name = "召梯到6楼"
+type = "hex"
+hex = "AB 66 00 00 04 02 01 00 06 F3 03"
+annotation = "【召梯到6楼】校验码 F3"
+
+[[group.message]]
+name = "召梯到7楼"
+type = "hex"
+hex = "AB 66 00 00 04 02 01 00 07 F2 03"
+annotation = "【召梯到7楼】校验码 F2"
+
+[[group.message]]
+name = "召梯到8楼"
+type = "hex"
+hex = "AB 66 00 00 04 02 01 00 08 F1 03"
+annotation = "【召梯到8楼】校验码 F1"
+
+# ── 电梯状态查询 ──
+[[group]]
+name = "电梯状态查询"
+desc = "查询电梯当前楼层和运行状态（上下行/开关门/楼层检测/校准）"
+
+[[group.message]]
+name = "获取电梯状态"
+type = "hex"
+hex = "AB 66 00 00 03 01 00 FF FD 03"
+annotation = "【查询电梯状态】返回值的倒数第3字节为状态位掩码，详见 readme"
+
+# ── 电梯门控 ──
+[[group]]
+name = "电梯门控"
+desc = "控制电梯开门和关门"
+
+[[group.message]]
+name = "开门"
+type = "hex"
+hex = "AB 66 00 00 03 03 01 10 E9 03"
+annotation = "【开门报文】"
+
+[[group.message]]
+name = "关门"
+type = "hex"
+hex = "AB 66 00 00 03 04 01 10 E8 03"
+annotation = "【关门报文】"
+
+# ── 示例：自定义分组模板 ──
+# [[group]]
+# name = "你的设备指令"
+# desc = "在这里写说明"
+#
+# [[group.message]]
+# name = "指令名称"
+# type = "hex"
+# hex = "AA BB CC DD"
+# annotation = "指令说明"

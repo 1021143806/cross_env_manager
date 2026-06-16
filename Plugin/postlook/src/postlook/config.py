@@ -14,6 +14,8 @@ CONFIG_PATH_APP = PROJECT_ROOT / "config" / "app.toml"
 CONFIG_PATH_ENV = PROJECT_ROOT / "config" / "env.toml"
 RULES_PATH = PROJECT_ROOT / "config" / "rules.toml"
 RULES_TEMPLATE_PATH = PROJECT_ROOT / "config" / "template" / "rules.toml"
+DEBUG_CONFIG_PATH = PROJECT_ROOT / "config" / "debug.toml"
+DEBUG_CONFIG_TEMPLATE_PATH = PROJECT_ROOT / "config" / "template" / "debug.toml"
 
 # 线程锁
 _lock = threading.Lock()
@@ -35,6 +37,26 @@ _cached_rules: List[Dict[str, Any]] = []
 _cached_topo_categories: List[Dict[str, Any]] = []
 _cached_topo_services: List[Dict[str, Any]] = []
 _cached_dirs_meta: List[Dict[str, Any]] = []
+
+# ---- 调试配置缓存 (v0.4.0) ----
+_cached_debug_config: Dict[str, Any] = {
+    "connection": {
+        "host": "10.68.2.40",
+        "port": 8899,
+        "timeout": 3.0,
+        "recv_timeout": 1.0,
+        "recv_buffer": 4096,
+    },
+    "send": {
+        "auto_lowercase": True,
+        "auto_uppercase": False,
+        "add_crlf_ascii": True,
+    },
+    "display": {
+        "show_hex": True,
+        "show_timestamp": True,
+    },
+}
 
 # ── 内置规则（随代码发布，始终可用）──
 # rules.toml 中同名规则可覆盖内置规则
@@ -190,6 +212,66 @@ def reload_config():
     reload_rules()
 
 
+# ---- 调试配置（v0.4.0）----
+
+def reload_debug_config():
+    """热更新：重新加载 debug.toml 并更新调试配置缓存"""
+    global _cached_debug_config
+    with _lock:
+        cfg = _load_toml_file(DEBUG_CONFIG_PATH)
+
+        conn = cfg.get("connection", {})
+        send_cfg = cfg.get("send", {})
+        display_cfg = cfg.get("display", {})
+
+        _cached_debug_config = {
+            "connection": {
+                "host": conn.get("host", "10.68.2.40"),
+                "port": int(conn.get("port", 8899)),
+                "timeout": float(conn.get("timeout", 3.0)),
+                "recv_timeout": float(conn.get("recv_timeout", 1.0)),
+                "recv_buffer": int(conn.get("recv_buffer", 4096)),
+            },
+            "send": {
+                "auto_lowercase": bool(send_cfg.get("auto_lowercase", True)),
+                "auto_uppercase": bool(send_cfg.get("auto_uppercase", False)),
+                "add_crlf_ascii": bool(send_cfg.get("add_crlf_ascii", True)),
+            },
+            "display": {
+                "show_hex": bool(display_cfg.get("show_hex", True)),
+                "show_timestamp": bool(display_cfg.get("show_timestamp", True)),
+            },
+        }
+
+
+def get_debug_config() -> Dict[str, Any]:
+    """获取调试连接配置"""
+    return _cached_debug_config
+
+
+def get_debug_config_toml() -> str:
+    """读取 debug.toml 原文，不存在时返回模板"""
+    if DEBUG_CONFIG_PATH.exists():
+        with open(DEBUG_CONFIG_PATH, "r", encoding="utf-8") as f:
+            content = f.read()
+        if content.strip():
+            return content
+
+    if DEBUG_CONFIG_TEMPLATE_PATH.exists():
+        with open(DEBUG_CONFIG_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+            return f.read()
+
+    return "# debug.toml\n"
+
+
+def save_debug_config_toml(content: str):
+    """保存 debug.toml 并热更新"""
+    DEBUG_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(DEBUG_CONFIG_PATH, "w", encoding="utf-8") as f:
+        f.write(content)
+    reload_debug_config()
+
+
 # ---- 公开获取器 ----
 
 def get_rules() -> List[Dict[str, Any]]:
@@ -276,3 +358,4 @@ def save_rules_toml(content: str):
 
 # 初始加载
 reload_config()
+reload_debug_config()

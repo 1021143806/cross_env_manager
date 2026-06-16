@@ -50,16 +50,11 @@ def get_current_branch():
     return out if rc == 0 else 'unknown'
 
 
-def get_changed_files(from_commit):
-    """获取 from_commit 到 HEAD 的变更文件列表
-    
-    返回: {
-        'A': ['new_file.py'],
-        'M': ['modified.py'],
-        'D': ['deleted.py'],
-    }
+def get_changed_files(from_commit, to_ref='HEAD'):
+    """获取 from_commit 到 to_ref 的变更文件列表
+    返回: {'A': [path, ...], 'M': [path, ...], 'D': [path, ...]}
     """
-    rc, out, _ = run_git('diff', '--name-status', from_commit, 'HEAD')
+    rc, out, _ = run_git('diff', '--name-status', from_commit, to_ref)
     if rc != 0:
         return {}
     
@@ -160,11 +155,24 @@ def find_baseline_commit(server_version, server_commit=''):
     return ''
 
 
-def build_upgrade_package(from_commit, to_version, notes, output_dir):
-    """构建增量升级包"""
+def build_upgrade_package(from_commit, to_version, notes, output_dir, export_commit=None, is_rollback=False):
+    """构建增量升级包
+    
+    export_commit: 导出文件的 commit（默认 HEAD，回退时为回退目标 commit）
+    is_rollback: True 时为回退模式，version.json type='rollback'
+    """
+    if not export_commit:
+        export_commit = 'HEAD'
+    
+    # 获取当前 commit（提前，供 diff 使用）
+    current_commit = get_current_commit()
     
     # 1. 获取变更文件
-    changed_files = get_changed_files(from_commit)
+    # 回退模式：diff 回退目标 vs 当前服务器 commit
+    if is_rollback:
+        changed_files = get_changed_files(export_commit, from_commit)
+    else:
+        changed_files = get_changed_files(from_commit)
     all_changed = changed_files.get('A', []) + changed_files.get('M', []) + changed_files.get('D', [])
     
     if not all_changed:
@@ -198,33 +206,16 @@ def build_upgrade_package(from_commit, to_version, notes, output_dir):
                     return True
         return False
     
-    # 3. 获取当前版本号（用于 to_version）
+    # 3. 获取目标版本号
     if not to_version:
-        current_ver = ''
-        try:
-            with open(os.path.join(BASE_DIR, 'app.py')) as f:
-                for line in f:
-                    if line.strip().startswith('APP_VERSION'):
-                        current_ver = line.split('=')[1].strip().strip("'\"")
-                        break
-        except Exception:
-            pass
-        to_version = current_ver or 'unknown'
+        to_version = _read_app_version('HEAD')
     
-    # 4. 获取当前 commit
-    current_commit = get_current_commit()
+    # 回退模式：目标版本从回退 commit 读取
+    if is_rollback:
+        to_version = _read_app_version(export_commit)
     
-    # 5. 获取 from_commit 对应的版本号
-    from_version = 'unknown'
-    try:
-        rc, content, _ = run_git('show', f'{from_commit}:app.py')
-        if rc == 0:
-            for line in content.split('\n'):
-                if line.strip().startswith('APP_VERSION'):
-                    from_version = line.split('=')[1].strip().strip("'\"")
-                    break
-    except Exception:
-        pass
+    # 4. 获取 from_commit 对应的版本号
+    from_version = _read_app_version(from_commit)
     
     # 6. 创建临时目录
     tmpdir = tempfile.mkdtemp(prefix='cem_upgrade_')
@@ -232,7 +223,23 @@ def build_upgrade_package(from_commit, to_version, notes, output_dir):
     try:
         # 7. 从 git 导出变更文件
         export_count = 0
-        for path in changed_files.get('A', []) + changed_files.get('M', []):
+        delete_list = []  # 回退模式：需要删除的文件（新增的）
+        restore_list = []  # 回退模式：需要恢复的文件（已删除的）
+        
+        # 确定导出源
+        export_ref = export_commit
+        
+        if is_rollback:
+            # 回退模式：M 和 D 文件从回退目标导出，A 文件加入删除清单
+            for path in changed_files.get('A', []):
+                if not should_exclude(path):
+                    delete_list.append(path)
+            
+            export_paths = changed_files.get('M', []) + changed_files.get('D', [])
+        else:
+            export_paths = changed_files.get('A', []) + changed_files.get('M', [])
+        
+        for path in export_paths:
             if should_exclude(path):
                 print(f"  ⏭ 跳过排除文件: {path}")
                 continue
@@ -240,7 +247,7 @@ def build_upgrade_package(from_commit, to_version, notes, output_dir):
             dst = os.path.join(tmpdir, path)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             
-            rc, content, err = run_git('show', f'HEAD:{path}')
+            rc, content, err = run_git('show', f'{export_ref}:{path}')
             if rc == 0:
                 with open(dst, 'w', encoding='utf-8') as f:
                     f.write(content)
@@ -248,7 +255,7 @@ def build_upgrade_package(from_commit, to_version, notes, output_dir):
             else:
                 # 可能是二进制文件
                 rc2 = subprocess.run(
-                    ['git', 'show', f'HEAD:{path}'],
+                    ['git', 'show', f'{export_ref}:{path}'],
                     capture_output=True, cwd=BASE_DIR, timeout=30,
                 )
                 if rc2.returncode == 0:
@@ -256,10 +263,19 @@ def build_upgrade_package(from_commit, to_version, notes, output_dir):
                         f.write(rc2.stdout)
                     export_count += 1
         
-        if export_count == 0:
+        # D 文件也需要导出（回退时用于恢复），但已包含在 export_paths 中
+        if is_rollback and changed_files.get('D', []):
+            # 标记回退模式中恢复的删除文件
+            restore_list = [p for p in changed_files.get('D', []) if not should_exclude(p)]
+        
+        if export_count == 0 and not (is_rollback and delete_list):
             print("  [!] 所有变更文件均被排除规则过滤，无需打包")
             return None
         
+        if is_rollback and delete_list:
+            print(f"  ├─ 回退将删除: {len(delete_list)} 个文件")
+        if is_rollback and restore_list:
+            print(f"  ├─ 回退将恢复: {len(restore_list)} 个文件")
         print(f"  ├─ 导出: {export_count} 个文件到临时目录")
         
         # 8. 生成 version.json
@@ -269,8 +285,8 @@ def build_upgrade_package(from_commit, to_version, notes, output_dir):
             'from_commit': from_commit,
             'to_version': to_version,
             'to_commit': current_commit,
-            'type': 'incremental',
-            'title': f'v{to_version} 更新',
+            'type': 'rollback' if is_rollback else 'incremental',
+            'title': f'回退到 v{from_version}' if is_rollback else f'v{to_version} 更新',
             'changes': changes_list,
             'files_changed': {
                 'A': changed_files.get('A', []),
@@ -279,13 +295,16 @@ def build_upgrade_package(from_commit, to_version, notes, output_dir):
             },
             'file_count': export_count,
         }
+        if is_rollback and delete_list:
+            version_data['delete_list'] = delete_list
         
         vj_path = os.path.join(tmpdir, 'version.json')
         with open(vj_path, 'w', encoding='utf-8') as f:
             json.dump(version_data, f, ensure_ascii=False, indent=2)
         
         # 9. 打包
-        output_name = f'upgrade_v{from_version}_to_v{to_version}.zip'
+        prefix = 'rollback' if is_rollback else 'upgrade'
+        output_name = f'{prefix}_v{from_version}_to_v{to_version}.zip'
         output_path = os.path.join(output_dir, output_name)
         
         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -371,8 +390,21 @@ def upload_upgrade_package(server_url, package_path, session_cookie='', notes=''
         return {'success': False, 'error': str(e)}
 
 
+def _read_app_version(ref='HEAD'):
+    """从指定 ref 的 app.py 读取 APP_VERSION"""
+    try:
+        rc, content, _ = run_git('show', f'{ref}:app.py')
+        if rc == 0:
+            for line in content.split('\n'):
+                if line.strip().startswith('APP_VERSION'):
+                    return line.split('=')[1].strip().strip("'\"")
+    except Exception:
+        pass
+    return 'unknown'
+
+
 def get_app_version_from_file():
-    """从 app.py 读取当前版本"""
+    """从 app.py 文件读取当前版本"""
     try:
         app_path = os.path.join(BASE_DIR, 'app.py')
         with open(app_path, 'r', encoding='utf-8') as f:
@@ -405,6 +437,7 @@ def main():
     parser.add_argument('--session', help='服务器 session cookie（从浏览器复制）')
     parser.add_argument('--from', dest='from_ref', help='基线版本号或 commit hash（如 v2.4.2）')
     parser.add_argument('--to', dest='to_version', help='目标版本号（默认从 app.py 读取）')
+    parser.add_argument('--rollback-to', dest='rollback_to', help='回退到指定版本（如 v2.4.5）')
     parser.add_argument('--notes', default='', help='升级说明，用分号分隔多条')
     parser.add_argument('--upload', action='store_true', help='打包后自动上传到服务器')
     parser.add_argument('--output', default=BASE_DIR, help='升级包输出目录（默认项目根目录）')
@@ -416,6 +449,7 @@ def main():
     print("=" * 55)
     
     from_ref = args.from_ref
+    rollback_commit = ''
     server_commit = ''
     server_version = ''
     
@@ -432,8 +466,21 @@ def main():
             if branch:
                 print(f"  └─ 分支: {branch}")
             
-            # 用服务器版本作为基线
-            from_ref = from_ref or f'v{server_version}'
+            # 回退模式：查找目标版本的 commit
+            if args.rollback_to:
+                candidates = info.get('rollback_candidates', [])
+                for c in candidates:
+                    if c.get('version') == args.rollback_to.lstrip('v') or c.get('version') == args.rollback_to:
+                        rollback_commit = c.get('commit', '')
+                        print(f"  ✓ 从服务器找到回退目标: v{c.get('version')} (commit {rollback_commit[:12]})")
+                        break
+                if not rollback_commit:
+                    print(f"  [!] 服务器未找到可回退版本: {args.rollback_to}")
+                    print(f"  可用版本: {[c.get('version') for c in candidates]}")
+                    sys.exit(1)
+            else:
+                # 用服务器版本作为基线
+                from_ref = from_ref or f'v{server_version}'
         else:
             print("  [!] 无法获取服务器信息，请重试")
             sys.exit(1)
@@ -443,7 +490,14 @@ def main():
     local_commit = get_current_commit()
     print(f"  ├─ 本地 HEAD: {local_commit[:12]}")
     
-    if from_ref and len(from_ref) >= 7:
+    if rollback_commit:
+        # 回退模式：基线=服务器当前commit, 导出源=回退目标commit
+        base_commit = server_commit
+        export_commit = rollback_commit
+        is_rollback = True
+        print(f"  ├─ 回退起点 (当前): {base_commit[:12]}")
+        print(f"  └─ 回退目标 (导出): {export_commit[:12]}")
+    elif from_ref and len(from_ref) >= 7:
         # 检查是否是直接的 commit hash
         rc, _, _ = run_git('cat-file', '-e', from_ref)
         if rc == 0:
@@ -457,8 +511,12 @@ def main():
             )
             if not base_commit:
                 sys.exit(1)
+        export_commit = local_commit
+        is_rollback = False
     elif server_commit:
         base_commit = server_commit
+        export_commit = local_commit
+        is_rollback = False
         print(f"  └─ 使用服务器 commit: {base_commit[:12]}")
     else:
         print("  [!] 无法确定基线，请指定 --from 或 --server")
@@ -484,6 +542,8 @@ def main():
         to_version=args.to_version,
         notes=args.notes,
         output_dir=args.output,
+        export_commit=export_commit,
+        is_rollback=is_rollback,
     )
     
     if not pkg_path:

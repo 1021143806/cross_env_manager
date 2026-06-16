@@ -4,6 +4,7 @@ postlook · 文件扫描与内容读取
 
 import fnmatch
 import os
+import re
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -117,6 +118,162 @@ def find_files(
     return files[:recent_files]
 
 
+def expand_keyword_with_rules(keyword: str) -> str:
+    """
+    规则感知关键字扩展。
+    如果 keyword 匹配任意规则的 name 或 annotation，
+    自动将该规则的 match 模式追加为 OR 条件。
+    
+    例: "开门" → "开门|AB66000003030110E903|AB66000003040110E803"
+         "电梯" → 匹配所有电梯相关规则的 hex 模式
+    
+    仅扩展第一个关键字段（管道前），保留用户指定的 grep 管道。
+    """
+    if not keyword:
+        return keyword
+
+    # 只扩展第一个关键字段，保留管道语法
+    parts = keyword.split("|", 1)
+    first = parts[0].strip()
+
+    # 第一段已含 OR (|) → 用户明确指定，不扩展
+    if "|" in first:
+        return keyword
+
+    try:
+        from .config import get_rules
+        rules = get_rules()
+    except Exception:
+        return keyword
+
+    kw_lower = first.lower()
+    expanded = [first]
+
+    for rule in rules:
+        name = (rule.get("name") or "").lower()
+        annotation = (rule.get("annotation") or "").lower()
+        rtype = rule.get("type", "")
+
+        # 匹配规则名称或注解（子串匹配）
+        if kw_lower not in name and kw_lower not in annotation:
+            continue
+
+        match = (rule.get("match") or "").strip()
+        if not match:
+            continue
+
+        # 仅扩展 hex 和 keyword 类型规则（regex 的占位符不适合直接搜索）
+        if rtype not in ("hex", "keyword"):
+            continue
+
+        # hex 类型：去掉空格便于搜索
+        if rtype == "hex":
+            match = match.replace(" ", "")
+
+        if match.lower() in (e.lower() for e in expanded):
+            continue  # 去重
+
+        expanded.append(match)
+
+    if len(expanded) == 1:
+        return keyword  # 无匹配规则，原样返回
+
+    # 重建：扩展后的第一段 + 剩余管道
+    expanded_first = "|".join(expanded)
+    if len(parts) > 1:
+        return expanded_first + " | " + parts[1]
+    return expanded_first
+
+
+def parse_grep_pipeline(keyword: Optional[str]) -> tuple:
+    """
+    解析 grep 管道语法，返回 (filters, shell_cmd)
+    filters: [(pattern, invert, case_insensitive), ...]
+    示例:
+      "ERROR" → ([("ERROR", False, True)], "grep -i 'ERROR'")
+      "ERROR|Exception" → ([("ERROR|Exception", False, True)], "grep -iE '(ERROR|Exception)'")
+      "ERROR | grep timeout" → ([("ERROR", False, True), ("timeout", False, True)], "grep -i 'ERROR' | grep -i 'timeout'")
+      "ERROR | grep -v debug" → ([("ERROR", False, True), ("debug", True, True)], "grep -i 'ERROR' | grep -iv 'debug'")
+    """
+    if not keyword:
+        return [], ""
+    
+    keyword = keyword.strip()
+    
+    # 检测是否含 grep 管道语法（非普通 OR）
+    has_grep = bool(re.search(r'\|\s*grep\b', keyword, re.IGNORECASE))
+    
+    if has_grep:
+        # 管道模式：按 grep 边界拆分
+        parts = re.split(r'\|\s*(?=grep\b)', keyword, flags=re.IGNORECASE)
+        parts = [p.strip() for p in parts]
+    else:
+        # 普通模式：整体作为一个 pattern（支持内部 | 作为 OR）
+        parts = [keyword]
+    
+    filters = []
+    cmd_parts = []
+    
+    for p in parts:
+        invert = False
+        case_insensitive = True
+        pattern = p
+        
+        # 检查是否是 grep 命令段
+        grep_match = re.match(r'^grep\s+(-[a-z]*)?\s*(.+)$', p, re.IGNORECASE)
+        if grep_match:
+            flags = grep_match.group(1) or ""
+            pattern = grep_match.group(2).strip()
+            if 'v' in flags.lower():
+                invert = True
+            if 'i' in flags.lower():
+                case_insensitive = True
+            # build cmd
+            cmd_flags = "-i" if case_insensitive else ""
+            if invert:
+                cmd_flags += "v" if cmd_flags else "-v"
+            cmd_parts.append(f"grep {cmd_flags} '{pattern}'" if cmd_flags else f"grep '{pattern}'")
+        else:
+            # 普通关键字，支持内部 | 作为 OR
+            cmd_flags = "-iE" if "|" in pattern else "-i"
+            quoted = f"'{pattern}'"
+            cmd_parts.append(f"grep {cmd_flags} {quoted}")
+        
+        filters.append((pattern, invert, case_insensitive))
+    
+    shell_cmd = " | ".join(cmd_parts) if cmd_parts else ""
+    return filters, shell_cmd
+
+
+def _line_matches_pipeline(line: str, filters: list) -> bool:
+    """检查一行是否通过所有过滤器。同时支持空格敏感和忽略空格的匹配。"""
+    for pattern, invert, ci in filters:
+        test_line = line.lower() if ci else line
+        test_pat = pattern.lower() if ci else pattern
+        
+        # 也准备忽略空格的版本（用于 hex 模式匹配）
+        test_line_nosp = test_line.replace(" ", "")
+        
+        # 支持 | (OR) 在单个 pattern 中
+        if "|" in pattern:
+            or_patterns = [p.strip() for p in pattern.split("|")]
+            matched = any(
+                (p.lower() if ci else p) in test_line
+                or (p.lower() if ci else p) in test_line_nosp
+                for p in or_patterns
+            )
+        else:
+            matched = test_pat in test_line or test_pat in test_line_nosp
+        
+        if invert:
+            if matched:
+                return False
+        else:
+            if not matched:
+                return False
+    return True
+
+
 def search_lines(
     file_path: Path,
     keyword: Optional[str] = None,
@@ -143,11 +300,11 @@ def search_lines(
     total = len(lines)
 
     if keyword:
-        # 关键字搜索：先 grep 全文件，保留原始行号
-        kw_lower = keyword.lower()
+        # 管道解析
+        filters, _ = parse_grep_pipeline(keyword)
         all_matches = []
         for i, line in enumerate(lines):
-            if kw_lower in line.lower():
+            if _line_matches_pipeline(line, filters):
                 all_matches.append({
                     "file": file_path.name,
                     "line": i + 1,  # 原始行号
@@ -155,8 +312,13 @@ def search_lines(
                 })
 
         # line_start/line_end 作为匹配结果的索引范围（1-based）
-        start_idx = (line_start or 1) - 1
-        end_idx = line_end if line_end else len(all_matches)
+        if tail and not line_start:
+            # tail 模式：取最后 line_end 条
+            start_idx = max(0, len(all_matches) - (line_end or max_lines))
+            end_idx = len(all_matches)
+        else:
+            start_idx = (line_start or 1) - 1
+            end_idx = line_end if line_end else len(all_matches)
         start_idx = max(0, start_idx)
         end_idx = min(len(all_matches), end_idx)
 
@@ -165,32 +327,65 @@ def search_lines(
         if len(results) > max_lines:
             results = results[:max_lines]
     else:
-        # 无关键字：行号范围过滤
-        if line_start is not None or line_end is not None:
+        # 无关键字
+        if tail:
+            # tail 模式：直接从全文尾部取，忽略 line_start
+            end = line_end if line_end else total
+            selected = lines[-min(end, len(lines)):]
+            line_offset = max(0, len(lines) - len(selected))
+            if len(selected) > max_lines:
+                selected = selected[-max_lines:]
+        elif line_start is not None or line_end is not None:
+            # head / 指定范围
             start = (line_start or 1) - 1
             end = line_end if line_end else total
             start = max(0, start)
             end = min(total, end)
-            lines = lines[start:end]
+            selected = lines[start:end]
             line_offset = start
+            if tail:
+                selected = selected[-max_lines:]
         else:
             line_offset = 0
-
-        if tail:
-            selected = lines[-max_lines:]
-            start_idx = max(0, len(lines) - max_lines)
-        else:
-            selected = lines[:max_lines]
-            start_idx = 0
+            if tail:
+                selected = lines[-max_lines:]
+                line_offset = max(0, len(lines) - len(selected))
 
         for i, line in enumerate(selected):
             results.append({
                 "file": file_path.name,
-                "line": line_offset + start_idx + i + 1,
+                "line": line_offset + i + 1,
                 "content": line.rstrip("\n\r")
             })
 
     return results
+
+
+def _build_shell_cmd(keyword: Optional[str], folder_path: Path, pattern: str, line_end: int, tail: bool, files: list) -> str:
+    """生成等效的 shell 命令字符串"""
+    _, grep_part = parse_grep_pipeline(keyword)
+    # 构建 find 部分
+    file_list_cmd = f"find {folder_path} -name '{pattern}' | sort | tail -10"
+    if len(files) == 1:
+        file_list_cmd = str(files[0])
+    
+    parts = []
+    if grep_part:
+        parts.append(grep_part)
+    
+    # tail/head
+    tail_flag = "-n " + str(line_end)
+    if tail:
+        parts.append(f"tail {tail_flag}")
+    else:
+        parts.append(f"head {tail_flag}")
+    
+    if parts:
+        return file_list_cmd + " | " + " | ".join(parts)
+    elif tail:
+        return f"tail -n {line_end} {file_list_cmd}"
+    else:
+        return f"head -n {line_end} {file_list_cmd}"
 
 
 def scan_logs(
@@ -210,6 +405,9 @@ def scan_logs(
     """
     # 关键字搜索上限
     MAX_KEYWORD_RESULTS = 500
+
+    # 规则感知关键字扩展（将 "开门" 自动展开为 "开门|AB6600...|AB6600..."）
+    expanded_keyword = expand_keyword_with_rules(keyword) if keyword else None
 
     # 解析目录
     try:
@@ -252,7 +450,7 @@ def scan_logs(
 
     # 搜索内容
     all_results = []
-    limit = MAX_KEYWORD_RESULTS if keyword else None
+    limit = MAX_KEYWORD_RESULTS if expanded_keyword else None
 
     for file_path in files:
         if limit and len(all_results) >= limit:
@@ -260,7 +458,7 @@ def scan_logs(
         remaining = (limit - len(all_results)) if limit else None
         file_results = search_lines(
             file_path,
-            keyword=keyword,
+            keyword=expanded_keyword,
             max_lines=remaining if remaining else (line_end - line_start + 1),
             tail=tail,
             line_start=line_start,
@@ -268,7 +466,7 @@ def scan_logs(
         )
         all_results.extend(file_results)
 
-    truncated = bool(keyword and len(all_results) >= MAX_KEYWORD_RESULTS)
+    truncated = bool(expanded_keyword and len(all_results) >= MAX_KEYWORD_RESULTS)
     if truncated:
         all_results = all_results[:MAX_KEYWORD_RESULTS]
 
@@ -276,5 +474,5 @@ def scan_logs(
         "total_lines": len(all_results),
         "truncated": truncated,
         "results": all_results,
-        "keyword": keyword,
+        "shell_cmd": _build_shell_cmd(expanded_keyword, folder_path, pattern, line_end, tail, files),
     }

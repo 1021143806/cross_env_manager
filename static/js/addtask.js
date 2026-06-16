@@ -1184,6 +1184,14 @@
                         submitBtn.innerHTML = '<i class="bi bi-send me-2"></i>下发任务';
                         return;
                     }
+                    // 指定设备下发前确认
+                    const displayName = match ? match.deviceNum : deviceVal;
+                    if (!confirm(`⚠️  指定了设备：${displayName}` + 
+                        `\n\n该任务将仅由该设备执行，确认继续下发？`)) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = '<i class="bi bi-send me-2"></i>下发任务';
+                        return;
+                    }
                 }
                 debugInfo.textContent = JSON.stringify(requestData, null, 2);
                 
@@ -1247,6 +1255,7 @@
             }
 
             let _pendingAutoSearch = null;
+            let queryLastClickTime = 0;
 
             function autoQueryAfterSubmit(orderId) {
                 if (_pendingAutoSearch) clearTimeout(_pendingAutoSearch);
@@ -1591,7 +1600,6 @@
                 const text = jsonContent.textContent;
                 
                 navigator.clipboard.writeText(text).then(() => {
-                    // 显示复制成功提示
                     const originalText = jsonContent.textContent;
                     jsonContent.textContent = '✅ JSON已复制到剪贴板！\n\n' + originalText;
                     setTimeout(() => {
@@ -1602,6 +1610,49 @@
                     alert('复制失败，请手动选择并复制文本');
                 });
             };
+
+            // ── 高级选项折叠/展开 ──
+            window.toggleAdvancedOptions = function() {
+                const opts = document.getElementById('advanced-options');
+                const chevron = document.getElementById('advanced-chevron');
+                if (!opts) return;
+                if (opts.style.display === 'none' || !opts.style.display) {
+                    opts.style.display = 'block';
+                    if (chevron) chevron.className = 'bi bi-chevron-up ms-1 small';
+                } else {
+                    opts.style.display = 'none';
+                    if (chevron) chevron.className = 'bi bi-chevron-down ms-1 small';
+                }
+            };
+
+            // 监听设备输入变化，更新高级选项徽标
+            const _deviceInput = document.getElementById('device-input');
+            if (_deviceInput) {
+                _deviceInput.addEventListener('input', () => {
+                    const badge = document.getElementById('advanced-badge');
+                    if (!badge) return;
+                    if (_deviceInput.value.trim()) {
+                        badge.style.display = 'inline';
+                        badge.textContent = '已设: ' + _deviceInput.value.trim();
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                });
+                // 处理设备清空按钮
+                const clearBtn = document.getElementById('device-clear-btn');
+                if (clearBtn) {
+                    const observer = new MutationObserver(() => {
+                        const badge = document.getElementById('advanced-badge');
+                        if (badge && !_deviceInput.value.trim()) badge.style.display = 'none';
+                    });
+                    clearBtn.addEventListener('click', () => {
+                        setTimeout(() => {
+                            const badge = document.getElementById('advanced-badge');
+                            if (badge) badge.style.display = 'none';
+                        }, 50);
+                    });
+                }
+            }
 
             document.addEventListener('DOMContentLoaded', initPage);
         })();

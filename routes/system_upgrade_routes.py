@@ -86,6 +86,13 @@ def upgrade_page():
     )
 
 
+@upgrade_bp.route('/system/plugins', methods=['GET'])
+@login_required
+def plugins_page():
+    """插件管理页面"""
+    return render_template('system/plugins.html')
+
+
 # ========== API ==========
 
 
@@ -159,3 +166,135 @@ def api_rollback(backup_name):
         })
     else:
         return jsonify({'success': False, 'error': result.get('error', '回滚失败')}), 500
+
+
+@upgrade_bp.route('/api/system/restart-postlook', methods=['POST'])
+@login_required
+def restart_postlook():
+    """强制重启 Postlook 服务（先 supervisorctl restart，再 start，最后 pkill）"""
+    import subprocess as _sp, os as _os, shutil, signal
+
+    results = []
+
+    # 方法1: supervisorctl restart（进程在跑时用 restart）
+    for sctl in ['/usr/bin/supervisorctl', '/usr/local/bin/supervisorctl', 'supervisorctl']:
+        try:
+            r = _sp.run([sctl, 'restart', 'postlook'], timeout=10, capture_output=True, text=True)
+            results.append(f"{sctl} restart: rc={r.returncode} out={r.stdout[:80]}")
+            if r.returncode == 0:
+                return jsonify({'success': True, 'message': 'Postlook 已重启 (supervisorctl restart)'})
+        except Exception as e:
+            results.append(f"{sctl} restart error: {e}")
+
+    # 方法2: supervisorctl start（进程已死时用 start）
+    for sctl in ['/usr/bin/supervisorctl', '/usr/local/bin/supervisorctl', 'supervisorctl']:
+        try:
+            r = _sp.run([sctl, 'start', 'postlook'], timeout=10, capture_output=True, text=True)
+            results.append(f"{sctl} start: rc={r.returncode} out={r.stdout[:80]}")
+            if r.returncode == 0:
+                return jsonify({'success': True, 'message': 'Postlook 已启动 (supervisorctl start)'})
+        except Exception as e:
+            results.append(f"{sctl} start error: {e}")
+
+    # 方法3: 清理 __pycache__ + 强制 pkill
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cache_dir = os.path.join(root_dir, 'Plugin', 'postlook')
+    try:
+        for rt, dirs, _ in os.walk(cache_dir):
+            for d in dirs:
+                if d == '__pycache__':
+                    try:
+                        shutil.rmtree(os.path.join(rt, d), ignore_errors=True)
+                        results.append(f"cleaned pycache: {os.path.join(rt, d)}")
+                    except Exception:
+                        pass
+    except Exception as e:
+        results.append(f"pycache cleanup error: {e}")
+
+    # 方法4: 强制 pkill（多种模式匹配）
+    for pattern in ['uvicorn.*postlook', 'python.*postlook', 'postlook']:
+        try:
+            r = _sp.run(['pkill', '-f', pattern], timeout=5, capture_output=True, text=True)
+            if r.returncode == 0:
+                results.append(f"pkill -f '{pattern}' OK")
+        except Exception as e:
+            results.append(f"pkill '{pattern}' error: {e}")
+
+    return jsonify({
+        'success': False,
+        'message': '所有重启方式均失败，请手动 SSH 重启',
+        'details': results
+    }), 500
+
+
+# ═══════════════════════════════════════════════════
+#  插件管理 API
+# ═══════════════════════════════════════════════════
+
+@upgrade_bp.route('/api/system/plugins/status', methods=['GET'])
+@login_required
+def api_plugins_status():
+    """获取所有插件运行状态"""
+    import urllib.request
+    plugins = []
+
+    # Postlook 健康检查
+    postlook_status = {
+        'name': 'Postlook',
+        'key': 'postlook',
+        'url': 'http://127.0.0.1:5011',
+        'status': 'stopped',
+        'version': '-',
+        'uptime': '-',
+    }
+    try:
+        req = urllib.request.Request('http://127.0.0.1:5011/api/health', method='GET')
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = resp.read().decode()
+            import json
+            health = json.loads(data)
+            postlook_status['status'] = 'running' if health.get('status') == 'ok' else 'error'
+            postlook_status['version'] = health.get('version', '-')
+    except Exception:
+        pass
+
+    # 尝试获取 Postlook 版本（如果 health 没有）
+    if postlook_status['version'] == '-':
+        try:
+            req = urllib.request.Request('http://127.0.0.1:5011/api/help', method='GET')
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read().decode())
+                postlook_status['version'] = data.get('version', '-')
+        except Exception:
+            pass
+
+    plugins.append(postlook_status)
+
+    return jsonify({
+        'success': True,
+        'plugins': plugins,
+        'count': len(plugins),
+        'running': sum(1 for p in plugins if p['status'] == 'running'),
+    })
+
+
+@upgrade_bp.route('/api/system/plugins/postlook/logs', methods=['GET'])
+@login_required
+def api_postlook_logs():
+    """代理获取 Postlook 自身日志"""
+    import urllib.request
+    lines = request.args.get('lines', 100, type=int)
+    keyword = request.args.get('keyword', '')
+
+    url = f'http://127.0.0.1:5011/api/logs/self?lines={lines}'
+    if keyword:
+        url += f'&keyword={keyword}'
+
+    try:
+        req = urllib.request.Request(url, method='GET')
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = resp.read().decode()
+            import json
+            return jsonify({'success': True, 'data': json.loads(data)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 502

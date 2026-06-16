@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}插件管理{% endblock %}
+{% block extra_css %}
+<style>
+    .plugin-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 1.25rem;
+        overflow: hidden;
+    }
+    .plugin-card .card-header {
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .plugin-card .card-body { padding: 1.25rem; }
+    .status-dot {
+        display: inline-block; width: 10px; height: 10px;
+        border-radius: 50%; margin-right: 6px;
+    }
+    .status-dot.running { background: #22c55e; box-shadow: 0 0 6px #22c55e66; }
+    .status-dot.stopped { background: #ef4444; }
+    .status-dot.error { background: #f59e0b; }
+    .info-row { display: flex; gap: 2rem; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    .info-row .label { color: var(--text-secondary); min-width: 60px; }
+    .log-viewer {
+        background: #1a1a2e; color: #4ade80;
+        font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+        font-size: 0.75rem; padding: 1rem; border-radius: 8px;
+        max-height: 400px; overflow-y: auto;
+        white-space: pre-wrap; word-break: break-all;
+    }
+    .log-line { padding: 1px 0; border-bottom: 1px solid #ffffff08; }
+    .log-line:hover { background: #ffffff06; }
+    .status-bar { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
+    .status-bar .badge { font-size: 0.78rem; padding: 0.2rem 0.6rem; border-radius: 6px; }
+    .badge-ok { background: #22c55e20; color: #22c55e; border: 1px solid #22c55e40; }
+    .badge-err { background: #ef444420; color: #ef4444; border: 1px solid #ef444440; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0"><i class="bi bi-puzzle me-2"></i>插件管理</h4>
+        <div class="status-bar">
+            <span id="pluginCount" class="text-secondary" style="font-size:0.82rem">加载中...</span>
+            <button class="btn btn-sm btn-outline-secondary" onclick="refreshAll()">
+                <i class="bi bi-arrow-clockwise me-1"></i>刷新
+            </button>
+        </div>
+    </div>
+
+    <!-- Postlook 卡片 -->
+    <div class="plugin-card" id="cardPostlook">
+        <div class="card-header">
+            <div>
+                <span class="status-dot" id="dotPostlook"></span>
+                <strong>Postlook</strong>
+                <span class="text-secondary ms-2" style="font-size:0.82rem">日志查询服务 · 端口 5011</span>
+            </div>
+            <div>
+                <span id="verPostlook" class="badge bg-secondary me-2" style="font-size:0.75rem">-</span>
+                <button class="btn btn-sm btn-warning me-1" onclick="restartPlugin('postlook')" id="btnRestartPL">
+                    <i class="bi bi-arrow-repeat me-1"></i>重启
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="toggleLogs('postlook')">
+                    <i class="bi bi-terminal me-1"></i>日志
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="info-row">
+                <span class="label">状态:</span>
+                <span id="statusPostlook">检查中...</span>
+            </div>
+            <div class="info-row">
+                <span class="label">地址:</span>
+                <a href="http://10.68.2.40:5011" target="_blank">http://10.68.2.40:5011</a>
+            </div>
+            <div id="logsPostlook" style="display:none;margin-top:1rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+                    <span style="font-size:0.82rem;color:var(--text-secondary)">Postlook 自身日志</span>
+                    <div>
+                        <input type="text" id="logKeyword" placeholder="过滤关键字" style="width:140px;font-size:0.75rem;padding:2px 8px;border-radius:4px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-primary);" onkeyup="if(event.key==='Enter')loadLogs('postlook')">
+                        <button class="btn btn-sm btn-outline-secondary ms-1" onclick="loadLogs('postlook')">查询</button>
+                    </div>
+                </div>
+                <div class="log-viewer" id="logContent">点击查询加载日志...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── 刷新所有插件状态 ──
+function refreshAll() {
+    fetch('/api/system/plugins/status')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d.success) return;
+            var plugins = d.plugins || [];
+            document.getElementById('pluginCount').textContent =
+                d.running + '/' + d.count + ' 运行中';
+
+            plugins.forEach(function(p) {
+                updatePluginUI(p);
+            });
+        })
+        .catch(function(err) {
+            document.getElementById('pluginCount').textContent = '请求失败';
+        });
+}
+
+function updatePluginUI(p) {
+    var dot = document.getElementById('dot' + capitalize(p.key));
+    var statusEl = document.getElementById('status' + capitalize(p.key));
+    var verEl = document.getElementById('ver' + capitalize(p.key));
+
+    if (dot) {
+        dot.className = 'status-dot ' + p.status;
+        dot.title = p.status;
+    }
+    if (statusEl) {
+        statusEl.innerHTML = p.status === 'running'
+            ? '<span class="badge badge-ok">运行中</span>'
+            : '<span class="badge badge-err">已停止</span>';
+        statusEl.title = p.status === 'running' ? '正常运行' : '服务异常';
+    }
+    if (verEl) verEl.textContent = 'v' + (p.version || '-');
+}
+
+function capitalize(s) {
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// ── 重启插件 ──
+function restartPlugin(key) {
+    if (key !== 'postlook') return;
+    if (!confirm('确定要重启 Postlook 服务？\n\n服务将在 3 秒内重新启动。')) return;
+
+    var btn = document.getElementById('btnRestartPL');
+    var orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>重启中...';
+
+    fetch('/api/system/restart-postlook', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.success) {
+                alert('✅ Postlook 已重启');
+                // 等待几秒后刷新状态
+                setTimeout(refreshAll, 4000);
+            } else {
+                alert('❌ 重启失败: ' + (d.message || '') + '\n' + JSON.stringify(d.details || []));
+            }
+            btn.disabled = false;
+            btn.innerHTML = orig;
+        })
+        .catch(function(err) {
+            alert('❌ 请求失败: ' + err.message);
+            btn.disabled = false;
+            btn.innerHTML = orig;
+        });
+}
+
+// ── 显示/隐藏日志面板 ──
+function toggleLogs(key) {
+    var el = document.getElementById('logs' + capitalize(key));
+    if (!el) return;
+    if (el.style.display === 'none' || !el.style.display) {
+        el.style.display = 'block';
+        loadLogs(key);
+    } else {
+        el.style.display = 'none';
+    }
+}
+
+// ── 加载插件日志 ──
+function loadLogs(key) {
+    var contentEl = document.getElementById('logContent');
+    if (!contentEl) return;
+    contentEl.textContent = '加载中...';
+
+    var keyword = document.getElementById('logKeyword').value || '';
+    var url = '/api/system/plugins/postlook/logs?lines=100';
+    if (keyword) url += '&keyword=' + encodeURIComponent(keyword);
+
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d.success) {
+                contentEl.textContent = '❌ ' + (d.error || '加载失败');
+                return;
+            }
+            var results = (d.data && d.data.results) || [];
+            if (results.length === 0) {
+                contentEl.textContent = '(无日志)';
+                return;
+            }
+            contentEl.innerHTML = results.map(function(r) {
+                return '<div class="log-line"><span style="color:#6366f1;margin-right:8px">' + r.line + '</span>' + escapeHtml(r.content) + '</div>';
+            }).join('');
+        })
+        .catch(function(err) {
+            contentEl.textContent = '❌ 请求失败: ' + err.message;
+        });
+}
+
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ── 初始化 ──
+refreshAll();
+</script>
+{% endblock %}

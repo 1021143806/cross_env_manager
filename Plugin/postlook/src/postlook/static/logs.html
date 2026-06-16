@@ -5,7 +5,122 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>postlook · 日志查询</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2.0">
+    <style>
+        /* 气泡筛选 */
+        .chip-row { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem; min-height: 1px; }
+        .chip {
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            font-size: 0.72rem; padding: 0.18rem 0.5rem;
+            background: var(--accent); color: #fff; border-radius: 14px;
+            white-space: nowrap; animation: chipIn 0.15s ease;
+        }
+        @keyframes chipIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .chip .chip-x {
+            background: none; border: none; color: inherit; font-size: 0.9rem;
+            line-height: 1; padding: 0; cursor: pointer; opacity: 0.7;
+        }
+        .chip .chip-x:hover { opacity: 1; }
+        /* 筛选网格 */
+        .filter-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem;
+        }
+        /* 结果区 */
+        .result-stats {
+            display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; padding: 0.5rem 0;
+            font-size: 0.78rem; color: var(--text-secondary);
+        }
+        .result-stats .stat-badge {
+            padding: 0.15rem 0.5rem; border-radius: 6px;
+            background: var(--glass-bg); border: 1px solid var(--glass-border);
+        }
+        .file-group {
+            margin-bottom: 0.75rem; border: 1px solid var(--glass-border);
+            border-radius: var(--card-radius-sm); overflow: hidden;
+        }
+        .file-group-header {
+            display: flex; align-items: center; gap: 0.5rem;
+            padding: 0.5rem 0.75rem; cursor: pointer;
+            background: var(--glass-bg); font-size: 0.82rem;
+            user-select: none;
+        }
+        .file-group-header:hover { background: var(--accent-light); }
+        .file-group-header .file-line-count {
+            font-size: 0.7rem; color: var(--text-tertiary);
+        }
+        .file-group-header .btn-copy {
+            margin-left: auto; font-size: 0.68rem; padding: 0.15rem 0.4rem;
+            background: var(--accent-light); color: var(--accent);
+            border: 1px solid var(--accent); border-radius: 4px;
+            cursor: pointer; opacity: 0; transition: opacity 0.15s;
+        }
+        .file-group-header:hover .btn-copy { opacity: 1; }
+        .file-group-body { display: none; }
+        .file-group-body.open { display: block; }
+        .log-table { font-size: 0.75rem; }
+        .log-row { display: flex; gap: 0; border-bottom: 1px solid var(--glass-border); }
+        .log-row:hover { background: var(--accent-light); }
+        .log-row .lr-line { width: 60px; flex-shrink: 0; text-align: right;
+            padding: 0.15rem 0.5rem; color: var(--text-tertiary); font-size: 0.68rem; }
+        .log-row .lr-content { flex: 1; padding: 0.15rem 0.5rem;
+            font-family: 'SF Mono','Monaco','Consolas',monospace; white-space: pre-wrap; word-break: break-all; }
+        .empty-state { text-align: center; padding: 3rem; color: var(--text-tertiary); }
+        .form-select-sm { font-size: 0.82rem; }
+        .btn-live {
+            padding: 0.4rem 0.7rem; font-size: 0.78rem;
+            background: var(--glass-bg); color: var(--accent);
+            border: 1px solid var(--accent); border-radius: 6px;
+            cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem;
+            transition: all 0.2s;
+        }
+        .btn-live:hover { background: var(--accent-light); }
+        .btn-live.active {
+            background: var(--accent); color: #fff;
+            animation: livePulse 1.5s ease-in-out infinite;
+        }
+        @keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+        .btn-live.auto-stop { background: var(--warning); color: #000; border-color: var(--warning); }
+        .shell-cmd-bar {
+            display: flex; align-items: center; gap: 0.5rem;
+            background: #1a1a2e; border: 1px solid var(--glass-border);
+            border-radius: 8px; padding: 0.5rem 0.75rem; margin-bottom: 0.75rem;
+            font-size: 0.75rem;
+        }
+        .shell-cmd-bar code {
+            flex: 1; font-family: 'SF Mono','Monaco','Consolas',monospace;
+            color: #4ade80; overflow-x: auto; white-space: pre-wrap; word-break: break-all;
+        }
+        .btn-copy-shell {
+            background: none; border: 1px solid var(--glass-border);
+            color: var(--text-secondary); border-radius: 4px;
+            padding: 0.15rem 0.4rem; cursor: pointer; font-size: 0.8rem;
+        }
+        .btn-copy-shell:hover { background: var(--accent-light); color: var(--accent); }
+        /* 日志滚动容器（固定高度，内部滚动） */
+        .log-scroll-container {
+            max-height: calc(100vh - 260px);
+            overflow-y: auto;
+            overflow-x: hidden;
+            border-radius: 14px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+        }
+        .log-scroll-container::-webkit-scrollbar { width: 6px; }
+        .log-scroll-container::-webkit-scrollbar-track { background: transparent; }
+        .log-scroll-container::-webkit-scrollbar-thumb {
+            background: var(--glass-border); border-radius: 3px;
+        }
+        .log-scroll-container::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+        /* 版本号徽标 */
+        .version-badge {
+            font-size: 0.65rem; padding: 0.1rem 0.4rem;
+            background: var(--accent); color: #fff;
+            border-radius: 8px; font-weight: 600;
+            letter-spacing: 0.02em; opacity: 0.85;
+        }
+    </style>
 </head>
 <body>
     <div class="app">
@@ -13,6 +128,7 @@
             <div class="topbar-brand">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                 <span>postlook</span>
+                <span class="version-badge" id="postlookVersion">v-</span>
             </div>
             <nav class="topbar-nav">
                 <a href="logs.html" class="topbar-tab active">
@@ -31,6 +147,10 @@
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><line x1="12" y1="8" x2="5" y2="15"/><circle cx="19" cy="18" r="3"/><line x1="12" y1="8" x2="19" y2="15"/></svg>
                     <span>拓扑</span>
                 </a>
+                <a href="debug.html" class="topbar-tab">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    <span>调试</span>
+                </a>
             </nav>
             <button class="topbar-theme" id="themeBtn" title="切换主题">
                 <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -40,7 +160,7 @@
 
         <div class="main-area">
             <aside class="sidebar" id="sidebar">
-                <div class="sidebar-panel" id="sidebar-logs" style="display:flex;flex-direction:column">
+                <div class="sidebar-panel" style="display:flex;flex-direction:column">
                     <div class="sb-section">
                         <h4>快捷查询</h4>
                         <div class="sb-buttons" id="rulesContainer">
@@ -52,60 +172,86 @@
 
             <main class="content" style="padding:var(--content-padding)">
                 <section class="panel active">
-                    <form id="logForm" class="glass-card">
-                        <div class="form-grid">
+                    <div class="glass-card" style="margin-bottom:1rem;">
+                        <div class="filter-grid">
                             <div class="form-group">
-                                <label for="folder">目录或文件路径</label>
-                                <input type="text" id="folder" name="folder" placeholder="目录: /var/log  文件: /var/log/app.log" required autocomplete="off">
-                                <div id="searchHistoryDropdown" class="history-dropdown"></div>
+                                <label for="folder">日志路径</label>
+                                <input type="text" id="folder" placeholder="目录: /var/log 或文件路径" autocomplete="off">
+                                <div id="historyDropdown" class="history-dropdown"></div>
                             </div>
                             <div class="form-group">
-                                <label for="pattern">文件名匹配</label>
-                                <input type="text" id="pattern" name="pattern" value="*.log" placeholder="*.log">
+                                <label for="pattern">文件匹配</label>
+                                <select id="pattern" class="form-select-sm" style="width:100%;padding:0.45rem 0.6rem;background:var(--glass-bg);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:6px;">
+                                    <option value="*.log">*.log</option>
+                                    <option value="*.out">*.out</option>
+                                    <option value="*.log.*">*.log.*</option>
+                                    <option value="*">* (全部)</option>
+                                </select>
                             </div>
                             <div class="form-group">
                                 <label for="keyword">搜索关键字</label>
-                                <input type="text" id="keyword" name="keyword" placeholder="可选，不区分大小写">
+                                <input type="text" id="keyword" placeholder="可选，不区分大小写">
                             </div>
                             <div class="form-group">
-                                <label for="line_start">起始行号</label>
-                                <input type="number" id="line_start" name="line_start" value="1" min="1">
-                            </div>
-                            <div class="form-group">
-                                <label for="line_end">结束行号</label>
-                                <input type="number" id="line_end" name="line_end" value="100" min="1">
+                                <label for="lineCount">返回行数</label>
+                                <select id="lineCount" class="form-select-sm" style="width:100%;padding:0.45rem 0.6rem;background:var(--glass-bg);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:6px;">
+                                    <option value="50" selected>50 行</option>
+                                    <option value="100">100 行</option>
+                                    <option value="200">200 行</option>
+                                    <option value="500">500 行</option>
+                                </select>
                             </div>
                             <div class="form-group">
                                 <label for="tail">读取方向</label>
-                                <select id="tail" name="tail">
+                                <select id="tail" class="form-select-sm" style="width:100%;padding:0.45rem 0.6rem;background:var(--glass-bg);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:6px;">
                                     <option value="true" selected>文件尾部 (tail)</option>
                                     <option value="false">文件头部 (head)</option>
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="recent_files">最近文件数</label>
-                                <input type="number" id="recent_files" name="recent_files" value="10" min="1" max="50">
+                                <label for="recentFiles">最近文件数</label>
+                                <select id="recentFiles" class="form-select-sm" style="width:100%;padding:0.45rem 0.6rem;background:var(--glass-bg);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:6px;">
+                                    <option value="2" selected>2</option>
+                                    <option value="5">5</option>
+                                    <option value="10">10</option>
+                                    <option value="20">20</option>
+                                </select>
                             </div>
                         </div>
-                        <div class="form-actions">
-                            <button type="submit" class="btn-primary">
+                        <div class="chip-row" id="chipFilters"></div>
+                        <div class="form-actions" style="display:flex;gap:0.5rem;align-items:center;">
+                            <button type="button" class="btn-primary" id="btnQuery" onclick="doQuery()">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                                 查询
                             </button>
-                            <button type="reset" class="btn-secondary">重置</button>
+                            <button type="button" class="btn-secondary" onclick="resetFilters()">重置</button>
+                            <button type="button" class="btn-live" id="btnLive" onclick="toggleLive()" title="实时滚动刷新日志">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                <span id="btnLiveLabel">滚动</span>
+                            </button>
+                            <span id="queryTime" style="font-size:0.75rem;color:var(--text-tertiary);"></span>
                         </div>
-                    </form>
-                    <div id="logResults" class="results-area">
-                        <div class="results-placeholder">
-                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                            <p>输入查询条件后点击"查询"查看日志</p>
+                    </div>
+
+                    <!-- 等效 Shell 命令 -->
+                    <div class="shell-cmd-bar" id="shellCmdBar" style="display:none;">
+                        <code id="shellCmdText"></code>
+                        <button class="btn-copy-shell" onclick="copyShellCmd()" title="复制命令">📋</button>
+                    </div>
+
+                    <div class="log-scroll-container" id="logScrollContainer">
+                        <div id="logResults" class="results-area">
+                            <div class="empty-state">
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                <p>输入查询条件后点击"查询"查看日志</p>
+                            </div>
                         </div>
                     </div>
                 </section>
             </main>
         </div>
     </div>
-    <script src="js/common.js"></script>
-    <script src="js/logs.js"></script>
+    <script src="js/common.js?v=2.0"></script>
+    <script src="js/logs.js?v=2.0"></script>
 </body>
 </html>

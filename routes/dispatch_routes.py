@@ -58,6 +58,10 @@ GLOBAL_LOG_ARCHIVE_DIR = os.path.join(DATA_DIR, 'logs')  # 大日志归档目录
 DAILY_STATS_PATH = os.path.join(DATA_DIR, 'daily_stats.json')
 SHARED_DIR = os.path.join(DATA_DIR, '_shared')  # 跨区域共享模板目录
 
+# 全局日志配置
+MAX_HOT_LOG = 500          # 热日志保留条数
+LOG_RETENTION_DAYS = 30    # 归档日志保留天数
+
 # 线程锁
 _write_lock = threading.Lock()
 
@@ -295,11 +299,10 @@ def _get_archive_log_path(date_str=None):
 
 
 def _load_all_logs():
-    """加载所有日志：热数据 + 2天内的大日志"""
+    """加载所有日志：热数据 + LOG_RETENTION_DAYS 天内的归档日志"""
     logs = _load_json(GLOBAL_LOG_PATH)
-    # 加载最近2天的大日志
     from datetime import timedelta
-    for i in range(2):
+    for i in range(LOG_RETENTION_DAYS):
         date_str = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
         archive_path = _get_archive_log_path(date_str)
         if os.path.exists(archive_path):
@@ -310,25 +313,33 @@ def _load_all_logs():
 
 
 def _clean_old_archive_logs():
-    """清理2天前的大日志文件"""
+    """清理超过 LOG_RETENTION_DAYS 天的大日志文件"""
     from datetime import timedelta
-    cutoff_date = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
+    cutoff = datetime.now() - timedelta(days=LOG_RETENTION_DAYS)
+    cutoff_date_str = cutoff.strftime('%Y-%m-%d')
     if os.path.exists(GLOBAL_LOG_ARCHIVE_DIR):
+        cleaned = 0
         for f in os.listdir(GLOBAL_LOG_ARCHIVE_DIR):
             if f.startswith('global_log_') and f.endswith('.json'):
                 date_part = f.replace('global_log_', '').replace('.json', '')
-                if date_part < cutoff_date:
+                # 只清理严格匹配 YYYY-MM-DD 格式的文件，避免误删
+                if len(date_part) == 10 and date_part[4] == '-' and date_part[7] == '-':
                     try:
-                        os.remove(os.path.join(GLOBAL_LOG_ARCHIVE_DIR, f))
-                    except:
+                        datetime.strptime(date_part, '%Y-%m-%d')
+                        if date_part < cutoff_date_str:
+                            os.remove(os.path.join(GLOBAL_LOG_ARCHIVE_DIR, f))
+                            cleaned += 1
+                    except ValueError:
                         pass
+        if cleaned > 0:
+            print(f"[Dispatch] 已清理 {cleaned} 个超过 {LOG_RETENTION_DAYS} 天的归档日志文件")
 
 
 def write_global_log(action, region_key, detail='', level='info', raw_data=None):
     """写入全局操作日志
     
-    - 热数据 global_log.json：保留最新200条，前端实时展示
-    - 大日志 global_log_YYYY-MM-DD.json：满200条时批量追加旧日志，保留2天
+    - 热数据 global_log.json：保留最新 MAX_HOT_LOG 条，前端实时展示
+    - 大日志 global_log_YYYY-MM-DD.json：满 MAX_HOT_LOG 条时批量追加旧日志，保留 LOG_RETENTION_DAYS 天
     
     report_status 去重逻辑：
     - 完全一致（同模板+设备+状态+订单ID）：修改已有日志，追加重复次数
@@ -377,20 +388,20 @@ def write_global_log(action, region_key, detail='', level='info', raw_data=None)
         entry["raw_data"] = raw_data
     logs.append(entry)
     
-    # 超过200条：把最旧的日志批量追加到大日志，保留最新200条
-    if len(logs) > 200:
-        overflow = logs[:-200]  # 超出200条的部分
-        logs = logs[-200:]      # 保留最新200条
+    # 超过 MAX_HOT_LOG 条：把最旧的日志批量追加到大日志，保留最新 MAX_HOT_LOG 条
+    if len(logs) > MAX_HOT_LOG:
+        overflow = logs[:-MAX_HOT_LOG]  # 超出 MAX_HOT_LOG 条的部分
+        logs = logs[-MAX_HOT_LOG:]      # 保留最新 MAX_HOT_LOG 条
         # 追加到大日志文件
         archive_path = _get_archive_log_path()
         archive_logs = _load_json(archive_path)
         if not isinstance(archive_logs, list):
             archive_logs = []
         archive_logs.extend(overflow)
-        # 大日志最多500条
-        if len(archive_logs) > 500:
-            archive_logs = archive_logs[-500:]
+        # 归档日志不限制条数，仅按 LOG_RETENTION_DAYS 天清理
         _save_json(archive_path, archive_logs)
+        # 每次溢出时触发一次过期日志清理
+        _clean_old_archive_logs()
     
     _save_json(GLOBAL_LOG_PATH, logs)
     

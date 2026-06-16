@@ -258,6 +258,9 @@
             <button class="btn btn-primary" id="btnUpgrade" disabled>
                 <i class="bi bi-rocket-takeoff me-1"></i>开始升级
             </button>
+            <button class="btn btn-warning" id="btnRestartPostlook" style="margin-left:0.5rem;">
+                <i class="bi bi-arrow-repeat me-1"></i>重启 Postlook
+            </button>
 
             <div class="exclude-list">
                 <span style="font-size:0.75rem;opacity:0.6;width:100%;margin-bottom:0.2rem;">
@@ -364,6 +367,10 @@ curl -X POST http://{{ request.host }}/api/system/upgrade/rollback/升级备份�
                             {% else %}
                                 <span class="badge bg-danger">失败</span>
                             {% endif %}
+                            {% if r.get('merged_count', 0) > 1 %}
+                                <span class="badge bg-secondary ms-1" style="font-size:0.6rem;" title="合并了 {{ r.merged_count }} 次升级">×{{ r.merged_count }}</span>
+                            {% endif %}
+                        </td>
                         </td>
                         <td>{{ r.get('files_overlay', '-') }}</td>
                         <td>
@@ -549,6 +556,33 @@ function toggleApiHelp() {
         body.style.display = 'none';
         icon.className = 'bi bi-chevron-down';
     }
+}
+
+// ── 重启 Postlook ──
+const btnRestartPostlook = document.getElementById('btnRestartPostlook');
+if (btnRestartPostlook) {
+    btnRestartPostlook.addEventListener('click', function() {
+        if (!confirm('确定要重启 Postlook 服务？\n\nPostlook 将在 3 秒内重新启动。')) return;
+        var origText = btnRestartPostlook.innerHTML;
+        btnRestartPostlook.disabled = true;
+        btnRestartPostlook.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>重启中...';
+        fetch('/api/system/restart-postlook', { method: 'POST' })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.success) {
+                    alert('✅ ' + d.message);
+                } else {
+                    alert('❌ 重启失败: ' + (d.message || '') + '\n详情: ' + JSON.stringify(d.details || []));
+                }
+                btnRestartPostlook.disabled = false;
+                btnRestartPostlook.innerHTML = origText;
+            })
+            .catch(function(err) {
+                alert('❌ 请求失败: ' + err.message);
+                btnRestartPostlook.disabled = false;
+                btnRestartPostlook.innerHTML = origText;
+            });
+    });
 }
 </script>
 {% endblock %}

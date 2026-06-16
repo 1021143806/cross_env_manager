@@ -19,6 +19,7 @@
                 <a href="config.html" class="topbar-tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>配置管理</span></a>
                 <a href="status.html" class="topbar-tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>服务状态</span></a>
                 <a href="topology.html" class="topbar-tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><line x1="12" y1="8" x2="5" y2="15"/><circle cx="19" cy="18" r="3"/><line x1="12" y1="8" x2="19" y2="15"/></svg><span>拓扑</span></a>
+                <a href="debug.html" class="topbar-tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span>调试</span></a>
             </nav>
             <button class="topbar-theme" id="themeBtn" title="切换主题">
                 <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -31,7 +32,7 @@
                 <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" style="margin-bottom:20px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
                 <h1 style="font-size:1.8rem;font-weight:600;margin-bottom:8px">postlook</h1>
                 <p style="color:var(--text-tertiary);margin-bottom:30px">日志 HTTP 查询服务 · 选择功能开始使用</p>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
                     <a href="logs.html" class="glass-card" style="display:flex;flex-direction:column;align-items:center;padding:24px;gap:10px;text-decoration:none;color:var(--text-primary);transition:all 0.2s">
                         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                         <span style="font-weight:600">日志查询</span>
@@ -51,6 +52,11 @@
                         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><line x1="12" y1="8" x2="5" y2="15"/><circle cx="19" cy="18" r="3"/><line x1="12" y1="8" x2="19" y2="15"/></svg>
                         <span style="font-weight:600">拓扑</span>
                         <span style="font-size:0.78rem;color:var(--text-tertiary)">服务依赖关系、节点详情、日志入口</span>
+                    </a>
+                    <a href="debug.html" class="glass-card" style="display:flex;flex-direction:column;align-items:center;padding:24px;gap:10px;text-decoration:none;color:var(--text-primary);transition:all 0.2s">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                        <span style="font-weight:600">报文调试</span>
+                        <span style="font-size:0.78rem;color:var(--text-tertiary)">TCP 报文发送、分组管理、十六进制调试</span>
                     </a>
                 </div>
             </div>

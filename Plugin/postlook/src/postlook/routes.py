@@ -66,6 +66,7 @@ async def query_logs(req: LogQueryRequest):
     在指定文件夹内按文件名、关键字、行数等条件搜索。
     """
     try:
+        from .app import __version__
         result = scan_logs(
             folder=req.folder,
             root_dirs=app_config.ROOT_DIRS,
@@ -76,6 +77,7 @@ async def query_logs(req: LogQueryRequest):
             line_start=req.line_start,
             line_end=req.line_end,
         )
+        result["postlook_version"] = __version__
 
         if result.get("error") and not result.get("results"):
             raise HTTPException(status_code=404, detail=result["error"])
@@ -428,6 +430,16 @@ async def api_help():
                 "method": "GET",
                 "path": "/docs",
                 "description": "Swagger UI 交互式 API 文档"
+            },
+            {
+                "method": "GET",
+                "path": "/api/version",
+                "description": "版本号 + 关键文件 hash（升级后校验代码是否生效）"
+            },
+            {
+                "method": "POST",
+                "path": "/api/system/reload",
+                "description": "重启 Postlook 进程（退出后由 supervisor 自动拉起）"
             }
         ],
         "usage": {
@@ -445,3 +457,172 @@ async def api_help():
             "default_lines": app_config.DEFAULT_LINES,
         }
     }
+
+
+@router.get("/api/version")
+async def api_version():
+    """返回版本号 + 关键文件 hash（用于升级后校验代码是否生效）"""
+    import hashlib
+    from pathlib import Path as _Path
+    from .app import __version__
+
+    _src = _Path(__file__).resolve().parent
+    key_files = {
+        "routes.py": _src / "routes.py",
+        "scanner.py": _src / "scanner.py",
+        "config.py": _src / "config.py",
+        "debug_service.py": _src / "debug_service.py",
+        "app.py": _src / "app.py",
+    }
+    hashes = {}
+    for name, path in key_files.items():
+        try:
+            if path.exists():
+                h = hashlib.md5(path.read_bytes()).hexdigest()[:8]
+                hashes[name] = h
+        except Exception:
+            pass
+
+    return {
+        "version": __version__,
+        "file_hashes": hashes,
+        "hash": hashlib.md5(
+            "".join(hashes.values()).encode()
+        ).hexdigest()[:8],
+    }
+
+
+@router.post("/api/system/reload")
+async def reload_postlook():
+    """重启 Postlook 进程（退出后依赖 supervisor auto-restart 拉起新代码）"""
+    import os as _os, signal as _signal
+    from threading import Timer
+
+    def _do_exit():
+        _os.kill(_os.getpid(), _signal.SIGTERM)
+
+    # 延迟 500ms 退出，确保 HTTP 响应先发出去
+    Timer(0.5, _do_exit).start()
+    return {"status": "ok", "message": "Postlook 正在重启，新代码即将生效"}
+
+
+# ════════════════════════════════════════════════════════════
+#  报文调试 API (v0.4.0)
+# ════════════════════════════════════════════════════════════
+
+class TestConnectionRequest(BaseModel):
+    """POST /api/debug/test-connection 请求体"""
+    host: str = Field(..., description="目标主机 IP 或域名")
+    port: int = Field(..., ge=1, le=65535, description="目标端口")
+
+
+class SendMessageRequest(BaseModel):
+    """POST /api/debug/send 请求体"""
+    hex: str = Field(..., description="十六进制报文内容")
+
+
+class ConfigContentRequest(BaseModel):
+    """配置保存请求体（复用）"""
+    content: str = Field(..., description="TOML 配置内容")
+
+
+@router.post("/api/debug/test-connection")
+async def debug_test_connection(req: TestConnectionRequest):
+    """Ping + TCP 端口检测"""
+    from .debug_service import test_connection
+    try:
+        result = test_connection(req.host, req.port)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/debug/messages")
+async def debug_get_messages():
+    """获取报文分组数据（JSON）"""
+    from .debug_service import load_messages
+    return load_messages()
+
+
+@router.get("/api/debug/messages-toml")
+async def debug_get_messages_toml():
+    """获取 messages.toml 原文"""
+    from fastapi.responses import PlainTextResponse
+    from .debug_service import MESSAGES_PATH
+    if MESSAGES_PATH.exists():
+        with open(MESSAGES_PATH, "r", encoding="utf-8") as f:
+            return PlainTextResponse(f.read())
+    return PlainTextResponse("# messages.toml 不存在\n", status_code=404)
+
+
+@router.post("/api/debug/messages")
+async def debug_save_messages(req: ConfigContentRequest):
+    """保存报文数据（热更新）"""
+    from .debug_service import save_messages
+    try:
+        result = save_messages(req.content)
+        if result.get("error"):
+            raise HTTPException(status_code=400, detail=result["error"])
+        return {"status": "ok", "message": "报文数据已保存并热更新生效", "data": result}
+    except HTTPException:
+        raise
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=f"无法写入: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/debug/reload")
+async def debug_reload():
+    """热重新加载报文配置"""
+    from .debug_service import reload_messages
+    result = reload_messages()
+    return {"status": "ok" if result.get("success") else "error", "message": "报文配置已重新加载", "data": result}
+
+
+@router.get("/api/debug/config")
+async def debug_get_config():
+    """获取 TCP 连接配置"""
+    from .config import get_debug_config, get_debug_config_toml
+    return {
+        "config": get_debug_config(),
+        "toml": get_debug_config_toml(),
+    }
+
+
+@router.post("/api/debug/config")
+async def debug_save_config(req: ConfigContentRequest):
+    """保存连接配置（热更新）"""
+    from .config import save_debug_config_toml
+    try:
+        save_debug_config_toml(req.content)
+        return {"status": "ok", "message": "调试配置已保存并热更新生效"}
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=f"无法写入: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/debug/send")
+async def debug_send(req: SendMessageRequest):
+    """发送单条 hex 报文（连接→发送→接收→断开）"""
+    from .debug_service import send_hex_message
+    cfg = app_config.get_debug_config()
+    conn = cfg["connection"]
+    send_opts = cfg["send"]
+
+    result = send_hex_message(
+        host=conn["host"],
+        port=conn["port"],
+        hex_str=req.hex,
+        connect_timeout=conn["timeout"],
+        recv_timeout=conn["recv_timeout"],
+        recv_buffer=conn["recv_buffer"],
+        auto_lowercase=send_opts["auto_lowercase"],
+        auto_uppercase=send_opts["auto_uppercase"],
+    )
+
+    if not result["success"] and result["error"]:
+        raise HTTPException(status_code=502, detail=result["error"])
+
+    return result
