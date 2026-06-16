@@ -1127,12 +1127,17 @@
                     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>检查中...';
                     const check = await checkShelfTaskStatus(shelf);
                     if (check.exists) {
-                        taskExistsMessage.textContent = `当前货架 ${shelf} 有任务正在${check.status}，请勿重复下发！`;
+                        if (taskExistsMessage) {
+                            taskExistsMessage.textContent = `当前货架 ${shelf} 有任务正在${check.status}，请勿重复下发！`;
+                        }
                         taskExistsModal.show();
-                        shelfQueryInput.value = shelf;
-                        document.querySelector('[data-type="shelf"]').classList.add('active');
-                        document.querySelector('[data-type="order"]').classList.remove('active');
-                        shelfQueryGroup.style.display='block'; orderQueryGroup.style.display='none';
+                        if (shelfQueryInput) shelfQueryInput.value = shelf;
+                        const shelfTab = document.querySelector('[data-type="shelf"]');
+                        const orderTab = document.querySelector('[data-type="order"]');
+                        if (shelfTab) shelfTab.classList.add('active');
+                        if (orderTab) orderTab.classList.remove('active');
+                        if (shelfQueryGroup) shelfQueryGroup.style.display='block';
+                        if (orderQueryGroup) orderQueryGroup.style.display='none';
                         setTimeout(queryTasks, 200);
                         submitBtn.disabled = false;
                         submitBtn.innerHTML = '<i class="bi bi-send me-2"></i>下发任务';

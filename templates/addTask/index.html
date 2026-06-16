@@ -408,15 +408,15 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header border-0">
-                <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>任务已存在</h5>
+                <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>重复下发提醒</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p>当前选择的设备已有未完成任务，是否继续下发？</p>
+                <p id="task-exists-message"></p>
+                <p class="text-muted small mb-0"><i class="bi bi-info-circle me-1"></i>右侧查询面板已自动填入货架号，可查看任务状态</p>
             </div>
             <div class="modal-footer border-0">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" id="confirm-resend-btn">确认继续</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">知道了</button>
             </div>
         </div>
     </div>
