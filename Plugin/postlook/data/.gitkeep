@@ -1,0 +1,2 @@
+# 保持 data 目录被 git 跟踪
+# messages.toml 不在 gitignore 中，需要提交模板便于初始部署
