@@ -249,28 +249,34 @@ def search_lines(
         if len(results) > max_lines:
             results = results[:max_lines]
     else:
-        # 无关键字：行号范围过滤
-        if line_start is not None or line_end is not None:
+        # 无关键字
+        if tail:
+            # tail 模式：直接从全文尾部取，忽略 line_start
+            end = line_end if line_end else total
+            selected = lines[-min(end, len(lines)):]
+            line_offset = max(0, len(lines) - len(selected))
+            if len(selected) > max_lines:
+                selected = selected[-max_lines:]
+        elif line_start is not None or line_end is not None:
+            # head / 指定范围
             start = (line_start or 1) - 1
             end = line_end if line_end else total
             start = max(0, start)
             end = min(total, end)
-            lines = lines[start:end]
+            selected = lines[start:end]
             line_offset = start
+            if tail:
+                selected = selected[-max_lines:]
         else:
             line_offset = 0
-
-        if tail:
-            selected = lines[-max_lines:]
-            start_idx = max(0, len(lines) - max_lines)
-        else:
-            selected = lines[:max_lines]
-            start_idx = 0
+            if tail:
+                selected = lines[-max_lines:]
+                line_offset = max(0, len(lines) - len(selected))
 
         for i, line in enumerate(selected):
             results.append({
                 "file": file_path.name,
-                "line": line_offset + start_idx + i + 1,
+                "line": line_offset + i + 1,
                 "content": line.rstrip("\n\r")
             })
 
