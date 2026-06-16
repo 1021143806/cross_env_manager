@@ -1247,6 +1247,7 @@
             }
 
             let _pendingAutoSearch = null;
+            let queryLastClickTime = 0;
 
             function autoQueryAfterSubmit(orderId) {
                 if (_pendingAutoSearch) clearTimeout(_pendingAutoSearch);
