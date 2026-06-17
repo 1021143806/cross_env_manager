@@ -1436,6 +1436,7 @@ def handle_status_report(data):
                 if not _device_code and not _device_num:
                     rk_cc_change = f'{rk}:跳过(无设备信息)'
                 elif not any(d.get('deviceCode') == _device_code for d in rk_now_devices):
+                    old_cc = len(rk_now_devices)
                     rk_now_devices.append({
                         "deviceCode": _device_code,
                         "deviceNum": _device_num,
@@ -1445,20 +1446,31 @@ def handle_status_report(data):
                         "state": "pending"
                     })
                     rk_cc_change = f'{rk}:+1(共{len(rk_now_devices)})'
+                    # 记录设备入池事件到操作日志
+                    try:
+                        write_global_log('device_arrive', rk,
+                            f'设备入池: {_device_num}({_device_code[-8:] if _device_code else "?"}) '
+                            f'→ {len(rk_now_devices)}台 | 模板:{template_name} status:{status} oid:{order_id}',
+                            raw_data={'deviceCode': _device_code, 'deviceNum': _device_num,
+                                      'template': template_name, 'status': status, 'order_id': order_id,
+                                      'region_key': rk, 'currentCount_before': old_cc,
+                                      'currentCount_after': len(rk_now_devices), 'direction': 'in'})
+                    except: pass
             else:
                 # 离开完成：从 currentCount.json 删除
                 old_cc = len(rk_now_devices)
                 rk_now_devices = [d for d in rk_now_devices if d.get('deviceCode') != device_code]
                 if len(rk_now_devices) < old_cc:
                     rk_cc_change = f'{rk}:-1(共{len(rk_now_devices)})'
-                    # 记录设备从网格消失事件到操作日志
+                    # 记录设备出池事件到操作日志
                     try:
                         write_global_log('device_leave', rk,
-                            f'设备离开网格: {device_num}({device_code[-8:] if device_code else "?"}), '
-                            f'模板:{template_name}, status:{status}, order_id:{order_id}',
+                            f'设备出池: {device_num}({device_code[-8:] if device_code else "?"}) '
+                            f'→ {len(rk_now_devices)}台 | 模板:{template_name} status:{status} oid:{order_id}',
                             raw_data={'deviceCode': device_code, 'deviceNum': device_num,
                                       'template': template_name, 'status': status, 'order_id': order_id,
-                                      'region_key': rk, 'currentCount_after': len(rk_now_devices)})
+                                      'region_key': rk, 'currentCount_before': old_cc,
+                                      'currentCount_after': len(rk_now_devices), 'direction': 'out'})
                     except: pass
             _save_json(rk_now_file, rk_now_devices)
             if rk_cc_change:
@@ -1676,7 +1688,7 @@ def api_device_trace():
         if action == 'report_status':
             continue
         
-        icon = {'device_leave': '🔴', 'self_heal_detail': '🔴', 'execute': '📤',
+        icon = {'device_leave': '🔴', 'device_arrive': '🟢', 'self_heal_detail': '🔴', 'execute': '📤',
                 'execute_skip': '⏭️', 'device_history': '📋'}.get(action, '📌')
         
         traces.append({
@@ -3694,17 +3706,18 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
                     'state': state, 'action': '清理',
                     'reason': f'当前设备离线: {state}'
                 })
-                # 记录设备离开网格事件
+                # 记录设备出池事件（自愈清理）
                 try:
-                    # 构造查询 URL 用于诊断
                     _api_url = api_path if api_path.startswith('http') else f'http://{api_path}'
                     _req_body = {'areaId': area_id, 'deviceType': '0', 'deviceCode': device_code}
                     _resp_info = {'state': state, 'battery': battery} if device_info else {'error': 'API无响应'}
+                    _cc_after = len(now_devices)  # 清理后的数量（loop 内已移除）
                     write_global_log('device_leave', region_key,
-                        f'设备离开网格(自恢复清理): {device_num}({device_code[-8:] if device_code else "?"}), '
-                        f'状态:{state} | API={_api_url}',
+                        f'设备出池(自愈): {device_num}({device_code[-8:] if device_code else "?"}) '
+                        f'→ {_cc_after}台 | 状态:{state} API={_api_url}',
                         raw_data={'deviceCode': device_code, 'deviceNum': device_num,
                                   'state': state, 'region_key': region_key, 'reason': 'self_heal',
+                                  'currentCount_after': _cc_after,
                                   'api_url': _api_url, 'request': _req_body, 'response': _resp_info})
                 except: pass
             else:
@@ -3744,7 +3757,17 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
                     if dc:
                         now_file = _get_region_file(region_key, 'currentCount.json')
                         now_devices = _load_json(now_file)
+                        old_cc = len(now_devices)
                         now_devices = [d for d in now_devices if d.get('deviceCode') != dc]
+                        if len(now_devices) < old_cc:
+                            try:
+                                write_global_log('device_leave', region_key,
+                                    f'设备出池(超时): {dn}({dc[-8:] if dc else "?"}) '
+                                    f'→ {len(now_devices)}台 | 模板:{tpl_code} 超时{task_timeout_hours}h oid:{oid}',
+                                    raw_data={'deviceCode': dc, 'deviceNum': dn, 'template': tpl_code,
+                                              'region_key': region_key, 'reason': f'task_timeout_{task_timeout_hours}h',
+                                              'order_id': oid, 'currentCount_after': len(now_devices)})
+                            except: pass
                         _save_json(now_file, now_devices)
                 else:
                     new_tasks.append(task)

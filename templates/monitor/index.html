@@ -88,6 +88,8 @@
     .monitor-row .col-action.execute { color: var(--monitor-yellow); }
     .monitor-row .col-action.error { color: var(--monitor-red); }
     .monitor-row .col-action.clean { color: var(--monitor-purple); }
+    .monitor-row .col-action.arrive { color: var(--monitor-green); }
+    .monitor-row .col-action.leave { color: var(--monitor-red); }
     .monitor-row .col-region { color: var(--monitor-dim); }
     .monitor-row .col-detail { color: var(--monitor-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .monitor-row .col-count { text-align: right; font-weight: 600; }
@@ -571,6 +573,8 @@ function renderLogStream(logs) {
         else if (action.startsWith('execute')) actionCls = 'execute';
         else if (action.includes('error') || log.level === 'error') actionCls = 'error';
         else if (action.startsWith('clean')) actionCls = 'clean';
+        else if (action === 'device_arrive') actionCls = 'arrive';
+        else if (action === 'device_leave') actionCls = 'leave';
         
         // 简化 detail 显示
         let shortDetail = detail;
