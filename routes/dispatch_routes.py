@@ -2834,8 +2834,8 @@ def _query_device_status(server, api_path, area_id, device_code):
                 if device_code:
                     if resp_data:
                         return resp_data[0]
-                    # 空列表：设备不在该 areaId 下，返回特殊标记
-                    return {'state': '_not_found'}
+                    # 空列表：设备不在该 areaId 下，返回特殊标记 + ICS 原始响应
+                    return {'state': '_not_found', '_raw_ics': data}
                 return resp_data
         print(f"[Dispatch] _query_device_status 响应异常: url={url}, code={data.get('code')}, device={device_code}")
         return None
@@ -3735,7 +3735,10 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
                 try:
                     _api_url = api_path if api_path.startswith('http') else f'http://{api_path}'
                     _req_body = {'areaId': area_id, 'deviceType': '0', 'deviceCode': device_code}
-                    _resp_info = {'state': state, 'battery': battery} if device_info else {'error': 'API无响应'}
+                    # 保留 ICS 原始响应（_raw_ics），_not_found 时 ICS 返回 {"code":1000,"data":[]}
+                    _resp_info = {'state': state, 'battery': battery}
+                    if device_info and '_raw_ics' in device_info:
+                        _resp_info['_raw_ics'] = device_info['_raw_ics']
                     _cc_after = len(now_devices)  # 清理后的数量（loop 内已移除）
                     write_global_log('device_leave', region_key,
                         f'设备出池(自愈): {device_num}({device_code[-8:] if device_code else "?"}) '
