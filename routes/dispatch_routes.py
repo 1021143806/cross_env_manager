@@ -1021,7 +1021,38 @@ def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
                     cleaned += removed2
                     print(f"[Dispatch] _clean_by_order_id: 按deviceCode清理 {rk}/{t.get('code', t.get('name', ''))} 删除了{removed2}条")
     if cleaned == 0 and order_id:
-        print(f"[Dispatch] _clean_by_order_id_across_all_regions: 无匹配! order_id={order_id}, device={device_code}({device_num}), 已遍历所有区域")
+        # 诊断：收集所有模板中 active order_id + 模糊匹配信息
+        fuzzy_hits = []
+        all_active = []
+        for rk, region in index.items():
+            if not isinstance(region, dict) or 'templates' not in region:
+                continue
+            for t in region.get('templates', []):
+                fpath = _get_template_file_path(rk, t)
+                tasks = _load_json(fpath)
+                if not tasks:
+                    continue
+                active_oids = [task.get('order_id', '') for task in tasks 
+                              if task.get('status') in (6, 9, 10) and task.get('order_id')]
+                if active_oids:
+                    tname = t.get('code', t.get('name', ''))
+                    all_active.append(f'{rk}/{tname} oids={active_oids[:3]}')
+                # 模糊匹配检查
+                for task in tasks:
+                    t_oid = task.get('order_id', '')
+                    if t_oid and t_oid != order_id:
+                        if t_oid.startswith(order_id) or order_id.startswith(t_oid):
+                            fuzzy_hits.append(f'{rk}/{t.get("code", t.get("name", ""))} oid={t_oid[:60]} status={task.get("status")}')
+                            break
+        msg = (f'[order_id匹配诊断-清理] target_oid={order_id} dc={device_code} dn={device_num} exact=0')
+        if fuzzy_hits:
+            msg += f' fuzzy_hits=[{"; ".join(fuzzy_hits[:5])}]'
+        if all_active:
+            msg += f' all_active=[{"; ".join(all_active[:10])}]'
+        print(f"[Dispatch] {msg}")
+        try:
+            write_global_log('order_id_diag', '', msg, level='warning')
+        except: pass
     else:
         print(f"[Dispatch] _clean_by_order_id_across_all_regions: 共清理{cleaned}条")
     return cleaned, cleaned_task_types
@@ -1031,13 +1062,18 @@ def _update_by_order_id_across_all_regions(order_id, device_code, device_num):
     """当 status=6 无法匹配模板时，遍历所有区域按 order_id 更新设备信息"""
     index = _load_cache_index()
     updated = 0
-    debug_info = []  # 收集调试信息
+    debug_info = []  # 收集调试信息：各模板中 (6,9,10) 的 order_id 列表
+    fuzzy_hits = []  # 收集模糊匹配：前缀或后缀部分一致的 order_id（诊断 suffix 问题）
+    checked_template_count = 0
     for rk, region in index.items():
         if not isinstance(region, dict) or 'templates' not in region:
             continue
         for t in region.get('templates', []):
             fpath = _get_template_file_path(rk, t)
             tasks = _load_json(fpath)
+            if not tasks:
+                continue
+            checked_template_count += 1
             found = False
             for task in tasks:
                 if task.get('order_id') == order_id and task.get('status') in (6, 9, 10):
@@ -1051,14 +1087,33 @@ def _update_by_order_id_across_all_regions(order_id, device_code, device_num):
                 _save_json(fpath, tasks)
                 print(f"[Dispatch] _update_by_order_id: 更新 {rk}/{t.get('code', t.get('name', ''))} device={device_num}")
             else:
-                # 收集未匹配的模板信息用于调试
-                matching_orders = [task.get('order_id', '') for task in tasks if task.get('status') in (6, 9, 10)]
+                # 收集未匹配模板的 active order_id 列表(诊断)
+                matching_orders = [task.get('order_id', '') for task in tasks if task.get('status') in (6, 9, 10) and task.get('order_id')]
                 if matching_orders:
                     debug_info.append(f'{rk}/{t.get("code", t.get("name", ""))} orders={matching_orders[:3]}')
+                # 模糊匹配: 检查是否有 order_id 以目标为前缀或目标以某个 order_id 为前缀(ICS suffix 问题)
+                for task in tasks:
+                    t_oid = task.get('order_id', '')
+                    if t_oid and t_oid != order_id:
+                        if t_oid.startswith(order_id) or order_id.startswith(t_oid):
+                            fuzzy_hits.append(f'{rk}/{t.get("code", t.get("name", ""))} oid={t_oid[:60]} status={task.get("status")}')
+                            break
     if updated == 0:
-        print(f"[Dispatch] _update_by_order_id: 未找到匹配 order_id={order_id}, device={device_num}({device_code})")
+        msg = (f'[order_id匹配诊断-更新] target_oid={order_id} dc={device_code} dn={device_num} '
+               f'checked={checked_template_count}个模板 exact=0')
+        if fuzzy_hits:
+            msg += f' fuzzy_hits=[{"; ".join(fuzzy_hits[:5])}]'
         if debug_info:
-            print(f"[Dispatch] _update_by_order_id: 已检查模板: {'; '.join(debug_info[:10])}")
+            all_oids = []
+            for d in debug_info:
+                # extract order_ids from debug string
+                oids_part = d.split(' orders=')[-1] if ' orders=' in d else d
+                all_oids.append(oids_part)
+            msg += f' all_active_oids=[{"; ".join(all_oids[:10])}]'
+        print(f"[Dispatch] {msg}")
+        try:
+            write_global_log('order_id_diag', '', msg, level='warning')
+        except: pass
     return updated
 
 
