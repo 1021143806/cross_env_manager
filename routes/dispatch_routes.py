@@ -932,6 +932,30 @@ def get_all_areas_status():
 
 # ========== 状态上报处理 ==========
 
+def _order_id_matches(stored_oid, target_oid):
+    """Order ID 匹配（兼容 ICS suffix 拼接问题）
+    
+    ICS 对 CEM 下发的 order_id 会拼接后缀 _X_YYYY：
+      CEM dispatch:   CEM_auto_id5_2026-06-17_11:39:03.788__8724
+      ICS status=6:   CEM_auto_id5_2026-06-17_11:39:03.788__8724_1_4123  (带后缀)
+      ICS 内部模板:    CEM_auto_id5_2026-06-17_11:39:03.788__8724        (无后缀)
+    
+    因此需要双向前缀匹配：
+      - 精确匹配：A == B
+      - 存储 oid 以目标 oid 为前缀（存储有 suffix，搜索用无 suffix 版本）
+      - 目标 oid 以存储 oid 为前缀（存储无 suffix，搜索用有 suffix 版本）
+    
+    用 '_' 作为分隔符避免误匹配（CEM_auto_...8724 不会匹配 CEM_auto_...872）。
+    """
+    if not stored_oid or not target_oid:
+        return False
+    if stored_oid == target_oid:
+        return True
+    # 双向前缀匹配：stored 或 target 为基 order_id，另一方拼接了 ICS suffix _X_YYYY
+    return (stored_oid.startswith(target_oid + '_') or 
+            target_oid.startswith(stored_oid + '_'))
+    
+
 def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
     """当 status=8 无法匹配模板时，遍历所有区域所有模板按 order_id 清理
     
@@ -952,9 +976,13 @@ def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
             fpath = _get_template_file_path(rk, t)
             tasks = _load_json(fpath)
             old_count = len(tasks)
-            # 按 order_id 匹配删除，同时记录被删任务的信息
-            removed_tasks = [task for task in tasks if task.get('order_id') == order_id and task.get('status') in (6, 9, 10)]
-            new_tasks = [task for task in tasks if not (task.get('order_id') == order_id and task.get('status') in (6, 9, 10))]
+            # 按 order_id 匹配删除（精确匹配 + 前缀匹配，兼容 ICS suffix）
+            removed_tasks = [task for task in tasks 
+                            if _order_id_matches(task.get('order_id', ''), order_id) 
+                            and task.get('status') in (6, 9, 10)]
+            new_tasks = [task for task in tasks 
+                        if not (_order_id_matches(task.get('order_id', ''), order_id) 
+                               and task.get('status') in (6, 9, 10))]
             if len(new_tasks) < old_count:
                 _save_json(fpath, new_tasks)
                 removed = old_count - len(new_tasks)
@@ -1076,7 +1104,8 @@ def _update_by_order_id_across_all_regions(order_id, device_code, device_num):
             checked_template_count += 1
             found = False
             for task in tasks:
-                if task.get('order_id') == order_id and task.get('status') in (6, 9, 10):
+                # 精确匹配 或 ICS suffix 前缀匹配
+                if task.get('status') in (6, 9, 10) and _order_id_matches(task.get('order_id', ''), order_id):
                     task['deviceCode'] = device_code
                     task['deviceNum'] = device_num
                     task['update_time'] = datetime.now().isoformat()
@@ -1271,7 +1300,7 @@ def handle_status_report(data):
         tasks = _load_json(template_file)
         old_count = len(tasks)
         if order_id:
-            tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') in (6, 9, 10))]
+            tasks = [t for t in tasks if not (_order_id_matches(t.get('order_id', ''), order_id) and t.get('status') in (6, 9, 10))]
         if device_code:
             tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('status') in (6, 9, 10))]
         template_removed = old_count - len(tasks)
@@ -1293,9 +1322,10 @@ def handle_status_report(data):
                 match_level = 'deviceCode'
                 break
         # 第2级：按 order_id 匹配（空车任务，下发时可能已指定设备也可能未指定）
+        # 使用双向前缀匹配兼容 ICS suffix
         if not existing and order_id:
             for t in tasks:
-                if t.get('order_id') == order_id and t.get('status') in (6, 9, 10):
+                if t.get('status') in (6, 9, 10) and _order_id_matches(t.get('order_id', ''), order_id):
                     existing = t
                     match_level = 'order_id'
                     break
@@ -1340,18 +1370,25 @@ def handle_status_report(data):
         
         # 在清理前先保存匹配到的任务信息（用于后续 currentCount 更新）
         _matched_task = None
-        # 第1级：deviceCode + order_id 精确匹配
-        matched = [t for t in tasks if t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') in (6, 9, 10)]
+        # 第1级：deviceCode + order_id 精确匹配（负载任务，同一设备可能有多个子任务）
+        # order_id 用双向前缀匹配兼容 ICS suffix
+        matched = [t for t in tasks if t.get('deviceCode') == device_code 
+                   and _order_id_matches(t.get('order_id', ''), order_id) 
+                   and t.get('status') in (6, 9, 10)]
         if matched:
             _matched_task = matched[0]
-            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code and t.get('order_id') == order_id and t.get('status') in (6, 9, 10))]
+            tasks = [t for t in tasks if not (t.get('deviceCode') == device_code 
+                      and _order_id_matches(t.get('order_id', ''), order_id) 
+                      and t.get('status') in (6, 9, 10))]
         elif order_id:
-            # 第2级：order_id 匹配
+            # 第2级：order_id 匹配（空车任务，deviceCode 为空）
+            # 使用双向前缀匹配兼容 ICS suffix
             for t in tasks:
-                if t.get('order_id') == order_id and t.get('status') in (6, 9, 10):
+                if t.get('status') in (6, 9, 10) and _order_id_matches(t.get('order_id', ''), order_id):
                     _matched_task = t
                     break
-            tasks = [t for t in tasks if not (t.get('order_id') == order_id and t.get('status') in (6, 9, 10))]
+            tasks = [t for t in tasks if not (t.get('status') in (6, 9, 10) 
+                      and _order_id_matches(t.get('order_id', ''), order_id))]
         else:
             # 第3级：deviceCode 匹配（兜底）
             for t in tasks:
