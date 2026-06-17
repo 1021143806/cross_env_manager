@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+{% block title %}操作日志 - 跨环境任务模板管理系统{% endblock %}
+
+{% block styles %}
+<style>
+    :root {
+        --log-bg: #1a1d23;
+        --log-card: rgba(34, 37, 45, 0.85);
+        --log-border: rgba(255,255,255,0.06);
+        --log-text: #c9d1d9;
+        --arrive-color: #3fb950;
+        --leave-color: #f85149;
+        --heal-color: #d29922;
+        --execute-color: #58a6ff;
+        --unmatch-color: #8b949e;
+    }
+    body { background: var(--log-bg); color: var(--log-text); }
+    .log-shell { max-width: 1400px; margin: 0 auto; padding: 1rem; }
+    
+    /* Tab bar */
+    .log-tabs { display: flex; gap: 0; margin-bottom: 1rem; border-bottom: 1px solid var(--log-border); }
+    .log-tab {
+        padding: 0.5rem 1.25rem; border: none; background: transparent; color: #8b949e;
+        cursor: pointer; font-size: 0.9rem; border-bottom: 2px solid transparent; transition: all 0.2s;
+    }
+    .log-tab:hover { color: #e6edf3; }
+    .log-tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+    
+    /* Filter bar */
+    .log-filter { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; padding: 0.75rem; background: var(--log-card); border-radius: 8px; border: 1px solid var(--log-border); }
+    .log-filter select, .log-filter input { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #e6edf3; border-radius: 6px; padding: 0.4rem 0.6rem; font-size: 0.82rem; }
+    .log-filter select:focus, .log-filter input:focus { outline: none; border-color: #58a6ff; }
+    .log-filter .btn-refresh { background: transparent; border: 1px solid rgba(255,255,255,0.12); color: #58a6ff; border-radius: 6px; padding: 0.4rem 0.8rem; cursor: pointer; font-size: 0.82rem; }
+    .log-filter .btn-refresh:hover { background: rgba(88,166,255,0.1); }
+    
+    /* Stats cards */
+    .log-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+    .log-stat-card { padding: 0.75rem 1rem; border-radius: 8px; background: var(--log-card); border: 1px solid var(--log-border); text-align: center; }
+    .log-stat-card .stat-val { font-size: 1.6rem; font-weight: 700; }
+    .log-stat-card .stat-label { font-size: 0.75rem; color: #8b949e; margin-top: 0.2rem; }
+    .stat-arrive .stat-val { color: var(--arrive-color); }
+    .stat-leave .stat-val { color: var(--leave-color); }
+    .stat-heal .stat-val { color: var(--heal-color); }
+    .stat-execute .stat-val { color: var(--execute-color); }
+    .stat-unmatch .stat-val { color: var(--unmatch-color); }
+    
+    /* Charts */
+    .log-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+    @media (max-width: 900px) { .log-charts { grid-template-columns: 1fr; } }
+    .log-chart-card { padding: 0.75rem 1rem; border-radius: 8px; background: var(--log-card); border: 1px solid var(--log-border); }
+    .log-chart-card h6 { color: #8b949e; font-size: 0.82rem; margin-bottom: 0.5rem; }
+    .log-chart-card canvas { width: 100% !important; height: 220px !important; }
+    
+    /* Log list */
+    .log-list { max-height: calc(100vh - 500px); min-height: 300px; overflow-y: auto; border-radius: 8px; background: var(--log-card); border: 1px solid var(--log-border); }
+    .log-row { display: flex; align-items: flex-start; padding: 0.4rem 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.78rem; gap: 0.5rem; }
+    .log-row:hover { background: rgba(255,255,255,0.03); }
+    .log-row .log-time { color: #6b7280; white-space: nowrap; min-width: 50px; }
+    .log-row .log-marker { min-width: 18px; text-align: center; font-size: 0.8rem; }
+    .log-row .log-region { color: #58a6ff; font-weight: 600; min-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .log-row .log-detail { flex: 1; word-break: break-all; }
+    .marker-arrive { color: var(--arrive-color); }
+    .marker-leave { color: var(--leave-color); }
+    .marker-heal { color: var(--heal-color); }
+    .marker-execute { color: var(--execute-color); }
+    .marker-unmatch { color: var(--unmatch-color); }
+    
+    /* Pagination */
+    .log-pager { display: flex; justify-content: center; align-items: center; gap: 0.5rem; padding: 0.5rem; }
+    .log-pager button { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #e6edf3; border-radius: 6px; padding: 0.3rem 0.7rem; font-size: 0.78rem; cursor: pointer; }
+    .log-pager button:hover { background: rgba(88,166,255,0.15); }
+    .log-pager button:disabled { opacity: 0.4; cursor: default; }
+    .log-pager .page-info { font-size: 0.75rem; color: #8b949e; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="log-shell">
+    <h5 style="margin-bottom:0.5rem;font-weight:600;"><i class="bi bi-journal-text me-2"></i>操作日志分析</h5>
+    
+    <!-- Tab bar -->
+    <div class="log-tabs">
+        <button class="log-tab active" onclick="switchLogTab('stream')">📋 实时日志</button>
+        <button class="log-tab" onclick="switchLogTab('trend')">📈 调车趋势</button>
+        <button class="log-tab" onclick="switchLogTab('pool')">📊 设备池</button>
+    </div>
+    
+    <!-- Filter bar -->
+    <div class="log-filter">
+        <select id="logRegionFilter" onchange="refreshLogList()">
+            <option value="">全部区域</option>
+            {% for area in areas %}
+            <option value="{{ area.region_key }}">{{ area.name[:30] }}</option>
+            {% endfor %}
+        </select>
+        <select id="logActionFilter" onchange="refreshLogList()">
+            <option value="">全部类型</option>
+            <option value="arrive_leave">🟢🔴 入池/出池</option>
+            <option value="heal">🟡 自愈清理</option>
+            <option value="execute">🔵 下发/执行</option>
+            <option value="unmatched">⚪ 未匹配</option>
+            <option value="device_arrive">🟢 设备入池</option>
+            <option value="device_leave">🔴 设备出池</option>
+            <option value="report_status">📌 状态上报</option>
+        </select>
+        <input type="text" id="logKeyword" placeholder="搜索关键词..." oninput="refreshLogList()" style="min-width:150px;">
+        <button class="btn-refresh" onclick="refreshAll()"><i class="bi bi-arrow-clockwise me-1"></i>刷新</button>
+        <span style="font-size:0.7rem;color:#8b949e;margin-left:auto;" id="logCount">0 条</span>
+    </div>
+    
+    <!-- Tab: 实时日志流 -->
+    <div id="tabStream">
+        <!-- Stats cards -->
+        <div class="log-stats" id="logStatsCards">
+            <div class="log-stat-card stat-arrive"><div class="stat-val">-</div><div class="stat-label">🟢 入池</div></div>
+            <div class="log-stat-card stat-leave"><div class="stat-val">-</div><div class="stat-label">🔴 出池</div></div>
+            <div class="log-stat-card stat-heal"><div class="stat-val">-</div><div class="stat-label">🟡 自愈</div></div>
+            <div class="log-stat-card stat-execute"><div class="stat-val">-</div><div class="stat-label">🔵 下发</div></div>
+            <div class="log-stat-card stat-unmatch"><div class="stat-val">-</div><div class="stat-label">⚪ 未匹配</div></div>
+        </div>
+        
+        <!-- Log list -->
+        <div class="log-list" id="logList"><div class="text-center text-muted py-4">加载中...</div></div>
+        <div class="log-pager" id="logPager"></div>
+    </div>
+    
+    <!-- Tab: 调车趋势 -->
+    <div id="tabTrend" style="display:none;">
+        <div class="log-charts">
+            <div class="log-chart-card">
+                <h6>入池/出池 趋势（20分钟粒度）</h6>
+                <canvas id="chartArriveLeave"></canvas>
+            </div>
+            <div class="log-chart-card">
+                <h6>下发/未匹配 趋势（20分钟粒度）</h6>
+                <canvas id="chartExecUnmatch"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tab: 设备池 -->
+    <div id="tabPool" style="display:none;">
+        <div class="log-chart-card" style="padding:2rem;text-align:center;">
+            <p class="text-muted">设备池历史快照需要定时采样 currentCount，<br>当前版本尚未开启。请先在区域配置中开启采样。</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chart.js/chart.min.js') }}"></script>
+<script>
+    let _logPage = 1;
+    let _logTotalPages = 1;
+    let _currentTab = 'stream';
+    let _arriveChart = null;
+    let _execChart = null;
+    
+    // ── Tab 切换 ──
+    function switchLogTab(tab) {
+        _currentTab = tab;
+        document.querySelectorAll('.log-tab').forEach(b => b.classList.remove('active'));
+        document.getElementById('tabStream').style.display = tab === 'stream' ? 'block' : 'none';
+        document.getElementById('tabTrend').style.display = tab === 'trend' ? 'block' : 'none';
+        document.getElementById('tabPool').style.display = tab === 'pool' ? 'block' : 'none';
+        if (tab === 'stream') refreshAll();
+        else if (tab === 'trend') loadTrendCharts();
+    }
+    
+    // ── 全部刷新 ──
+    function refreshAll() {
+        loadStats();
+        refreshLogList();
+    }
+    
+    // ── 统计卡片 ──
+    function loadStats() {
+        fetch('/api/dispatch/logs/stats')
+            .then(r => r.json())
+            .then(data => {
+                document.querySelector('.stat-arrive .stat-val').textContent = data.device_arrive || 0;
+                document.querySelector('.stat-leave .stat-val').textContent = data.device_leave || 0;
+                document.querySelector('.stat-heal .stat-val').textContent = data.self_heal_detail || 0;
+                document.querySelector('.stat-execute .stat-val').textContent = data.execute || 0;
+                document.querySelector('.stat-unmatch .stat-val').textContent = data.report_unmatched || 0;
+            });
+    }
+    
+    // ── 日志列表 ──
+    function refreshLogList() {
+        const region = document.getElementById('logRegionFilter').value;
+        const action = document.getElementById('logActionFilter').value;
+        const keyword = document.getElementById('logKeyword').value;
+        
+        fetch(`/api/dispatch/logs/list?page=${_logPage}&per_page=50&region=${encodeURIComponent(region)}&action=${encodeURIComponent(action)}&keyword=${encodeURIComponent(keyword)}`)
+            .then(r => r.json())
+            .then(data => {
+                _logTotalPages = data.total_pages || 0;
+                document.getElementById('logCount').textContent = `${data.total} 条`;
+                
+                const el = document.getElementById('logList');
+                if (data.logs.length === 0) {
+                    el.innerHTML = '<div class="text-center text-muted py-4">暂无匹配日志</div>';
+                } else {
+                    let html = '';
+                    data.logs.forEach(log => {
+                        const time = (log.time || '').slice(11, 19) || '';
+                        const action = log.action || '';
+                        const region = log.region_key || '';
+                        const detail = log.detail || '';
+                        
+                        let marker = '📌', cls = '';
+                        if (action === 'device_arrive') { marker = '🟢'; cls = 'marker-arrive'; }
+                        else if (action === 'device_leave') { marker = '🔴'; cls = 'marker-leave'; }
+                        else if (action === 'self_heal_detail') { marker = '🟡'; cls = 'marker-heal'; }
+                        else if (['execute','execute_skip','execute_balanced','execute_mutex','manual_dispatch'].includes(action)) { marker = '🔵'; cls = 'marker-execute'; }
+                        else if (['report_unmatched','oid_diag'].includes(action)) { marker = '⚪'; cls = 'marker-unmatch'; }
+                        
+                        html += `<div class="log-row">
+                            <span class="log-time">${time}</span>
+                            <span class="log-marker ${cls}">${marker}</span>
+                            <span class="log-region" title="${escapeHtml(region)}">${escapeHtml(region.slice(0,25))}</span>
+                            <span class="log-detail">${escapeHtml(detail.slice(0,200))}</span>
+                        </div>`;
+                    });
+                    el.innerHTML = html;
+                }
+                
+                // 分页
+                let pagerHtml = '';
+                pagerHtml += `<button onclick="goLogPage(1)" ${_logPage <= 1 ? 'disabled' : ''}>«</button>`;
+                pagerHtml += `<button onclick="goLogPage(${_logPage - 1})" ${_logPage <= 1 ? 'disabled' : ''}>‹</button>`;
+                pagerHtml += `<span class="page-info">${_logPage} / ${_logTotalPages}</span>`;
+                pagerHtml += `<button onclick="goLogPage(${_logPage + 1})" ${_logPage >= _logTotalPages ? 'disabled' : ''}>›</button>`;
+                pagerHtml += `<button onclick="goLogPage(${_logTotalPages})" ${_logPage >= _logTotalPages ? 'disabled' : ''}>»</button>`;
+                document.getElementById('logPager').innerHTML = pagerHtml;
+            });
+    }
+    
+    function goLogPage(p) {
+        if (p < 1 || p > _logTotalPages) return;
+        _logPage = p;
+        refreshLogList();
+    }
+    
+    // ── 趋势图表 ──
+    function loadTrendCharts() {
+        fetch('/api/dispatch/logs/trend')
+            .then(r => r.json())
+            .then(data => {
+                renderChart('chartArriveLeave', _arriveChart, data.labels, [
+                    {label:'入池', data:data.arrive, color:'#3fb950'},
+                    {label:'出池', data:data.leave, color:'#f85149'},
+                ], v => _arriveChart = v);
+                renderChart('chartExecUnmatch', _execChart, data.labels, [
+                    {label:'下发', data:data.execute, color:'#58a6ff'},
+                    {label:'未匹配', data:data.unmatched, color:'#8b949e'},
+                ], v => _execChart = v);
+            });
+    }
+    
+    function renderChart(canvasId, instance, labels, datasets, setRef) {
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        if (instance) { instance.destroy(); }
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets.map(ds => ({
+                    label: ds.label,
+                    data: ds.data,
+                    borderColor: ds.color,
+                    backgroundColor: ds.color + '20',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 1,
+                    borderWidth: 1.5,
+                }))
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                plugins: { legend: { labels: { color: '#8b949e', font:{size:10}, usePointStyle:true, padding:12 } } },
+                scales: {
+                    x: { ticks: { color: '#484f58', font:{size:9}, maxTicksLimit:12, callback:function(v){return this.getLabelForValue(v)} }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                    y: { ticks: { color: '#484f58', font:{size:9}, stepSize:1 }, grid: { color: 'rgba(255,255,255,0.04)' }, beginAtZero: true }
+                }
+            }
+        });
+        setRef(chart);
+    }
+    
+    // ── 自动刷新 ──
+    let _autoRefreshInterval = null;
+    function startAutoRefresh() {
+        _autoRefreshInterval = setInterval(() => {
+            if (_currentTab === 'stream') refreshAll();
+        }, 10000);
+    }
+    
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    
+    // ── 启动 ──
+    document.addEventListener('DOMContentLoaded', () => {
+        refreshAll();
+        startAutoRefresh();
+    });
+</script>
+{% endblock %}

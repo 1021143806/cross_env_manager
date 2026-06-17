@@ -4642,3 +4642,167 @@ def api_test_status():
         # 过滤掉不可序列化的对象（如 Popen）
         safe_state = {k: v for k, v in _test_state.items() if k != '_proc'}
         return jsonify(safe_state)
+
+
+# ========== 操作日志分析页 ==========
+
+@dispatch_bp.route('/dispatch/logs')
+@login_required
+def page_dispatch_logs():
+    """操作日志分析仪表盘"""
+    areas = [{'region_key': k, 'id': v.get('id', ''), 'name': k} 
+             for k, v in _load_cache_index().items() if isinstance(v, dict) and 'templates' in v]
+    areas.sort(key=lambda x: str(x.get('id', '')))
+    return render_template('dispatch/logs.html', areas=areas)
+
+
+@dispatch_bp.route('/api/dispatch/logs/stats')
+@login_required
+def api_logs_stats():
+    """日志统计数据（今日汇总）"""
+    today = datetime.now().strftime('%Y-%m-%d')
+    logs = _load_all_logs()
+    
+    # 筛选今日日志
+    stats = {
+        'today': today,
+        'total_logs': len(logs),
+        'device_arrive': 0,
+        'device_leave': 0,
+        'self_heal_detail': 0,
+        'execute': 0,
+        'report_unmatched': 0,
+        'oid_diag': 0,
+        'by_region': {}  # {region_key: {arrive:N, leave:N, ...}}
+    }
+    
+    for log in logs:
+        if not log.get('time', '').startswith(today):
+            continue
+        action = log.get('action', '')
+        rk = log.get('region_key', '') or 'auto'
+        
+        if action == 'device_arrive':
+            stats['device_arrive'] += 1
+        elif action == 'device_leave':
+            stats['device_leave'] += 1
+        elif action == 'self_heal_detail':
+            stats['self_heal_detail'] += 1
+        elif action == 'report_unmatched' or action == 'oid_diag':
+            stats['report_unmatched'] += 1
+        elif action in ('execute', 'execute_skip', 'execute_balanced', 'execute_mutex', 'manual_dispatch'):
+            stats['execute'] += 1
+        
+        if rk not in stats['by_region']:
+            stats['by_region'][rk] = {'arrive': 0, 'leave': 0, 'heal': 0, 'execute': 0, 'unmatched': 0}
+        if action == 'device_arrive':
+            stats['by_region'][rk]['arrive'] += 1
+        elif action == 'device_leave':
+            stats['by_region'][rk]['leave'] += 1
+        elif action in ('self_heal_detail',):
+            stats['by_region'][rk]['heal'] += 1
+        elif action in ('execute', 'execute_skip', 'execute_balanced', 'execute_mutex', 'manual_dispatch'):
+            stats['by_region'][rk]['execute'] += 1
+        elif action in ('report_unmatched', 'oid_diag'):
+            stats['by_region'][rk]['unmatched'] += 1
+    
+    return jsonify(stats)
+
+
+@dispatch_bp.route('/api/dispatch/logs/trend')
+@login_required
+def api_logs_trend():
+    """日志趋势数据（20分钟粒度，用于折线图）"""
+    import re
+    from collections import defaultdict
+    from datetime import timedelta
+    
+    today = datetime.now().strftime('%Y-%m-%d')
+    logs = _load_all_logs()
+    
+    # 20分钟桶
+    slots = {}  # 'HH:MM' → {arrive, leave, execute, unmatched}
+    for log in logs:
+        t = log.get('time', '')
+        if not t.startswith(today):
+            continue
+        action = log.get('action', '')
+        try:
+            hhmm = t[11:13] + ':' + str(int(int(t[14:16]) / 20) * 20).zfill(2)
+        except:
+            continue
+        
+        if hhmm not in slots:
+            slots[hhmm] = {'arrive': 0, 'leave': 0, 'execute': 0, 'unmatched': 0}
+        if action == 'device_arrive':
+            slots[hhmm]['arrive'] += 1
+        elif action == 'device_leave':
+            slots[hhmm]['leave'] += 1
+        elif action in ('execute', 'execute_skip', 'execute_balanced', 'execute_mutex', 'manual_dispatch'):
+            slots[hhmm]['execute'] += 1
+        elif action in ('report_unmatched', 'oid_diag'):
+            slots[hhmm]['unmatched'] += 1
+    
+    # 按时间排序
+    sorted_slots = sorted(slots.items())
+    return jsonify({
+        'labels': [s[0] for s in sorted_slots],
+        'arrive': [s[1]['arrive'] for s in sorted_slots],
+        'leave': [s[1]['leave'] for s in sorted_slots],
+        'execute': [s[1]['execute'] for s in sorted_slots],
+        'unmatched': [s[1]['unmatched'] for s in sorted_slots],
+    })
+
+
+@dispatch_bp.route('/api/dispatch/logs/list')
+@login_required
+def api_logs_list():
+    """日志列表（分页+筛选）"""
+    region_filter = request.args.get('region', '')
+    action_filter = request.args.get('action', '')
+    level_filter = request.args.get('level', '')
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    keyword = request.args.get('keyword', '', type=str)
+    
+    logs = _load_all_logs()
+    
+    # 筛选
+    filtered = []
+    for log in logs:
+        if region_filter and log.get('region_key', '') != region_filter:
+            continue
+        a = log.get('action', '')
+        if action_filter:
+            if action_filter == 'arrive_leave':
+                if a not in ('device_arrive', 'device_leave'):
+                    continue
+            elif action_filter == 'heal':
+                if a not in ('self_heal_detail',):
+                    continue
+            elif action_filter == 'execute':
+                if a not in ('execute', 'execute_skip', 'execute_balanced', 'execute_mutex', 'manual_dispatch'):
+                    continue
+            elif action_filter == 'unmatched':
+                if a not in ('report_unmatched', 'oid_diag'):
+                    continue
+            elif a != action_filter:
+                continue
+        if level_filter and log.get('level', '') != level_filter:
+            continue
+        if keyword and keyword.lower() not in log.get('detail', '').lower():
+            continue
+        filtered.append(log)
+    
+    total = len(filtered)
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_logs = filtered[start:end]
+    
+    return jsonify({
+        'logs': page_logs,
+        'total': total,
+        'page': page,
+        'per_page': per_page,
+        'total_pages': (total + per_page - 1) // per_page if per_page > 0 else 0
+    })
