@@ -234,6 +234,16 @@
         from { opacity: 1; transform: scale(1); }
         to { opacity: 0; transform: scale(0.8); }
     }
+    /* 刷新按钮旋转动画 */
+    @keyframes spinRotate {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    .spin {
+        display: inline-block;
+        animation: spinRotate 0.5s linear;
+    }
+    }
 
     .agv-tooltip {
         position: fixed;
@@ -508,6 +518,8 @@
                     <button class="btn btn-outline-secondary active" onclick="switchDeviceTab('info')">📋 详情</button>
                     <button class="btn btn-outline-secondary" onclick="switchDeviceTab('trace')">🔍 任务追踪</button>
                 </div>
+                <button class="btn btn-sm btn-outline-info me-1" id="dmAutoRefresh" onclick="toggleAutoRefresh()" title="自动刷新" style="display:none;">⏱ 自动</button>
+                <button class="btn btn-sm btn-outline-secondary me-1" id="dmRefresh" onclick="refreshDeviceModal()" title="手动刷新" style="display:none;"><i class="bi bi-arrow-clockwise"></i></button>
                 <button class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body py-2">
@@ -3100,6 +3112,10 @@ function escapeHtml(str) {
 // ========== 设备详情 Modal ==========
 
 let _deviceModalData = null;  // 缓存设备数据供 Tab 切换
+let _deviceModalNum = '';     // 当前查看的设备编号
+let _deviceModalCode = '';    // 当前查看的设备序列号
+let _dmAutoRefreshTimer = null;
+let _dmAutoRefreshActive = false;
 
 function switchDeviceTab(tab) {
     document.getElementById('dmBody').style.display = tab === 'info' ? 'block' : 'none';
@@ -3109,15 +3125,56 @@ function switchDeviceTab(tab) {
     btns.forEach((b, i) => b.classList.toggle('active', (i === 0 && tab === 'info') || (i === 1 && tab === 'trace')));
 }
 
-function showDeviceModal(deviceNum) {
+// 手动刷新设备详情
+function refreshDeviceModal() {
+    if (!_deviceModalNum) return;
+    const refreshBtn = document.getElementById('dmRefresh');
+    const icon = refreshBtn.querySelector('i');
+    icon.classList.add('spin');
+    showDeviceModal(_deviceModalNum, true);
+    setTimeout(() => icon.classList.remove('spin'), 500);
+}
+
+// 切换自动刷新
+function toggleAutoRefresh() {
+    const btn = document.getElementById('dmAutoRefresh');
+    if (_dmAutoRefreshActive) {
+        _dmAutoRefreshActive = false;
+        btn.textContent = '⏱ 自动';
+        btn.classList.remove('btn-info');
+        btn.classList.add('btn-outline-info');
+        clearInterval(_dmAutoRefreshTimer);
+    } else {
+        _dmAutoRefreshActive = true;
+        btn.textContent = '⏱ 30s';
+        btn.classList.remove('btn-outline-info');
+        btn.classList.add('btn-info');
+        _dmAutoRefreshTimer = setInterval(() => {
+            if (_deviceModalNum) showDeviceModal(_deviceModalNum, true);
+        }, 30000);
+    }
+}
+
+function showDeviceModal(deviceNum, silent) {
+    if (!silent) _deviceModalNum = deviceNum;
+    if (!silent) _dmAutoRefreshActive = false;
+    if (!silent) clearInterval(_dmAutoRefreshTimer);
+    
     const modal = new bootstrap.Modal(document.getElementById('deviceModal'));
+    if (!silent) modal.show();
+    
     document.getElementById('dmTitle').textContent = '设备详情 - ' + deviceNum;
-    document.getElementById('dmBody').innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>加载中...</div>';
-    document.getElementById('dmBody').style.display = 'block';
-    document.getElementById('dmTrace').style.display = 'none';
-    document.getElementById('dmTabs').style.display = 'none';
+    if (!silent) {
+        document.getElementById('dmBody').innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>加载中...</div>';
+        document.getElementById('dmBody').style.display = 'block';
+        document.getElementById('dmTrace').style.display = 'none';
+        document.getElementById('dmTabs').style.display = 'none';
+    }
     _deviceModalData = null;
-    modal.show();
+    
+    // 显示刷新按钮
+    document.getElementById('dmRefresh').style.display = '';
+    document.getElementById('dmAutoRefresh').style.display = '';
     
     fetch('/api/dispatch/device_info?deviceNum=' + encodeURIComponent(deviceNum))
         .then(r => r.json())
@@ -3127,6 +3184,7 @@ function showDeviceModal(deviceNum) {
                 return;
             }
             _deviceModalData = data;
+            _deviceModalCode = data.deviceCode || '';
             
             const statusLabel = data.status === 'running' ? '🟡 执行中' : '🟢 空闲';
             const statusColor = data.status === 'running' ? '#fd7e14' : '#28a745';
@@ -3818,5 +3876,13 @@ function viewDeviceHistoryFile(regionKey) {
         })
         .catch(err => showToast('加载失败: ' + err.message, 'danger'));
 }
+
+// 弹窗关闭时停止自动刷新
+document.getElementById('deviceModal').addEventListener('hidden.bs.modal', function() {
+    _dmAutoRefreshActive = false;
+    clearInterval(_dmAutoRefreshTimer);
+    const btn = document.getElementById('dmAutoRefresh');
+    if (btn) { btn.textContent = '⏱ 自动'; btn.classList.remove('btn-info'); btn.classList.add('btn-outline-info'); }
+});
 </script>
 {% endblock %}
