@@ -956,6 +956,13 @@ def _order_id_matches(stored_oid, target_oid):
             target_oid.startswith(stored_oid + '_'))
     
 
+def _get_order_id_diag_suffix(order_id, device_code, device_num):
+    """返回 order_id 匹配失败的简短诊断后缀（用于操作日志消息）"""
+    if not order_id:
+        return ''
+    return f' [oid未匹配]'
+
+
 def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
     """当 status=8 无法匹配模板时，遍历所有区域所有模板按 order_id 清理
     
@@ -1072,14 +1079,18 @@ def _clean_by_order_id_across_all_regions(order_id, device_code, device_num=''):
                         if t_oid.startswith(order_id) or order_id.startswith(t_oid):
                             fuzzy_hits.append(f'{rk}/{t.get("code", t.get("name", ""))} oid={t_oid[:60]} status={task.get("status")}')
                             break
-        msg = (f'[order_id匹配诊断-清理] target_oid={order_id} dc={device_code} dn={device_num} exact=0')
+        diag_msg = f'[oid诊断] {order_id[:50]} ({device_num}/{device_code[-8:] if device_code else "?"}) → 0 清理匹配'
         if fuzzy_hits:
-            msg += f' fuzzy_hits=[{"; ".join(fuzzy_hits[:5])}]'
-        if all_active:
-            msg += f' all_active=[{"; ".join(all_active[:10])}]'
-        print(f"[Dispatch] {msg}")
+            diag_msg += f' 前缀命中: {"; ".join(fuzzy_hits[:3])}'
+        elif all_active:
+            sample_oids = []
+            for a in all_active[:5]:
+                oids_part = a.split(' oids=')[-1] if ' oids=' in a else a
+                sample_oids.append(oids_part[:60])
+            diag_msg += f' 活跃oid: {", ".join(sample_oids)}'
+        print(f"[Dispatch] {diag_msg}")
         try:
-            write_global_log('order_id_diag', '', msg, level='warning')
+            write_global_log('oid_diag', '', diag_msg, level='warning')
         except: pass
     else:
         print(f"[Dispatch] _clean_by_order_id_across_all_regions: 共清理{cleaned}条")
@@ -1127,21 +1138,20 @@ def _update_by_order_id_across_all_regions(order_id, device_code, device_num):
                         if t_oid.startswith(order_id) or order_id.startswith(t_oid):
                             fuzzy_hits.append(f'{rk}/{t.get("code", t.get("name", ""))} oid={t_oid[:60]} status={task.get("status")}')
                             break
-    if updated == 0:
-        msg = (f'[order_id匹配诊断-更新] target_oid={order_id} dc={device_code} dn={device_num} '
-               f'checked={checked_template_count}个模板 exact=0')
+    if updated == 0 and order_id:
+        # 诊断摘要（精简格式，用于操作日志）
+        diag_msg = f'[oid诊断] {order_id[:50]} ({device_num}/{device_code[-8:] if device_code else "?"}) → 0/{checked_template_count}模板'
         if fuzzy_hits:
-            msg += f' fuzzy_hits=[{"; ".join(fuzzy_hits[:5])}]'
-        if debug_info:
-            all_oids = []
-            for d in debug_info:
-                # extract order_ids from debug string
+            diag_msg += f' 前缀命中: {"; ".join(fuzzy_hits[:3])}'
+        elif debug_info:
+            sample_oids = []
+            for d in debug_info[:5]:
                 oids_part = d.split(' orders=')[-1] if ' orders=' in d else d
-                all_oids.append(oids_part)
-            msg += f' all_active_oids=[{"; ".join(all_oids[:10])}]'
-        print(f"[Dispatch] {msg}")
+                sample_oids.append(oids_part[:60])
+            diag_msg += f' 活跃oid: {", ".join(sample_oids)}'
+        print(f"[Dispatch] {diag_msg}")
         try:
-            write_global_log('order_id_diag', '', msg, level='warning')
+            write_global_log('oid_diag', '', diag_msg, level='warning')
         except: pass
     return updated
 
@@ -1236,16 +1246,9 @@ def handle_status_report(data):
                     for tt in cleaned_task_types:
                         _update_daily_stats(region_key or 'auto', tt)
                     return True, f"无法匹配模板但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
-        # 记录未匹配上报到操作日志（方便排查）
-        try:
-            write_global_log('report_unmatched', region_key or '?',
-                f'未匹配上报: template={template_name}, device={device_num}({device_code}), status={status}, order_id={order_id}',
-                raw_data={'data': data, 'reason': '模板code在配置中不存在或无region_key'})
-        except: pass
-        print(f"[Dispatch] report_status 无法匹配: region_key={region_key}, template_name={template_name}, deviceNum={device_num}")
-        return True, f"无法匹配区域/模板，已接收上报 (region_key={region_key}, template={template_name})", False
-    
-    # 查找模板配置
+        # 未匹配：静默接收，由 api_report_status 统一写操作日志（路径1: 无region_key或无template_name）
+        diag = _get_order_id_diag_suffix(order_id, device_code, device_num)
+        return True, f"未匹配模板{diag}，已接收", False
     index = _load_cache_index()
     region = index.get(region_key)
     if not region:
@@ -1280,14 +1283,9 @@ def handle_status_report(data):
                     for tt in cleaned_task_types:
                         _update_daily_stats(region_key, tt)
                     return True, f"模板不在区域但按order_id清理了{cleaned}条 (region_key={region_key}, template={template_name})", True
-        # 记录未匹配上报到操作日志
-        try:
-            write_global_log('report_unmatched', region_key,
-                f'未匹配上报(模板不在区域): template={template_name}, device={device_num}({device_code}), status={status}, order_id={order_id}',
-                raw_data={'data': data, 'reason': f'模板code在区域{region_key}中不存在'})
-        except: pass
-        print(f"[Dispatch] report_status 模板不存在: region_key={region_key}, template={template_name}")
-        return True, f"模板 {template_name} 不存在于区域 {region_key}，已接收上报", False
+        # 未匹配：静默接收，由 api_report_status 统一写操作日志（路径2: 模板不在该区域）
+        diag = _get_order_id_diag_suffix(order_id, device_code, device_num)
+        return True, f"未匹配上报: {template_name} {device_num} status={status} oid={order_id}{diag}", False
     
     task_type = _normalize_task_type(template_config)
     template_file = _get_template_file_path(region_key, template_config)
