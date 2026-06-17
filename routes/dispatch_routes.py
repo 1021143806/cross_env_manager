@@ -930,7 +930,7 @@ def get_all_areas_status():
     }
 
 
-# ========== 状态上报处理 ==========
+# ── 跨区域 order_id 匹配（前缀匹配，兼容 ICS suffix）
 
 def _order_id_matches(stored_oid, target_oid):
     """Order ID 匹配（兼容 ICS suffix 拼接问题）
@@ -1156,6 +1156,8 @@ def _update_by_order_id_across_all_regions(order_id, device_code, device_num):
     return updated
 
 
+# ── 核心：任务状态上报入口（两级匹配：模板匹配 → 跨区域 order_id 回退）──
+
 def handle_status_report(data):
     """
     处理任务状态上报（兼容两种报文格式）
@@ -1179,10 +1181,17 @@ def handle_status_report(data):
       - shelfCurrPosition: 货架当前点位 (可选)
     
     处理逻辑:
-      status=6/subTaskStatus="3": 记录到模板 JSON
+      status=6/subTaskStatus="3": 记录到模板 JSON (匹配策略: deviceCode → order_id前缀匹配)
       status=8/subTaskStatus="8": 
-        来区域模板 → 从模板 JSON 删除, 写入 currentCount.json
+        来区域模板 → 从模板 JSON 删除, 写入 currentCount.json + confirmed=True
         离开模板 → 从模板 JSON 删除, 从 currentCount.json 删除
+        匹配策略(3级): deviceCode+order_id → order_id前缀 → deviceCode兜底
+      status=10: 同 status=8 (ICS 部分区域不报8只报10)
+      
+      未匹配模板时:
+        遍历所有区域所有模板按 order_id 前缀匹配 (_order_id_matches)
+        匹配成功 → 更新/清理
+        匹配失败 → [oid诊断] 日志 + 静默接收 (不返回错误避免ICS重试)
     """
     # === 兼容两种报文格式 ===
     
@@ -1840,7 +1849,8 @@ def api_report_status():
             return jsonify({'code': 1000, 'desc': 'success'})
         
         success, message, matched = handle_status_report(data)
-        # 记录日志（不阻塞主流程）
+        # 统一输出操作日志：handle_status_report 返回 message (含 [oid未匹配] 诊断标记)
+        # 不再在 handle_status_report 内部写重复日志
         try:
             rk = data.get('region_key') or 'auto'
             tn = data.get('modelProcessCode') or data.get('template_name', '?')

@@ -363,7 +363,17 @@ venv/bin/python3 test/???.py
   - **8504(0x2138)根因**: RTPS算法在障碍物阻塞后重规划失败，触发 `robotBlackout_Unknown`。算法日志关键词：`SendRobotEventOver algo plan error 8504` + `handleReportTaskEvent Robot Obstacled`。
   - **关键排查技巧**: ICS历史文件用 `recent_files` 大参数搜索；RTPS日志在gz历史文件中需下载解压；postlook白名单热更新添加rtpsp目录；HexReasonCode与ErrorCode互验(0x2138=8504)；play.log类型16查看任务Canceled状态。
   - **数据流**: 设备固件(0x2138) → RTPS(robotBlackout) → REVENT → ICS(DEVICEALARM_TOPIC) → WMS前端看板("未定义异常8504")
-- 2026-06-16: **调车模块空车下发指定设备排查 (待复现)**。分析调车空车回方向设备指定逻辑及设备池管理机制。
+- 2026-06-17: **调车模块六连修 (v2.5.5)**。
+  - **v2.5.2**: `_load_json` 加 `_write_lock` 读锁 + bootstrap 移除（防空 history 全量导入 ICS）+ `confirmed` 标记机制（仅 status=8/10 完成的设备标记 confirmed=True，`_update_current_count_from_api` 和 `_assign_devices_to_regions` 只认 confirmed 设备）
+  - **v2.5.2**: status=10 与 status=8 同等处理（ICS 部分区域上报 10 而非 8，原仅更新模板不清理不更新 currentCount → 修复为走完整清理+入池+写 history 流程）
+  - **v2.5.2**: `_save_json` 原子写入 + `.bak` 备份保护
+  - **v2.5.3**: order_id 跨区域匹配诊断日志增强（模糊命中检测 + write_global_log 输出）
+  - **v2.5.4**: order_id 双向前缀匹配 `_order_id_matches()`（CEM_auto...8724 匹配 CEM_auto...8724_1_4123），修复 ICS suffix 拼接导致的模板匹配失败。覆盖 7 处匹配点
+  - **v2.5.5**: 日志去重合并（3条→1条）+ diagnostic 格式精简 `[oid诊断]`
+  - **根因总览**: ICS 上报 order_id 带子任务后缀 `_X_YYYY`，CEM 下发时无后缀 → status=6 覆盖写入 suffix 版 → ICS 内部模板用无后缀版上报 → 精确匹配失败 → 未匹配上报泛滥
+  - **currentCount=0 排查**: 自愈每 120s 轮询 ICS 查询设备状态，QD/DJ 系列设备跨区域移动 → `_not_found` → 清理 → 无新 confirmed 设备补入 → 归零。非 bug，是区域真实无车
+  - **文件变更**: `routes/dispatch_routes.py` (6次修改), `app.py` (版本号), `templates/monitor/index.html` (图表修复), `templates/dispatch/dashboard.html` (解死锁按钮)
+  - **诊断日志格式**: `[oid诊断] CEM_auto...8724 (DJ13/AAK00014) → 0/10模板 前缀命中: ...` 展示于操作日志
   - **设备指定前置条件**：仅 `direction=out` 且非手动下发时，`_select_device_for_empty_return()` 从 `currentCount.json` 中选择设备。选择策略：排除 pending (status=6/9/10)，按 (未下发过优先、低电量优先、idle 优先) 排序，逐个实时查询 ICS 确认 Idle。
   - **设备进入 currentCount 的4条路径**：①任务完成上报(status=8来方向) ②全量API同步(_assign_devices_to_regions) ③分时段切换 ④跨区域清理
   - **设备进入 device_history 的2条路径**：①`_touch_device_history`（状态上报时写入匹配区域）②`_sync_device_history` bootstrap模式（history为空时全量写入）
