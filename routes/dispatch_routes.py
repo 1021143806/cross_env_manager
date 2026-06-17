@@ -3939,7 +3939,14 @@ def _start_self_heal_thread():
                         elapsed = (datetime.now() - datetime.fromisoformat(last)).total_seconds()
                         if elapsed < interval:
                             continue
-                    _self_heal_check_region(rk, region)
+                    result = _self_heal_check_region(rk, region)
+                    # 更新 last_check 时间戳（节流控制依赖此时间戳）— 之前遗漏导致每30s无节流运行
+                    with _self_heal_lock:
+                        _self_heal_status[rk] = {
+                            'last_check': datetime.now().isoformat(),
+                            'cleaned_count': result.get('cleaned', 0),
+                            'errors': result.get('errors', [])
+                        }
                 time.sleep(30)  # 每30秒检查一次是否需要执行
             except Exception as e:
                 print(f"[SelfHeal] 后台线程异常: {e}")
