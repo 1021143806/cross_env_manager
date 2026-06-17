@@ -3651,11 +3651,16 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
                 })
                 # 记录设备离开网格事件
                 try:
+                    # 构造查询 URL 用于诊断
+                    _api_url = api_path if api_path.startswith('http') else f'http://{api_path}'
+                    _req_body = {'areaId': area_id, 'deviceType': '0', 'deviceCode': device_code}
+                    _resp_info = {'state': state, 'battery': battery} if device_info else {'error': 'API无响应'}
                     write_global_log('device_leave', region_key,
                         f'设备离开网格(自恢复清理): {device_num}({device_code[-8:] if device_code else "?"}), '
-                        f'状态:{state}',
+                        f'状态:{state} | API={_api_url}',
                         raw_data={'deviceCode': device_code, 'deviceNum': device_num,
-                                  'state': state, 'region_key': region_key, 'reason': 'self_heal'})
+                                  'state': state, 'region_key': region_key, 'reason': 'self_heal',
+                                  'api_url': _api_url, 'request': _req_body, 'response': _resp_info})
                 except: pass
             else:
                 steps.append({
