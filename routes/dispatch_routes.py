@@ -2794,6 +2794,14 @@ SELF_HEAL_DEFAULTS = {
     'low_battery_threshold': 30,  # 默认低电量阈值（百分比），区域可覆盖
 }
 
+# _not_found 连续计数（防 ICS 瞬态误杀 / 请求过多返回空）
+# key: (region_key, device_code) → value: 连续 _not_found 次数
+# 仅连续 >= 2 次才清理，设备在线/Offline/Downlined 时重置
+_not_found_counter = {}
+
+# 自愈设备查询间隔（秒），避免并发请求过多导致 ICS 间歇返回空列表
+_QUERY_PACE_SECONDS = 0.5
+
 
 def _query_device_status(server, api_path, area_id, device_code):
     """查询设备状态
@@ -2849,8 +2857,8 @@ def _should_clean_device(device_info, region_key='', region=None, device_code=''
     """判断设备是否应该被清理
     
     - 查询失败 → 保留
-    - 设备不在该 areaId（_not_found）→ 清理
-    - 在线 → 保留
+    - 设备不在该 areaId（_not_found）→ 需连续 2 次确认才清理（防 ICS 瞬态/请求过多）
+    - 在线 → 保留 (同时重置 _not_found 计数器)
     - Offline/Downlined → 检查是否有执行中任务：
       - 无执行中任务 → 清理
       - 有执行中任务但超过1小时 → 清理
@@ -2860,7 +2868,19 @@ def _should_clean_device(device_info, region_key='', region=None, device_code=''
         return False  # 查询失败（车可能还没到），保留不清理
     state = device_info.get('state', '')
     if state == '_not_found':
-        return True  # 设备不在该 areaId 下，清理
+        # ICS 间歇性返回空列表（可能是瞬态离开或请求过多被限流）
+        # → 需连续 >= 2 次 _not_found 才确认设备已离开
+        counter_key = (region_key, device_code)
+        _not_found_counter[counter_key] = _not_found_counter.get(counter_key, 0) + 1
+        if _not_found_counter[counter_key] >= 2:
+            print(f"[Dispatch] _should_clean_device: {device_code[-8:]} 连续{_not_found_counter[counter_key]}次_not_found → 确认清理")
+            _not_found_counter.pop(counter_key, None)
+            return True
+        print(f"[Dispatch] _should_clean_device: {device_code[-8:]} _not_found({_not_found_counter[counter_key]}/2) → 暂保留")
+        return False
+    # 设备在线/离线 → 重置 _not_found 计数器（设备确实存在）
+    if region_key and device_code:
+        _not_found_counter.pop((region_key, device_code), None)
     if state not in ('Offline', 'Downlined'):
         return False  # 在线 → 保留
     
@@ -3685,11 +3705,16 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
         now_devices = _load_json(now_file)
         # 过滤掉 deviceCode 为空的无效记录
         valid_devices = [d for d in now_devices if d.get('deviceCode')]
+        _query_count = 0
         for d in valid_devices:
             device_code = d.get('deviceCode', '')
             device_num = d.get('deviceNum', '')
             if not device_code:
                 continue
+            # 请求节流：每台设备查询间隔 _QUERY_PACE_SECONDS 秒，避免并发过多触发 ICS 限流返回空列表
+            if _query_count > 0:
+                time.sleep(_QUERY_PACE_SECONDS)
+            _query_count += 1
             device_info = _query_device_status('', api_path, area_id, device_code)
             state = device_info.get('state', '查询失败') if device_info else '查询失败'
             battery = device_info.get('battery', '') if device_info else ''
