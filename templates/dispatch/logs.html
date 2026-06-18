@@ -50,6 +50,7 @@
     .log-chart-card { padding: 0.75rem 1rem; border-radius: 8px; background: var(--log-card); border: 1px solid var(--log-border); }
     .log-chart-card h6 { color: #8b949e; font-size: 0.82rem; margin-bottom: 0.5rem; }
     .log-chart-card canvas { width: 100% !important; height: 220px !important; }
+    #chartPool { height: 300px !important; }
     
     /* Log list */
     .log-list { max-height: calc(100vh - 500px); min-height: 300px; overflow-y: auto; border-radius: 8px; background: var(--log-card); border: 1px solid var(--log-border); }
@@ -140,9 +141,11 @@
     
     <!-- Tab: 设备池 -->
     <div id="tabPool" style="display:none;">
-        <div class="log-chart-card" style="padding:2rem;text-align:center;">
-            <p class="text-muted">设备池历史快照需要定时采样 currentCount，<br>当前版本尚未开启。请先在区域配置中开启采样。</p>
+        <div class="log-chart-card" style="padding:1rem;">
+            <h6>各区域 currentCount 每20分钟采样（今日）</h6>
+            <canvas id="chartPool"></canvas>
         </div>
+        <div class="log-stats" id="poolStats" style="margin-top:0.75rem;"></div>
     </div>
 </div>
 {% endblock %}
@@ -155,6 +158,7 @@
     let _currentTab = 'stream';
     let _arriveChart = null;
     let _execChart = null;
+    let _poolChart = null;
     
     // ── Tab 切换 ──
     function switchLogTab(tab) {
@@ -165,6 +169,7 @@
         document.getElementById('tabPool').style.display = tab === 'pool' ? 'block' : 'none';
         if (tab === 'stream') refreshAll();
         else if (tab === 'trend') loadTrendCharts();
+        else if (tab === 'pool') loadPoolChart();
     }
     
     // ── 全部刷新 ──
@@ -256,6 +261,44 @@
                     {label:'下发', data:data.execute, color:'#58a6ff'},
                     {label:'未匹配', data:data.unmatched, color:'#8b949e'},
                 ], v => _execChart = v);
+            });
+    }
+    
+    // ── 设备池图表 ──
+    function loadPoolChart() {
+        fetch('/api/dispatch/logs/pool')
+            .then(r => r.json())
+            .then(data => {
+                if (!data.labels || data.labels.length === 0) {
+                    document.getElementById('chartPool').parentNode.innerHTML += '<p class="text-muted text-center mt-2">今日暂无采样数据</p>';
+                    return;
+                }
+                if (_poolChart) _poolChart.destroy();
+                const ctx = document.getElementById('chartPool').getContext('2d');
+                _poolChart = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels: data.labels, datasets: data.datasets },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        interaction: { intersect: false, mode: 'index' },
+                        plugins: { legend: { labels: { color: '#8b949e', font:{size:9}, usePointStyle:true, padding:10 } } },
+                        scales: {
+                            x: { ticks: { color: '#484f58', font:{size:9}, maxTicksLimit:12 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                            y: { ticks: { color: '#484f58', font:{size:9} }, grid: { color: 'rgba(255,255,255,0.04)' }, beginAtZero: false }
+                        }
+                    }
+                });
+                
+                // 显示最新值
+                let html = '';
+                data.datasets.forEach(ds => {
+                    const lastVal = ds.data.length > 0 ? ds.data[ds.data.length - 1] : '-';
+                    html += `<div class="log-stat-card" style="border-left:3px solid ${ds.borderColor};">
+                        <div class="stat-val" style="font-size:1.2rem;color:${ds.borderColor};">${lastVal}</div>
+                        <div class="stat-label">${ds.label.slice(0,20)}</div>
+                    </div>`;
+                });
+                document.getElementById('poolStats').innerHTML = html;
             });
     }
     

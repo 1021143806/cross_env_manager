@@ -4761,6 +4761,53 @@ def api_logs_trend():
     })
 
 
+@dispatch_bp.route('/api/dispatch/logs/pool')
+@login_required
+def api_logs_pool():
+    """设备池历史采样数据（daily_stats 中的 current_count，每20分钟）"""
+    region_filter = request.args.get('region', '')
+    today = datetime.now().strftime('%Y-%m-%d')
+    
+    try:
+        with open(DAILY_STATS_PATH, 'r', encoding='utf-8') as f:
+            stats = json.load(f)
+    except:
+        return jsonify({'labels': [], 'datasets': []})
+    
+    # 收集所有区域的 current_count 时序
+    all_regions = set()
+    for slot_data in stats.values():
+        if isinstance(slot_data, dict):
+            all_regions.update(slot_data.keys())
+    
+    # 筛选：未指定区域时显示所有，指定时只显示该区域
+    target_regions = [region_filter] if region_filter else sorted(all_regions)
+    
+    # 20分钟桶排序
+    sorted_slots = sorted(stats.keys())
+    labels = [s[11:16] for s in sorted_slots if s.startswith(today)]  # HH:MM
+    today_slots = [s for s in sorted_slots if s.startswith(today)]
+    
+    datasets = []
+    colors = ['#3fb950', '#58a6ff', '#d29922', '#f85149', '#a371f7', '#56d4dd']
+    for idx, rk in enumerate(target_regions[:6]):  # 最多6条线
+        data = []
+        for s in today_slots:
+            r = stats[s].get(rk, {})
+            data.append(r.get('current_count', 0) if isinstance(r, dict) else 0)
+        datasets.append({
+            'label': rk[:25],
+            'data': data,
+            'borderColor': colors[idx % len(colors)],
+            'backgroundColor': 'transparent',
+            'tension': 0.3,
+            'pointRadius': 1,
+            'borderWidth': 1.5,
+        })
+    
+    return jsonify({'labels': labels, 'datasets': datasets})
+
+
 @dispatch_bp.route('/api/dispatch/logs/list')
 @login_required
 def api_logs_list():
