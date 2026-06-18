@@ -891,6 +891,9 @@ document.getElementById('task-edit-save-btn')?.addEventListener('click', functio
     const rollerPointInput = document.getElementById('task-edit-roller-point');
     const rollerLabelInput = document.getElementById('task-edit-roller-label');
     const capacityInput = document.getElementById('task-edit-capacity');
+    const pathSwitch = document.getElementById('task-edit-path');
+    const pathModePicker = document.getElementById('path-mode-picker');
+    const pathModeManual = document.getElementById('path-mode-manual');
 
     const taskName = nameInput.value.trim();
     if (!taskName) { nameInput.focus(); return; }
