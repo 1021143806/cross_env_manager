@@ -259,6 +259,11 @@
 .detail-subtask-item:last-child {
     border-bottom: none;
 }
+.detail-subtask-matched {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border-radius: 4px;
+    padding: 0.25rem 0.35rem !important;
+}
 .detail-actions {
     display: flex;
     flex-wrap: wrap;
@@ -315,6 +320,11 @@
         <a class="chip" data-q="换电"><i class="bi bi-battery-charging"></i> 换电</a>
         <a class="chip" data-q="A1"><i class="bi bi-building"></i> A1楼栋</a>
     </div>
+    <div class="search-chips" id="searchModeChips" style="margin-top:0.35rem;">
+        <span style="font-size:0.75rem;color:var(--text-muted);margin-right:0.25rem;">搜索模式:</span>
+        <a class="chip active" data-mode="name" id="modeNameChip"><i class="bi bi-fonts"></i> 按模板名</a>
+        <a class="chip" data-mode="point" id="modePointChip"><i class="bi bi-geo-alt"></i> 按点位</a>
+    </div>
 </div>
 
 <div class="filter-row">
@@ -347,6 +357,7 @@
                         <th style="width:35%;" data-sort="model_process_code">模板代码 <i class="bi bi-arrow-down-up sort-icon"></i></th>
                         <th style="width:15%;" data-sort="model_process_name">名称 <i class="bi bi-arrow-down-up sort-icon"></i></th>
                         <th style="width:15%;" data-sort="target_points_ip">服务器 <i class="bi bi-arrow-down-up sort-icon"></i></th>
+                        <th id="thMatchedPoints" style="width:18%;display:none;">匹配点位</th>
                         <th style="width:60px;" data-sort="enable">状态</th>
                         <th style="width:50px;">子任务</th>
                     </tr>
@@ -397,12 +408,14 @@
         status: '',
         sort_by: 'id',
         sort_order: 'DESC',
+        searchMode: 'name',  // 'name' | 'point'
     };
     let templates = [];
     let total = 0;
     let totalPages = 0;
     let servers = [];
     let selectedId = null;
+    let matchedPointsMap = {};  // { template_id: [matched_point1, matched_point2, ...] }
 
     const $ = (s) => document.querySelector(s);
     const $$ = (s) => document.querySelectorAll(s);
@@ -436,6 +449,7 @@
         if (state.status) params.set('status', state.status);
         params.set('sort_by', state.sort_by);
         params.set('sort_order', state.sort_order);
+        params.set('search_mode', state.searchMode);
         return params.toString();
     }
 
@@ -444,6 +458,7 @@
         if (state.q) params.set('search_term', state.q);
         if (state.server) params.set('server', state.server);
         if (state.status) params.set('status', state.status);
+        if (state.searchMode !== 'name') params.set('search_mode', state.searchMode);
         const url = '/search' + (params.toString() ? '?' + params.toString() : '');
         window.history.replaceState(null, '', url);
     }
@@ -464,11 +479,26 @@
         if (document.activeElement !== searchInput) {
             searchInput.value = state.q;
         }
+        // search mode chips
+        $$('#searchModeChips .chip').forEach(el => {
+            el.classList.toggle('active', el.dataset.mode === state.searchMode);
+        });
+        // 匹配点位列显隐
+        const thMatched = $('#thMatchedPoints');
+        if (thMatched) {
+            thMatched.style.display = state.searchMode === 'point' ? '' : 'none';
+        }
+        // colspans: point模式7列，name模式6列
+        const totalCols = state.searchMode === 'point' ? 7 : 6;
+        document.querySelectorAll('.table-search thead th[colspan2]').forEach(th => {
+            th.setAttribute('data-cols', totalCols);
+        });
     }
 
     // ===== API 请求 =====
     async function fetchData() {
-        tbody.innerHTML = '<tr class="loading-row"><td colspan="6"><div class="spinner-border spinner-border-sm me-2"></div>搜索中...</td></tr>';
+        const totalCols = state.searchMode === 'point' ? 7 : 6;
+        tbody.innerHTML = `<tr class="loading-row"><td colspan="${totalCols}"><div class="spinner-border spinner-border-sm me-2"></div>搜索中...</td></tr>`;
         const url = '/api/search?' + buildQuery();
         try {
             const res = await fetch(url);
@@ -494,7 +524,8 @@
                 renderPlaceholder();
             }
         } catch (err) {
-            tbody.innerHTML = `<tr><td colspan="6" class="empty-state">
+            const totalCols = state.searchMode === 'point' ? 7 : 6;
+            tbody.innerHTML = `<tr><td colspan="${totalCols}" class="empty-state">
                 <i class="bi bi-exclamation-triangle"></i>
                 <p>搜索失败: ${esc(err.message)}</p>
             </td></tr>`;
@@ -503,8 +534,18 @@
 
     // ===== 渲染表格 =====
     function renderTable() {
+        // 构建 matchedPointsMap 缓存
+        matchedPointsMap = {};
+        templates.forEach(t => {
+            if (t.matched_points && t.matched_points.length > 0) {
+                matchedPointsMap[t.id] = t.matched_points;
+            }
+        });
+        
+        const totalCols = state.searchMode === 'point' ? 7 : 6;
+        
         if (templates.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" class="empty-state">
+            tbody.innerHTML = `<tr><td colspan="${totalCols}" class="empty-state">
                 <i class="bi bi-search"></i>
                 <p>没有找到匹配的模板</p>
                 <small style="color:var(--text-muted);">请尝试其他关键词或调整筛选条件</small>
@@ -515,11 +556,24 @@
             const isActive = selectedId === t.id;
             const statusLabel = t.enable == 1 ? '已启用' : '已禁用';
             const statusCls = t.enable == 1 ? 'bg-success' : 'bg-warning text-dark';
+            
+            // 匹配点位列（point 模式）
+            let matchedCol = '';
+            if (state.searchMode === 'point') {
+                const pts = t.matched_points || [];
+                const ptsText = pts.slice(0, 3).join(', ') + (pts.length > 3 ? ` 等${pts.length}个` : '');
+                const countBadge = pts.length > 0 ? `<span class="badge bg-info" style="font-size:0.65rem;margin-left:0.25rem;">×${pts.length}</span>` : '';
+                matchedCol = `<td style="font-size:0.78rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(pts.join(', '))}">
+                    ${esc(ptsText)}${countBadge}
+                </td>`;
+            }
+            
             return `<tr class="${isActive ? 'active-row' : ''}" data-id="${t.id}">
                 <td style="font-size:0.78rem;color:var(--text-muted);">${t.id}</td>
                 <td><span class="code-cell" title="${esc(t.model_process_code)}">${esc(t.model_process_code)}</span></td>
                 <td style="font-size:0.78rem;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.model_process_name || '')}">${esc(t.model_process_name || '-')}</td>
                 <td><span class="server-badge">${esc(t.target_points_ip || '-')}</span></td>
+                ${matchedCol}
                 <td><span class="badge ${statusCls}" style="font-size:0.7rem;padding:0.15rem 0.4rem;">${statusLabel}</span></td>
                 <td style="text-align:center;font-size:0.78rem;color:var(--text-muted);">${t.detail_count || 0}</td>
             </tr>`;
@@ -591,10 +645,17 @@
             if (details.length > 0) {
                 html += `<div class="detail-section">
                     <h6>子任务 (${details.length})</h6>`;
+                // 点位搜索模式：构建匹配点集
+                const matchedSet = new Set(matchedPointsMap[t.id] || []);
+                const isPointMode = state.searchMode === 'point';
+                
                 details.forEach(d => {
-                    html += `<div class="detail-subtask-item">
-                        <span class="badge bg-secondary" style="font-size:0.65rem;flex-shrink:0;">#${d.task_seq}</span>
-                        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(d.template_name || d.template_code || '-')}</span>
+                    const isMatched = isPointMode && matchedSet.has(d.task_path);
+                    const matchedCls = isMatched ? ' detail-subtask-matched' : '';
+                    const matchedIcon = isMatched ? ' <i class="bi bi-geo-alt-fill" style="color:var(--accent);font-size:0.65rem;" title="匹配点位"></i>' : '';
+                    html += `<div class="detail-subtask-item${matchedCls}">
+                        <span class="badge ${isMatched ? 'bg-info' : 'bg-secondary'}" style="font-size:0.65rem;flex-shrink:0;">#${d.task_seq}</span>
+                        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(d.task_path || '')}">${esc(d.template_name || d.template_code || '-')}${matchedIcon}</span>
                         <span class="server-badge" style="font-size:0.7rem;">${esc(d.task_servicec || '-')}</span>
                     </div>`;
                 });
@@ -696,6 +757,7 @@
         state.status = '';
         state.sort_by = 'id';
         state.sort_order = 'DESC';
+        state.searchMode = 'name';
         syncFilterUI();
         fetchData();
     });
@@ -709,6 +771,20 @@
             state.q = q;
             state.page = 1;
             fetchData();
+        });
+    });
+
+    // 搜索模式切换
+    $$('#searchModeChips .chip').forEach(el => {
+        el.addEventListener('click', (e) => {
+            e.preventDefault();
+            const mode = el.dataset.mode;
+            if (mode && mode !== state.searchMode) {
+                state.searchMode = mode;
+                state.page = 1;
+                syncFilterUI();
+                fetchData();
+            }
         });
     });
 
@@ -775,6 +851,10 @@
         const statusParam = urlParams.get('status') || '';
         if (statusParam) {
             state.status = statusParam;
+        }
+        const modeParam = urlParams.get('search_mode') || '';
+        if (modeParam === 'point') {
+            state.searchMode = 'point';
         }
         // 初始选中 id 排序表头
         document.querySelector('.table-search thead th[data-sort="id"]').classList.add('sorted');

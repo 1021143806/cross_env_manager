@@ -64,12 +64,20 @@ class TemplateService:
         
         return templates, None
     
-    def search_paginated(self, search_term='', page=1, per_page=20, server=None, status=None, sort_by='id', sort_order='DESC'):
-        """分页搜索 + 筛选 + 排序，返回 {templates, total, servers, page, per_page, total_pages}"""
+    def search_paginated(self, search_term='', page=1, per_page=20, server=None, status=None,
+                          sort_by='id', sort_order='DESC', search_mode='name'):
+        """分页搜索 + 筛选 + 排序，返回 {templates, total, servers, page, per_page, total_pages}
+        
+        search_mode: 'name' 按模板代码/名称搜索，'point' 按子表点位(task_path)搜索
+        """
         allowed_sort = {'id', 'model_process_code', 'model_process_name', 'target_points_ip', 'enable', 'area_id'}
         if sort_by not in allowed_sort:
             sort_by = 'id'
         sort_order = 'ASC' if sort_order.upper() == 'ASC' else 'DESC'
+        
+        # ===== 点位搜索模式 =====
+        if search_mode == 'point' and search_term:
+            return self._search_by_point(search_term, page, per_page, sort_by, sort_order)
         
         conditions = []
         params = []
@@ -115,6 +123,64 @@ class TemplateService:
         servers = [r['target_points_ip'] for r in servers_result] if servers_result else []
         
         total_pages = max(1, (total + per_page - 1) // per_page)
+        
+        return {
+            'templates': templates,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': total_pages,
+            'servers': servers,
+        }
+    
+    def _search_by_point(self, search_term, page=1, per_page=20, sort_by='id', sort_order='DESC'):
+        """按子表点位(task_path)搜索：先查detail表取model_process_id，再反查主表"""
+        # 1. 从子表获取去重的model_process_id（按主表ID倒序）
+        ids_sql = """SELECT DISTINCT model_process_id 
+                     FROM fy_cross_model_process_detail 
+                     WHERE task_path LIKE %s 
+                     ORDER BY model_process_id DESC"""
+        id_rows = self._execute(ids_sql, (f'%{search_term}%',)) or []
+        all_ids = [r['model_process_id'] for r in id_rows]
+        total = len(all_ids)
+        
+        if total == 0:
+            return {
+                'templates': [], 'total': 0, 'total_pages': 0,
+                'page': page, 'per_page': per_page, 'servers': []
+            }
+        
+        total_pages = max(1, (total + per_page - 1) // per_page)
+        offset = (page - 1) * per_page
+        page_ids = all_ids[offset:offset + per_page]
+        
+        if not page_ids:
+            page_ids = all_ids[:per_page]
+        
+        # 2. 查主表
+        placeholders = ','.join(['%s'] * len(page_ids))
+        data_sql = f"SELECT * FROM fy_cross_model_process WHERE id IN ({placeholders}) ORDER BY {sort_by} {sort_order}"
+        templates = self._execute(data_sql, page_ids) or []
+        
+        # 3. 补 detail_count、matched_points、matched_count
+        for t in templates:
+            detail_count = self._execute(
+                "SELECT COUNT(*) as cnt FROM fy_cross_model_process_detail WHERE model_process_id = %s",
+                (t['id'],))
+            t['detail_count'] = detail_count[0]['cnt'] if detail_count else 0
+            
+            matched = self._execute(
+                "SELECT task_path FROM fy_cross_model_process_detail "
+                "WHERE model_process_id = %s AND task_path LIKE %s",
+                (t['id'], f'%{search_term}%'))
+            t['matched_points'] = [m['task_path'] for m in matched] if matched else []
+            t['matched_count'] = len(t['matched_points'])
+        
+        # 4. 获取服务器列表（仅匹配到的模板，范围太大则全量）
+        servers_result = self._execute(
+            "SELECT DISTINCT target_points_ip FROM fy_cross_model_process "
+            "WHERE target_points_ip IS NOT NULL AND target_points_ip != '' ORDER BY target_points_ip")
+        servers = [r['target_points_ip'] for r in servers_result] if servers_result else []
         
         return {
             'templates': templates,

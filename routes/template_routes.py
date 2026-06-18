@@ -152,7 +152,7 @@ def copy_template(template_id):
 @template_bp.route('/api/search', methods=['GET'])
 @login_required
 def api_search():
-    """前端搜索 API，支持分页/筛选/排序"""
+    """前端搜索 API，支持分页/筛选/排序/点位搜索"""
     search_term = request.args.get('q', '').strip()
     page = int(request.args.get('page', 1))
     per_page = int(request.args.get('per_page', 20))
@@ -160,6 +160,7 @@ def api_search():
     status = request.args.get('status', '').strip() or None
     sort_by = request.args.get('sort_by', 'id').strip()
     sort_order = request.args.get('sort_order', 'DESC').strip()
+    search_mode = request.args.get('search_mode', 'name').strip()  # 'name' | 'point'
     
     result = _get_template_service().search_paginated(
         search_term=search_term,
@@ -168,7 +169,8 @@ def api_search():
         server=server,
         status=status,
         sort_by=sort_by,
-        sort_order=sort_order
+        sort_order=sort_order,
+        search_mode=search_mode
     )
     return jsonify({'success': True, 'data': result})
 
