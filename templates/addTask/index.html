@@ -491,7 +491,7 @@
                         </div>
                     </div>
                     <!-- 辊筒点位配置（辊筒任务时显示） -->
-                    <div id="task-edit-roller-config" style="display:none;" class="mb-3 p-3 rounded" style="background:var(--detail-card-bg);border:1px solid var(--border-color);">
+                    <div id="task-edit-roller-config" style="display:none;" class="mb-3 p-3 rounded border">
                         <label class="form-label fw-semibold">📍 固定下发点位</label>
                         <div class="row g-2">
                             <div class="col-md-6">
@@ -500,6 +500,34 @@
                             <div class="col-md-6">
                                 <input type="text" class="form-control" id="task-edit-roller-label" placeholder="点位说明，如 线头A-上料位">
                             </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="task-edit-path">
+                            <label class="form-check-label" for="task-edit-path">需要指定点位 (requires_task_path)</label>
+                        </div>
+                    </div>
+                    <!-- 指定点位配置区（开启 requires_task_path 后显示） -->
+                    <div id="task-edit-path-config" style="display:none;" class="mb-3 p-3 rounded border">
+                        <label class="form-label fw-semibold mb-2">点位输入模式</label>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="path-input-mode" id="path-mode-picker" value="picker" checked>
+                            <label class="form-check-label" for="path-mode-picker">仅配置点位</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="path-input-mode" id="path-mode-manual" value="manual">
+                            <label class="form-check-label" for="path-mode-manual">手动输入</label>
+                        </div>
+                        <!-- 点位列表编辑器（仅 picker 模式显示） -->
+                        <div id="task-edit-path-options" class="mt-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label fw-semibold mb-0">可选点位列表</label>
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="addPathOption()">
+                                    <i class="bi bi-plus"></i> 添加点位
+                                </button>
+                            </div>
+                            <div id="path-options-list"></div>
                         </div>
                     </div>
                     <div class="mb-3">
@@ -565,6 +593,7 @@
 let _editorConfig = null;   // 编辑器持有的配置副本，由 loadEditorConfig() 填充
 let _selectedArea = null;
 let _selectedTask = null;
+let _pathOptions = [];        // 点位列表编辑器数据 [{label, value}]
 
 // 简易 HTML 转义（避免 XSS）
 function escHtml(str) {
@@ -672,7 +701,9 @@ function renderTaskList() {
                 : '<span class="badge bg-secondary me-1">空车</span>');
         const pointInfo = isRoller && t.roller_point
             ? `<span class="me-2 small"><span class="text-muted">📍</span> ${t.roller_point_label || t.roller_point}</span>`
-            : '';
+            : (t.requires_task_path
+                ? `<span class="me-2 small"><span class="text-muted">📌</span> ${t.path_input_mode === 'manual' ? '手动输入' : `可选点×${(t.task_path_options||[]).length}`}</span>`
+                : '');
         return `<div class="card mb-2 ${_selectedTask === name ? 'border-primary' : ''}" style="cursor:pointer;"
                     onclick="selectTask('${name.replace(/'/g, "\\'")}')">
             <div class="card-body py-2 px-3">
@@ -785,12 +816,17 @@ function openTaskEditModal(taskName) {
     const rollerPointInput = document.getElementById('task-edit-roller-point');
     const rollerLabelInput = document.getElementById('task-edit-roller-label');
     const capacityInput = document.getElementById('task-edit-capacity');
+    const pathSwitch = document.getElementById('task-edit-path');
+    const pathConfig = document.getElementById('task-edit-path-config');
+    const pathModePicker = document.getElementById('path-mode-picker');
+    const pathModeManual = document.getElementById('path-mode-manual');
+    const pathOptionsList = document.getElementById('path-options-list');
 
     if (isEdit) {
         const task = _editorConfig.areas[_selectedArea].tasks[taskName];
         titleEl.innerHTML = '<i class="bi bi-pencil-square me-2"></i>编辑任务';
         nameInput.value = taskName;
-        nameInput.readOnly = true;   // 编辑时不可改名（防止 key 变化）
+        nameInput.readOnly = true;
         codeInput.value = task.code || '';
         urlInput.value = task.base_url || 'http://10.68.2.32:7000/ics/taskOrder/addTask';
         shelfInput.checked = !!task.requires_shelf;
@@ -799,6 +835,14 @@ function openTaskEditModal(taskName) {
         rollerLabelInput.value = task.roller_point_label || '';
         rollerConfig.style.display = rollerInput.checked ? 'block' : 'none';
         capacityInput.value = task.capacity || 0;
+        pathSwitch.checked = !!task.requires_task_path;
+        pathConfig.style.display = pathSwitch.checked ? 'block' : 'none';
+        const mode = task.path_input_mode || 'picker';
+        pathModePicker.checked = (mode === 'picker');
+        pathModeManual.checked = (mode === 'manual');
+        // 渲染点位列表
+        _pathOptions = (task.task_path_options || []).map(o => ({ label: o.label || '', value: o.value || '' }));
+        renderPathOptions();
         _editingTaskName = taskName;
     } else {
         titleEl.innerHTML = '<i class="bi bi-plus-circle me-2"></i>新增任务';
@@ -812,6 +856,12 @@ function openTaskEditModal(taskName) {
         rollerLabelInput.value = '';
         rollerConfig.style.display = 'none';
         capacityInput.value = 0;
+        pathSwitch.checked = false;
+        pathConfig.style.display = 'none';
+        pathModePicker.checked = true;
+        pathModeManual.checked = false;
+        _pathOptions = [];
+        renderPathOptions();
         _editingTaskName = null;
     }
     modal.show();
@@ -854,12 +904,25 @@ document.getElementById('task-edit-save-btn')?.addEventListener('click', functio
     }
 
     const isRoller = rollerInput.checked;
+    const pathEnabled = pathSwitch.checked;
+    const pathMode = pathEnabled ? (pathModePicker.checked ? 'picker' : 'manual') : 'picker';
+    // 收集点位列表（仅 picker 模式有效）
+    let pathOptions = [];
+    if (pathEnabled && pathMode === 'picker') {
+        const rows = document.querySelectorAll('#path-options-list .path-option-row');
+        rows.forEach(row => {
+            const lbl = row.querySelector('.path-opt-label')?.value?.trim();
+            const val = row.querySelector('.path-opt-value')?.value?.trim();
+            if (lbl && val) pathOptions.push({ label: lbl, value: val });
+        });
+    }
     const taskData = {
         base_url: urlInput.value.trim() || 'http://10.68.2.32:7000/ics/taskOrder/addTask',
         code: codeInput.value.trim(),
         requires_shelf: isRoller ? false : shelfInput.checked,
-        requires_task_path: _editorConfig.areas[_selectedArea].tasks[_editingTaskName]?.requires_task_path || false,
-        task_path_options: _editorConfig.areas[_selectedArea].tasks[_editingTaskName]?.task_path_options || [],
+        requires_task_path: pathEnabled,
+        path_input_mode: pathEnabled ? pathMode : 'picker',
+        task_path_options: pathEnabled ? pathOptions : [],
         capacity: parseInt(capacityInput.value) || 0,
         roller_task: isRoller,
         roller_point: isRoller ? rollerPointInput.value.trim() : '',
@@ -892,6 +955,57 @@ document.getElementById('task-edit-roller')?.addEventListener('change', function
         document.getElementById('task-edit-shelf').checked = false;
     }
 });
+
+// 指定点位开关联动：显示/隐藏点位配置区
+document.getElementById('task-edit-path')?.addEventListener('change', function() {
+    const configDiv = document.getElementById('task-edit-path-config');
+    if (configDiv) {
+        configDiv.style.display = this.checked ? 'block' : 'none';
+    }
+});
+
+// 点位输入模式切换：picker ↔ manual
+document.getElementById('path-mode-picker')?.addEventListener('change', function() {
+    if (this.checked) updatePathOptionsVisibility();
+});
+document.getElementById('path-mode-manual')?.addEventListener('change', function() {
+    if (this.checked) updatePathOptionsVisibility();
+});
+
+function updatePathOptionsVisibility() {
+    const modeInputs = document.querySelectorAll('input[name="path-input-mode"]');
+    let mode = 'picker';
+    modeInputs.forEach(r => { if (r.checked) mode = r.value; });
+    const list = document.getElementById('task-edit-path-options');
+    if (list) list.style.display = (mode === 'picker') ? 'block' : 'none';
+}
+
+// 渲染点位选项列表
+function renderPathOptions() {
+    const list = document.getElementById('path-options-list');
+    if (!list) return;
+    list.innerHTML = '';
+    _pathOptions.forEach((opt, idx) => {
+        list.innerHTML += `<div class="path-option-row d-flex align-items-center gap-2 mb-2">
+            <input class="form-control form-control-sm path-opt-label" value="${escHtml(opt.label)}" placeholder="标签" style="flex:1;" onchange="_pathOptions[${idx}].label=this.value">
+            <input class="form-control form-control-sm path-opt-value" value="${escHtml(opt.value)}" placeholder="点位 code" style="flex:1;" onchange="_pathOptions[${idx}].value=this.value">
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removePathOption(${idx})"><i class="bi bi-x"></i></button>
+        </div>`;
+    });
+    if (_pathOptions.length === 0) {
+        list.innerHTML = '<div class="text-muted small py-2">暂无点位，点击"添加点位"按钮添加</div>';
+    }
+}
+
+function addPathOption() {
+    _pathOptions.push({ label: '', value: '' });
+    renderPathOptions();
+}
+
+function removePathOption(idx) {
+    _pathOptions.splice(idx, 1);
+    renderPathOptions();
+}
 
 // 按回车触发保存
 document.getElementById('task-edit-form')?.addEventListener('keydown', function(e) {

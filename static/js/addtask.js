@@ -19,6 +19,7 @@
             const shelfLock = document.getElementById('shelf-lock');
             const taskPathGroup = document.getElementById('task-path-group');
             const taskPathSelect = document.getElementById('task-path-select');
+            const taskPathInput = document.getElementById('task-path-input');
             const taskPathError = document.getElementById('task-path-error');
             const rollerTaskInfo = document.getElementById('roller-task-info');
             const rollerPointDisplay = document.getElementById('roller-point-display');
@@ -436,6 +437,13 @@
                         taskPathSelect.style.borderColor = 'var(--border-color)';
                     } else {
                         taskPathSelect.style.borderColor = '#dc3545';
+                    }
+                });
+                
+                taskPathInput?.addEventListener('input', () => {
+                    if (taskPathInput.value.trim()) {
+                        taskPathError.style.display = 'none';
+                        taskPathInput.style.borderColor = 'var(--border-color)';
                     }
                 });
                 
@@ -872,6 +880,9 @@
                 shelfError.style.display = 'none';
                 taskPathError.style.display = 'none';
                 shelfLock.style.display = 'none';
+                // 重置路径输入
+                if (taskPathInput) taskPathInput.value = '';
+                taskPathSelect.value = '';
                 
                 if (area && taskName && config.areas[area]?.tasks[taskName]) {
                     const task = config.areas[area].tasks[taskName];
@@ -907,23 +918,36 @@
                         
                         if (task.requires_task_path) {
                             taskPathGroup.style.display = 'block';
-                            taskPathSelect.innerHTML = '<option value="">请选择任务路径</option>';
-                            task.task_path_options.forEach(option => {
-                                const opt = document.createElement('option');
-                                let value, baseText;
-                                if (typeof option === 'object') {
-                                    value = option.value;
-                                    baseText = option.label ? `${option.label} (${option.value})` : option.value;
-                                } else {
-                                    value = option;
-                                    baseText = option;
-                                }
-                                opt.value = value;
-                                opt.textContent = baseText;
-                                opt.dataset.baseText = baseText;
-                                taskPathSelect.appendChild(opt);
-                            });
-                            if (task.capacity > 0) loadPathCapacity(task.code, task.capacity);
+                            const mode = task.path_input_mode || 'picker';
+                            if (mode === 'manual') {
+                                // 手动输入模式：显示文本框，隐藏下拉
+                                taskPathSelect.style.display = 'none';
+                                taskPathInput.style.display = 'block';
+                                taskPathInput.value = '';
+                                taskPathSelect.innerHTML = '<option value="">请选择任务路径</option>';
+                            } else {
+                                // picker 模式：显示下拉选择，隐藏文本框
+                                taskPathSelect.style.display = 'block';
+                                taskPathInput.style.display = 'none';
+                                taskPathInput.value = '';
+                                taskPathSelect.innerHTML = '<option value="">请选择任务路径</option>';
+                                (task.task_path_options || []).forEach(option => {
+                                    const opt = document.createElement('option');
+                                    let value, baseText;
+                                    if (typeof option === 'object') {
+                                        value = option.value;
+                                        baseText = option.label ? `${option.label} (${option.value})` : option.value;
+                                    } else {
+                                        value = option;
+                                        baseText = option;
+                                    }
+                                    opt.value = value;
+                                    opt.textContent = baseText;
+                                    opt.dataset.baseText = baseText;
+                                    taskPathSelect.appendChild(opt);
+                                });
+                                if (task.capacity > 0) loadPathCapacity(task.code, task.capacity);
+                            }
                         } else {
                             taskPathGroup.style.display = 'none';
                         }
@@ -1114,8 +1138,12 @@
                     }
                 } else {
                     if (task.requires_shelf && !shelf) { shelfError.style.display='block'; return; }
-                    if (task.requires_task_path && (!taskPathSelect.value || taskPathSelect.value==='请选择任务路径')) {
-                        taskPathError.style.display='block'; return;
+                    if (task.requires_task_path) {
+                        const mode = task.path_input_mode || 'picker';
+                        const pathVal = (mode === 'manual') ? (taskPathInput?.value?.trim() || '') : (taskPathSelect?.value || '');
+                        if (!pathVal || pathVal === '请选择任务路径') {
+                            taskPathError.style.display='block'; return;
+                        }
                     }
                     if (task.requires_shelf && shelfHistory[shelf] && Date.now()-shelfHistory[shelf]<300000) {
                         shelfLock.style.display='block'; return;
@@ -1146,7 +1174,7 @@
                     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>下发中...';
                 }
                 
-                if (!isRoller && task.requires_task_path && task.capacity>0) {
+                if (!isRoller && task.requires_task_path && task.capacity>0 && (task.path_input_mode || 'picker') !== 'manual') {
                     if (await isPathCapacityFull(task.code, taskPathSelect.value, task.capacity)) {
                         capacityModalMessage.textContent = `点位 ${taskPathSelect.value} 容量已满 (${task.capacity}/${task.capacity})`;
                         capacityModal.show();
@@ -1169,7 +1197,11 @@
                 const orderId = generateOrderId();
                 const taskPathVal = isRoller
                     ? (task.roller_point || "")
-                    : (task.requires_task_path ? taskPathSelect.value : "");
+                    : (task.requires_task_path
+                        ? ((task.path_input_mode === 'manual')
+                            ? (taskPathInput?.value?.trim() || "")
+                            : (taskPathSelect?.value || ""))
+                        : "");
                 const requestData = [{
                     modelProcessCode: task.code, priority: 6, orderId, fromSystem: "CEM",
                     taskOrderDetail: { taskPath: taskPathVal, shelfNumber: task.requires_shelf ? shelf : "" }
