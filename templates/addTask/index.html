@@ -826,7 +826,7 @@ function openTaskEditModal(taskName) {
         const task = _editorConfig.areas[_selectedArea].tasks[taskName];
         titleEl.innerHTML = '<i class="bi bi-pencil-square me-2"></i>编辑任务';
         nameInput.value = taskName;
-        nameInput.readOnly = true;
+        nameInput.readOnly = false;  // 允许编辑时改名（保存时会自动删除旧 key）
         codeInput.value = task.code || '';
         urlInput.value = task.base_url || 'http://10.68.2.32:7000/ics/taskOrder/addTask';
         shelfInput.checked = !!task.requires_shelf;
@@ -899,9 +899,10 @@ document.getElementById('task-edit-save-btn')?.addEventListener('click', functio
     if (!taskName) { nameInput.focus(); return; }
 
     // 新增模式：检查名称冲突
-    if (!_editingTaskName) {
+    // 编辑模式改名：同样检查冲突
+    if (!_editingTaskName || (taskName !== _editingTaskName)) {
         if (_editorConfig.areas[_selectedArea].tasks[taskName]) {
-            showConfigStatus('该任务已存在', 'error');
+            showConfigStatus('该任务名称已存在', 'error');
             return;
         }
     }
