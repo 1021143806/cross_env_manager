@@ -449,23 +449,11 @@ function renderMemChart(data) {
     ctx = ctx.getContext('2d');
     
     var labels = data.timestamps;
-    // 计算哪些时间点的标签需要显示（首尾 + 每隔 step 个点）
-    var labelStep = Math.max(1, Math.ceil(labels.length / 12));
-    var showLabels = {};
-    for (var i = 0; i < labels.length; i++) {
-        if (i === 0 || i === labels.length - 1 || i % labelStep === 0) {
-            showLabels[labels[i]] = true;
-        }
-    }
-    // 用 val（label 原文）查表，避免 Chart.js 采样后 index 错位
-    var xCallback = function(val) { return showLabels[val] ? val : ''; };
     
     if (memChart) {
         memChart.data.labels = labels;
         memChart.data.datasets[0].data = data.cem_rss_mb || [];
         memChart.data.datasets[1].data = data.postlook_rss_mb || [];
-        // 更新 callback，防止闭包捕获过期变量
-        memChart.options.scales.x.ticks.callback = xCallback;
         memChart.update('none');
     } else {
         memChart = new Chart(ctx, {
@@ -510,8 +498,7 @@ function renderMemChart(data) {
                 scales: {
                     x: {
                         ticks: { 
-                            color: '#484f58', font: { size: 10 }, maxTicksLimit: 15,
-                            callback: xCallback
+                            color: '#484f58', font: { size: 10 }, maxTicksLimit: 15, autoSkip: true,
                         },
                         grid: { color: 'rgba(48,54,61,0.4)' }
                     },
