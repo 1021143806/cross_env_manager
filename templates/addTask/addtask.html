@@ -736,6 +736,22 @@
                         <input type="password" class="form-control" id="login-password" placeholder="请输入密码" autocomplete="current-password">
                         <div class="form-text">请联系管理员获取登录凭据</div>
                     </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="login-is-admin" onchange="toggleInlineAdmin()">
+                        <label class="form-check-label" for="login-is-admin">
+                            管理员提权（需额外验证管理员账号）
+                        </label>
+                    </div>
+                    <div id="login-admin-fields" style="display:none;">
+                        <div class="mb-3">
+                            <label for="login-admin-username" class="form-label text-warning">管理员账号</label>
+                            <input type="text" class="form-control" id="login-admin-username" placeholder="请输入管理员账号">
+                        </div>
+                        <div class="mb-3">
+                            <label for="login-admin-password" class="form-label text-warning">管理员密码</label>
+                            <input type="password" class="form-control" id="login-admin-password" placeholder="请输入管理员密码">
+                        </div>
+                    </div>
                     <div class="alert alert-danger mt-3" id="login-error" style="display: none;"></div>
                 </div>
                 <div class="modal-footer">
@@ -872,6 +888,12 @@
             });
             window.renderMermaidDiagrams('#help-modal-body');
         });
+        
+        // 内联登录：管理员提权切换
+        function toggleInlineAdmin() {
+            document.getElementById('login-admin-fields').style.display = 
+                document.getElementById('login-is-admin').checked ? 'block' : 'none';
+        }
     </script>
     <script src="/static/js/addtask.js"></script>
 </body>

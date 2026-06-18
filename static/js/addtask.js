@@ -530,6 +530,9 @@
             async function handleLogin() {
                 const username = document.getElementById('login-username').value.trim();
                 const password = document.getElementById('login-password').value.trim();
+                const isAdmin = document.getElementById('login-is-admin')?.checked || false;
+                const adminUsername = document.getElementById('login-admin-username')?.value.trim() || '';
+                const adminPassword = document.getElementById('login-admin-password')?.value.trim() || '';
                 const loginError = document.getElementById('login-error');
                 const loginSpinner = document.getElementById('login-spinner');
                 const loginSubmitBtn = document.getElementById('login-submit');
@@ -550,7 +553,11 @@
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ username, password })
+                        body: JSON.stringify({ 
+                            username, password,
+                            admin_username: isAdmin ? adminUsername : '',
+                            admin_password: isAdmin ? adminPassword : ''
+                        })
                     });
                     
                     const data = await response.json();
