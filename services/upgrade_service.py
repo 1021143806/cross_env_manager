@@ -258,6 +258,16 @@ def _read_version_json(extract_dir: str) -> dict:
         return {}
 
 
+def _fix_file_permission(path: str, is_dir: bool = False):
+    """修正文件/目录权限：文件 644，目录 755。静默失败"""
+    try:
+        mode = 0o755 if is_dir else 0o644
+        os.chmod(path, mode)
+    except (PermissionError, OSError):
+        pass  # 非 root 无法 chown，至少保证 chmod 到位
+
+
+
 def do_upgrade(zip_path: str, remark: str = '') -> dict:
     """
     执行升级
@@ -345,7 +355,19 @@ def do_upgrade(zip_path: str, remark: str = '') -> dict:
                 dst_path = os.path.join(BASE_DIR, rel_path)
                 os.makedirs(os.path.dirname(dst_path), exist_ok=True)
                 shutil.copy2(src_path, dst_path)
+                # 修正权限：文件 644，确保进程用户可读写
+                _fix_file_permission(dst_path, is_dir=False)
                 overlay_count += 1
+
+        # 7.0 修正所有目录权限为 755（新创建的目录可能权限不对）
+        for root, dirs, files in os.walk(extract_dir):
+            for d in dirs:
+                src_dir_rel = os.path.relpath(os.path.join(root, d), extract_dir)
+                if _should_exclude(src_dir_rel + '/'):
+                    continue
+                dst_dir = os.path.join(BASE_DIR, src_dir_rel)
+                if os.path.isdir(dst_dir):
+                    _fix_file_permission(dst_dir, is_dir=True)
 
         # 7.1 增量包：清理被删除的文件
         deleted_paths = files_changed.get('D', []) if isinstance(files_changed, dict) else []

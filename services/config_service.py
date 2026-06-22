@@ -104,7 +104,9 @@ class ConfigService:
         :param config_dict: 完整配置字典
         :param commit_message: 提交说明（可选）
         :return: dict {new_version, backup_name, parent_version}
+        :raises PermissionError: 文件无写入权限
         """
+        import getpass as _getpass
         # 1. 读取当前版本
         current = self.load_config() if os.path.exists(self._get_config_path()) else {}
         current_version = current.get('_version', 0)
@@ -124,11 +126,20 @@ class ConfigService:
 
         # 4. 写入 JSON
         config_dir = self._get_config_dir()
-        os.makedirs(config_dir, exist_ok=True)
         json_path = self._get_config_path()
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(config_dict, f, indent=2, ensure_ascii=False)
-            f.write('\n')
+        try:
+            os.makedirs(config_dir, mode=0o755, exist_ok=True)
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(config_dict, f, indent=2, ensure_ascii=False)
+                f.write('\n')
+            os.chmod(json_path, 0o644)
+        except PermissionError as e:
+            current_user = _getpass.getuser()
+            raise PermissionError(
+                f'无法写入配置文件: {json_path}\n'
+                f'当前用户: {current_user}\n'
+                f'请在服务器执行: chmod 644 {json_path} 并确保 config目录为 755'
+            ) from e
 
         # 5. 同步生成 JS 兼容文件（供 addtask.js 等旧版使用）
         self._sync_js_file(config_dict)
@@ -144,16 +155,26 @@ class ConfigService:
 
     def _sync_js_file(self, config_dict: dict):
         """从 JSON dict 生成 static/js/config.js"""
+        import getpass as _getpass
         js_dir = os.path.dirname(self._get_js_output_path())
-        os.makedirs(js_dir, exist_ok=True)
+        try:
+            os.makedirs(js_dir, mode=0o755, exist_ok=True)
+        except (PermissionError, OSError):
+            return  # 非致命，跳过
 
         js_content = (
             '// 此文件由系统自动生成，请勿手动编辑\n'
             '// 请通过 API 修改 config/dispatch_config.json\n\n'
             f'const config = {json.dumps(config_dict, indent=2, ensure_ascii=False)};\n'
         )
-        with open(self._get_js_output_path(), 'w', encoding='utf-8') as f:
-            f.write(js_content)
+        js_path = self._get_js_output_path()
+        try:
+            with open(js_path, 'w', encoding='utf-8') as f:
+                f.write(js_content)
+            os.chmod(js_path, 0o644)
+        except PermissionError as e:
+            current_user = _getpass.getuser()
+            print(f'[Config] 警告: 无法写入 JS 兼容文件 {js_path} (用户: {current_user})')
 
     # ─── 默认配置 ────────────────────────────────────────────
 
@@ -175,7 +196,7 @@ class ConfigService:
     def _create_backup_file(self, config_dict: dict, version: int, message: str = '') -> str:
         """创建备份文件"""
         backup_dir = self._get_backup_dir()
-        os.makedirs(backup_dir, exist_ok=True)
+        os.makedirs(backup_dir, mode=0o755, exist_ok=True)
 
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         backup_name = f'config_v{version}_{timestamp}.json'
@@ -194,6 +215,7 @@ class ConfigService:
         with open(backup_path, 'w', encoding='utf-8') as f:
             json.dump(backup_data, f, indent=2, ensure_ascii=False)
 
+        os.chmod(backup_path, 0o644)
         return backup_name
 
     def list_backups(self):

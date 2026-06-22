@@ -2474,9 +2474,52 @@ def test_version_tree():
     """测试版本历史树状图页面"""
     return render_template('test_version_tree.html')
 
+
+def _ensure_writable_dirs():
+    """启动时初始化关键目录权限，确保进程用户可读写"""
+    import os as _os
+    base = _os.path.dirname(_os.path.abspath(__file__))
+    dirs = [
+        _os.path.join(base, 'config'),
+        _os.path.join(base, 'config', 'backups'),
+        _os.path.join(base, 'config', 'old'),
+        _os.path.join(base, 'data', 'dispatch'),
+        _os.path.join(base, 'data', 'dispatch', 'backups'),
+        _os.path.join(base, 'data', 'dispatch', 'logs'),
+        _os.path.join(base, 'data', 'dispatch', '_shared'),
+        _os.path.join(base, 'static', 'js'),
+        _os.path.join(base, 'logs'),
+        _os.path.join(base, 'update_package'),
+        _os.path.join(base, 'backup'),
+    ]
+    for d in dirs:
+        try:
+            _os.makedirs(d, mode=0o755, exist_ok=True)
+        except (PermissionError, OSError):
+            pass
+    # 确保 config/dispatch_config.json 可写
+    config_json = _os.path.join(base, 'config', 'dispatch_config.json')
+    if _os.path.exists(config_json):
+        try:
+            _os.chmod(config_json, 0o644)
+        except (PermissionError, OSError):
+            pass
+    # 确保 data/dispatch/cache_index.json 等文件可写
+    for fname in ['cache_index.json', 'global_log.json', 'daily_stats.json']:
+        fpath = _os.path.join(base, 'data', 'dispatch', fname)
+        if _os.path.exists(fpath):
+            try:
+                _os.chmod(fpath, 0o644)
+            except (PermissionError, OSError):
+                pass
+    print('[启动] 目录权限已初始化')
+
+
 if __name__ == '__main__':
     # 创建模板目录
     os.makedirs('templates', exist_ok=True)
+    # 初始化关键目录权限
+    _ensure_writable_dirs()
     
     # ========================================================================
     # Phase 1 架构优化：初始化数据库连接池

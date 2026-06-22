@@ -226,10 +226,14 @@ def _load_cache_index():
 
 def _save_cache_index(data):
     """保存 cache_index.json"""
-    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(DATA_DIR, mode=0o755, exist_ok=True)
     with _write_lock:
         with open(CACHE_INDEX_PATH, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+    try:
+        os.chmod(CACHE_INDEX_PATH, 0o644)
+    except (PermissionError, OSError):
+        pass
 
 
 def _load_json(filepath):
@@ -251,7 +255,8 @@ def _load_json(filepath):
 
 def _save_json(filepath, data, max_retries=3):
     """保存 JSON 文件（原子写入 + 备份保护），失败时自动重试"""
-    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    parent_dir = os.path.dirname(filepath)
+    os.makedirs(parent_dir, mode=0o755, exist_ok=True)
     tmp = filepath + '.tmp'
     bak = filepath + '.bak'
     
@@ -269,8 +274,23 @@ def _save_json(filepath, data, max_retries=3):
                 with open(tmp, 'w', encoding='utf-8') as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
                 os.replace(tmp, filepath)
+            # 修正权限
+            try:
+                os.chmod(filepath, 0o644)
+            except (PermissionError, OSError):
+                pass
             return  # 成功直接返回
+        except PermissionError as e:
+            import getpass as _getpass
+            current_user = _getpass.getuser()
+            print(f"[Dispatch] _save_json 权限不足: {os.path.basename(filepath)}, path={filepath}, user={current_user}, error={e}")
+            raise  # 权限问题不重试
         except (OSError, IOError) as e:
+            if attempt < max_retries - 1:
+                time.sleep(0.3 * (attempt + 1))
+                continue
+            print(f"[Dispatch] _save_json 写入失败(重试{max_retries}次): {os.path.basename(filepath)}, error={e}")
+        except (TypeError, ValueError, OverflowError) as e:
             if attempt < max_retries - 1:
                 time.sleep(0.3 * (attempt + 1))
                 continue
@@ -1936,17 +1956,22 @@ def save_config():
         data = request.get_json()
         # 先创建备份
         try:
-            os.makedirs(BACKUP_DIR, exist_ok=True)
+            os.makedirs(BACKUP_DIR, mode=0o755, exist_ok=True)
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             backup_name = f"dispatch_config_{timestamp}.json"
             backup_path = os.path.join(BACKUP_DIR, backup_name)
             with open(backup_path, 'w', encoding='utf-8') as f:
                 f.write(f"// commit: auto-save\n")
                 json.dump(data, f, ensure_ascii=False, indent=2)
+            os.chmod(backup_path, 0o644)
         except Exception:
             pass  # 备份失败不影响保存
         _save_cache_index(data)
         return jsonify({'success': True, 'message': '配置保存成功'})
+    except PermissionError as e:
+        import getpass as _getpass
+        current_user = _getpass.getuser()
+        return jsonify({'success': False, 'error': f'没有保存权限 (用户: {current_user})', 'detail': str(e)}), 500
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
