@@ -654,12 +654,7 @@ def resend_cross_task(sub_order_id, order_id, task_seq, server_ip="10.68.2.32"):
                     }
             
             # ========== 步骤2: 检查大模板状态 ==========
-            # order_id 参数实际是 sub_order_id（前端传的 subOrderId），格式: {orderId}_{taskSeq}_{subId}
-            # 例如: "pad_html2026-05-26 14:54:19_3_1067" → 提取 "pad_html2026-05-26 14:54:19"
-            # sub_order_id 参数实际是真正的 orderId（前端传的 orderId）
-            real_order_id = sub_order_id or order_id
-            if not real_order_id:
-                real_order_id = order_id
+            # 大模板查询用主任务单号 real_order_id (= order_id)
             sql = "SELECT task_status FROM fy_cross_task WHERE orderId = %s"
             cursor.execute(sql, (real_order_id,))
             main_task = cursor.fetchone()
@@ -992,8 +987,7 @@ def resend_cross_task_stream(sub_order_id, order_id, task_seq, server_ip="10.68.
             # ========== 步骤2: 检查大模板状态 ==========
             t0 = _time.time()
             yield _yield_step(2, "检查大模板状态", "running")
-            # sub_order_id 参数实际是真正的 orderId（前端传的 orderId）
-            real_order_id = sub_order_id or order_id
+            # 大模板查询用主任务单号 order_id
             sql = "SELECT task_status FROM fy_cross_task WHERE orderId = %s"
             cursor.execute(sql, (real_order_id,))
             main_task = cursor.fetchone()
