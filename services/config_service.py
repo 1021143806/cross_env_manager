@@ -124,22 +124,34 @@ class ConfigService:
         # 3. 自动备份
         backup_name = self._create_backup_file(current, current_version, commit_message)
 
-        # 4. 写入 JSON
+        # 4. 写入 JSON（原子写入：先写.tmp再os.replace，可绕过root文件权限问题）
         config_dir = self._get_config_dir()
         json_path = self._get_config_path()
+        tmp_path = json_path + '.tmp'
         try:
             os.makedirs(config_dir, mode=0o755, exist_ok=True)
-            with open(json_path, 'w', encoding='utf-8') as f:
+            # 先写入临时文件（由当前用户创建，不存在权限问题）
+            with open(tmp_path, 'w', encoding='utf-8') as f:
                 json.dump(config_dict, f, indent=2, ensure_ascii=False)
                 f.write('\n')
-            os.chmod(json_path, 0o644)
+            os.chmod(tmp_path, 0o644)
+            # 原子替换：基于目录权限，即使目标文件属主为root也能成功
+            os.replace(tmp_path, json_path)
         except PermissionError as e:
             current_user = _getpass.getuser()
-            raise PermissionError(
-                f'无法写入配置文件: {json_path}\n'
-                f'当前用户: {current_user}\n'
-                f'请在服务器执行: chmod 644 {json_path} 并确保 config目录为 755'
-            ) from e
+            # 尝试手动删除 + 重试（针对 root 文件）
+            try:
+                if os.path.exists(json_path):
+                    os.remove(json_path)
+                if os.path.exists(tmp_path):
+                    shutil.move(tmp_path, json_path)
+                os.chmod(json_path, 0o644)
+            except Exception:
+                raise PermissionError(
+                    f'无法写入配置文件: {json_path}\n'
+                    f'当前用户: {current_user}\n'
+                    f'请在服务器执行: sudo chown {current_user} {json_path} && chmod 644 {json_path}'
+                ) from e
 
         # 5. 同步生成 JS 兼容文件（供 addtask.js 等旧版使用）
         self._sync_js_file(config_dict)
@@ -154,13 +166,13 @@ class ConfigService:
     # ─── JS 兼容文件生成 ─────────────────────────────────────
 
     def _sync_js_file(self, config_dict: dict):
-        """从 JSON dict 生成 static/js/config.js"""
+        """从 JSON dict 生成 static/js/config.js（原子写入）"""
         import getpass as _getpass
         js_dir = os.path.dirname(self._get_js_output_path())
         try:
             os.makedirs(js_dir, mode=0o755, exist_ok=True)
         except (PermissionError, OSError):
-            return  # 非致命，跳过
+            return
 
         js_content = (
             '// 此文件由系统自动生成，请勿手动编辑\n'
@@ -168,13 +180,21 @@ class ConfigService:
             f'const config = {json.dumps(config_dict, indent=2, ensure_ascii=False)};\n'
         )
         js_path = self._get_js_output_path()
+        tmp_path = js_path + '.tmp'
         try:
-            with open(js_path, 'w', encoding='utf-8') as f:
+            with open(tmp_path, 'w', encoding='utf-8') as f:
                 f.write(js_content)
-            os.chmod(js_path, 0o644)
+            os.chmod(tmp_path, 0o644)
+            os.replace(tmp_path, js_path)
         except PermissionError as e:
             current_user = _getpass.getuser()
             print(f'[Config] 警告: 无法写入 JS 兼容文件 {js_path} (用户: {current_user})')
+            # 清理临时文件
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
 
     # ─── 默认配置 ────────────────────────────────────────────
 
@@ -194,7 +214,7 @@ class ConfigService:
     # ─── 备份管理 ────────────────────────────────────────────
 
     def _create_backup_file(self, config_dict: dict, version: int, message: str = '') -> str:
-        """创建备份文件"""
+        """创建备份文件（原子写入）"""
         backup_dir = self._get_backup_dir()
         os.makedirs(backup_dir, mode=0o755, exist_ok=True)
 
@@ -212,10 +232,11 @@ class ConfigService:
         }
         backup_data = {**meta, **config_dict}
 
-        with open(backup_path, 'w', encoding='utf-8') as f:
+        tmp_path = backup_path + '.tmp'
+        with open(tmp_path, 'w', encoding='utf-8') as f:
             json.dump(backup_data, f, indent=2, ensure_ascii=False)
-
-        os.chmod(backup_path, 0o644)
+        os.chmod(tmp_path, 0o644)
+        os.replace(tmp_path, backup_path)
         return backup_name
 
     def list_backups(self):

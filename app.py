@@ -2497,14 +2497,23 @@ def _ensure_writable_dirs():
             _os.makedirs(d, mode=0o755, exist_ok=True)
         except (PermissionError, OSError):
             pass
-    # 确保 config/dispatch_config.json 可写
+    # 确保 config/dispatch_config.json 可写（atomic write 依赖目录权限）
     config_json = _os.path.join(base, 'config', 'dispatch_config.json')
     if _os.path.exists(config_json):
         try:
             _os.chmod(config_json, 0o644)
         except (PermissionError, OSError):
-            pass
-    # 确保 data/dispatch/cache_index.json 等文件可写
+            pass  # 属主非当前用户，chmod 无效但不影响原子写入
+    # 自检：config 目录是否可写（atomic write 的关键）
+    config_dir = _os.path.join(base, 'config')
+    try:
+        test_file = _os.path.join(config_dir, '.write_test')
+        with _os.fdopen(_os.open(test_file, _os.O_CREAT | _os.O_WRONLY | _os.O_TRUNC, 0o644), 'w') as f:
+            f.write('ok')
+        _os.remove(test_file)
+    except (PermissionError, OSError):
+        print('[启动] 警告: config 目录不可写，配置保存将失败！请检查目录权限')
+    # 确保 data/dispatch/ 下 JSON 可写
     for fname in ['cache_index.json', 'global_log.json', 'daily_stats.json']:
         fpath = _os.path.join(base, 'data', 'dispatch', fname)
         if _os.path.exists(fpath):
@@ -2512,6 +2521,15 @@ def _ensure_writable_dirs():
                 _os.chmod(fpath, 0o644)
             except (PermissionError, OSError):
                 pass
+    # 自检：data/dispatch 目录可写
+    data_dir = _os.path.join(base, 'data', 'dispatch')
+    try:
+        test_file = _os.path.join(data_dir, '.write_test')
+        with _os.fdopen(_os.open(test_file, _os.O_CREAT | _os.O_WRONLY | _os.O_TRUNC, 0o644), 'w') as f:
+            f.write('ok')
+        _os.remove(test_file)
+    except (PermissionError, OSError):
+        print('[启动] 警告: data/dispatch 目录不可写，调度数据保存将失败！请检查目录权限')
     print('[启动] 目录权限已初始化')
 
 
