@@ -280,3 +280,12 @@ path = "/main/server/mysql"
 name = "MariaDB"
 desc = "数据库日志：slow-sql(慢查询)、error(启动/连接错误)"
 tags = ["database", "核心"]
+
+# auto-discovered (supervisor)
+[[topology.service]]
+id = "postlook"
+name = "postlook"
+category = "apps"
+log_dir = "/main/app/cross_env_manager/Plugin/postlook/logs"
+log_file = "postlook.log"
+desc = "自动发现 — supervisor 扫描"

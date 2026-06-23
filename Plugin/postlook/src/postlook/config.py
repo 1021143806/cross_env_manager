@@ -784,7 +784,7 @@ def build_topology_tree() -> Dict[str, Any]:
                     [f for f in rp.iterdir() if f.is_file() and not f.name.startswith(".")],
                     key=lambda f: f.stat().st_mtime, reverse=True
                 )
-                for lf in log_files[:20]:  # 最多取 20 个
+                for lf in log_files[:10]:  # 最多取 10 个
                     fname = lf.name
                     # 跳过二进制和特殊文件
                     if fname.endswith(('.gz', '.bz2', '.xz', '.journal', '.sql')):

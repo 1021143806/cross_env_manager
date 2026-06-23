@@ -154,13 +154,13 @@ document.addEventListener('DOMContentLoaded', function () {
             ],
             layout: {
                 name: 'breadthfirst',
-                directed: true,
-                spacingFactor: 1.25,
+                roots: '[id = "root"]',
                 avoidOverlap: true,
                 nodeDimensionsIncludeLabels: true,
+                spacingFactor: 1.35,
                 animate: true,
-                animationDuration: 800,
-                maximal: false
+                animationDuration: 600,
+                maximal: true
             },
             wheelSensitivity: 0.3,
             userZoomingEnabled: true,
@@ -178,12 +178,22 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('topoStatus').textContent =
             branchCount + ' 目录 · ' + svcCount + ' 服务' + (runningCount ? ' · ' + runningCount + ' 运行中' : '');
 
-        // 布局完成后 fit + 动画
-        setTimeout(function () {
-            cy.resize();
-            cy.fit(undefined, 50);
+        // 布局完成后：旋转90度变成左→右思维导图
+        cy.one('layoutstop', function () {
+            // 将 top→bottom 树旋转为 left→right
+            var nodes = cy.nodes();
+            var positions = {};
+            nodes.forEach(function (n) {
+                var p = n.position();
+                positions[n.id()] = { x: p.y, y: p.x };
+            });
+            // 应用旋转后的位置
+            nodes.positions(function (n) {
+                return positions[n.id()] || n.position();
+            });
+            cy.fit(undefined, 80);
             initEdgePulses(cy);
-        }, 900);
+        });
 
         // ── 点击事件 ──
         cy.on('tap', '.service', function (evt) { showTopoDetail(evt.target); });
