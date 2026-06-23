@@ -94,6 +94,9 @@ async def query_logs(req: LogQueryRequest):
         except PermissionError as e:
             raise HTTPException(status_code=403, detail=str(e))
         except Exception as e:
+            import traceback
+            print(f"[ERROR] query_logs: {type(e).__name__}: {e}")
+            traceback.print_exc()
             raise HTTPException(status_code=500, detail=str(e))
 
 

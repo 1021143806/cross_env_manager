@@ -336,19 +336,20 @@ def search_lines(
     if tail and not line_start and not line_end:
         # Tail 模式：用 deque 只保留最后 max_lines 行，内存 O(1)
         buf = deque(maxlen=max_lines)
+        line_count = 0
         try:
             with open(file_path, "r", encoding="utf-8", errors="replace") as f:
                 for line in f:
-                    buf.append(line)
+                    line_count += 1
+                    buf.append((line_count, line))
         except (OSError, UnicodeDecodeError):
             return results
         
         lines = list(buf)
-        total = max(len(lines), len(buf))  # deque maxlen 可能截断
-        for i, line in enumerate(lines):
+        for line_no, line in lines:
             results.append({
                 "file": file_path.name,
-                "line": total - len(lines) + i + 1,
+                "line": line_no,
                 "content": line.rstrip("\n\r")
             })
         return results
