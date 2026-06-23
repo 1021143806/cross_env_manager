@@ -16,6 +16,7 @@ RULES_PATH = PROJECT_ROOT / "config" / "rules.toml"
 RULES_TEMPLATE_PATH = PROJECT_ROOT / "config" / "template" / "rules.toml"
 DEBUG_CONFIG_PATH = PROJECT_ROOT / "config" / "debug.toml"
 DEBUG_CONFIG_TEMPLATE_PATH = PROJECT_ROOT / "config" / "template" / "debug.toml"
+CONFIG_TEMPLATE_PATH = PROJECT_ROOT / "config" / "template" / "app.toml"
 DATE_DIR = PROJECT_ROOT / "config" / "date"
 
 # 线程锁
