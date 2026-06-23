@@ -298,14 +298,6 @@ def get_rules() -> List[Dict[str, Any]]:
     return list(_cached_rules)
 
 
-def get_topology_config() -> Dict[str, Any]:
-    """获取拓扑图配置"""
-    return {
-        "categories": list(_cached_topo_categories),
-        "services": list(_cached_topo_services),
-    }
-
-
 def get_dirs_meta() -> List[Dict[str, Any]]:
     """获取日志目录元数据列表"""
     return list(_cached_dirs_meta)
@@ -634,7 +626,272 @@ def _check_topology_health():
 
 
 # ============================================================
-# 拓扑自动发现 (v0.7.0)
+# 拓扑文件树 (v0.8.0)
+# ============================================================
+
+def build_topology_tree() -> Dict[str, Any]:
+    """基于 root_dirs 构建文件树拓扑
+    
+    扫描逻辑:
+      - 以 root_dirs 为数据源，按文件路径分组
+      - /var/log → branch 节点，下发 log 文件为 service 节点
+      - /main/app/xxx/logs → 提取项目名，挂在 /main/app branch 下
+      - /main/server/xxx → 挂在 /main/server branch 下
+      - 空目录不展示（无 log 文件的项目跳过）
+    
+    返回:
+      { "nodes": [...], "edges": [...] }
+    """
+    import socket
+    
+    hostname = socket.gethostname()
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
+    added_branches: set = set()  # 已添加的 branch id
+    added_services: set = set()  # 已添加的 service id
+    
+    # 根节点
+    nodes.append({
+        "id": "root",
+        "label": hostname,
+        "type": "root",
+        "level": 0,
+    })
+    
+    def _add_branch(bid: str, label: str, path: str = ""):
+        """添加目录分支节点"""
+        if bid in added_branches:
+            return
+        added_branches.add(bid)
+        nodes.append({
+            "id": bid,
+            "label": label,
+            "type": "branch",
+            "path": path,
+            "level": 1,
+        })
+        edges.append({"source": "root", "target": bid})
+    
+    def _add_service(sid: str, label: str, branch_id: str,
+                     log_dir: str = "", log_file: str = "",
+                     size_mb: float = 0.0, running: bool = False):
+        """添加服务节点（挂在 branch 下）"""
+        if sid in added_services:
+            return
+        added_services.add(sid)
+        nodes.append({
+            "id": sid,
+            "label": label,
+            "type": "service",
+            "level": 2,
+            "log_dir": log_dir,
+            "log_file": log_file,
+            "size_mb": size_mb,
+            "running": running,
+        })
+        edges.append({"source": branch_id, "target": sid})
+    
+    # 获取 supervisor 运行列表
+    sup_running = {p["name"]: p for p in _parse_supervisor_status()}
+    
+    # 预扫描 root_dirs 下的项目目录（用于发现不在 root_dirs 中但有 logs/ 的项目）
+    # 例如 /main/app/asap_adapter/logs 不在 root_dirs 但确实存在
+    _extra_projects = _scan_app_dirs()
+    extra_by_name = {e["name"]: e for e in _extra_projects}
+    
+    # 处理每个 root_dir
+    for root_dir in ROOT_DIRS:
+        rp = Path(root_dir)
+        exists = rp.exists()
+        
+        # ── /main/app/xxx/logs 型 ──
+        if "/main/app/" in root_dir and root_dir.endswith("/logs"):
+            _add_branch("main_app", "/main/app", "/main/app")
+            
+            # 提取项目名: /main/app/gateway/logs → gateway
+            parts = root_dir.split("/")
+            try:
+                proj_idx = parts.index("app") + 1
+                proj_name = parts[proj_idx]
+            except (ValueError, IndexError):
+                proj_name = rp.parent.name if rp.parent.name != "app" else "unknown"
+            
+            # 项目节点 id
+            svc_id = proj_name.lower().replace(" ", "_")
+            
+            # 判断是否存在
+            log_file = ""
+            size_mb = 0.0
+            
+            if exists:
+                log_file = _guess_log_file(rp, proj_name) or ""
+                if log_file:
+                    lf = rp / log_file
+                    if lf.exists():
+                        size_mb = round(lf.stat().st_size / (1024 * 1024), 1)
+            
+            running = proj_name.lower() in sup_running or \
+                      proj_name in sup_running
+            
+            _add_service(svc_id, _fmt_name(proj_name), "main_app",
+                        log_dir=root_dir, log_file=log_file,
+                        size_mb=size_mb, running=running)
+            continue
+        
+        # ── /main/server/xxx 型 ──
+        if "/main/server/" in root_dir:
+            _add_branch("main_server", "/main/server", "/main/server")
+            
+            parts = root_dir.split("/")
+            try:
+                srv_idx = parts.index("server") + 1
+                srv_name = parts[srv_idx]
+            except (ValueError, IndexError):
+                srv_name = rp.name
+            
+            svc_id = srv_name.lower().replace(" ", "_")
+            log_dir = root_dir
+            log_file = ""
+            size_mb = 0.0
+            
+            if exists:
+                # 有可能是 logs/ 目录或直接是项目目录
+                if root_dir.endswith("/logs"):
+                    log_file = _guess_log_file(rp, srv_name) or ""
+                else:
+                    # 如 /main/server/mysql — 找 slow-sql
+                    log_file = _guess_log_file(rp, srv_name) or ""
+                if log_file:
+                    lf = rp / log_file
+                    if lf.exists():
+                        size_mb = round(lf.stat().st_size / (1024 * 1024), 1)
+            
+            running = srv_name.lower() in sup_running
+            
+            _add_service(svc_id, _fmt_name(srv_name), "main_server",
+                        log_dir=log_dir, log_file=log_file,
+                        size_mb=size_mb, running=running)
+            continue
+        
+        # ── /var/log 型（系统日志：目录下直接有文件）──
+        if exists and rp.is_dir():
+            bid = root_dir.strip("/").replace("/", "_")
+            _add_branch(bid, root_dir, root_dir)
+            
+            found_files = 0
+            try:
+                log_files = sorted(
+                    [f for f in rp.iterdir() if f.is_file() and not f.name.startswith(".")],
+                    key=lambda f: f.stat().st_mtime, reverse=True
+                )
+                for lf in log_files[:20]:  # 最多取 20 个
+                    fname = lf.name
+                    # 跳过二进制和特殊文件
+                    if fname.endswith(('.gz', '.bz2', '.xz', '.journal', '.sql')):
+                        continue
+                    svc_id = f"{bid}_{fname}".replace(".", "_")
+                    size_mb = round(lf.stat().st_size / (1024 * 1024), 1) if lf.stat().st_size > 0 else 0
+                    if size_mb == 0:
+                        continue  # 空文件跳过
+                    
+                    _add_service(svc_id, fname, bid,
+                                log_dir=root_dir, log_file=fname,
+                                size_mb=size_mb, running=False)
+                    found_files += 1
+            except PermissionError:
+                pass
+            
+            if found_files == 0:
+                # 空目录或只有空文件：不显示 branch
+                added_branches.discard(bid)
+                nodes[:] = [n for n in nodes if n["id"] != bid]
+                edges[:] = [e for e in edges if e["source"] != bid and e["target"] != bid]
+            continue
+        
+        # ── /main/log/app 型（flat 日志目录）──
+        if exists and rp.is_dir():
+            bid = root_dir.strip("/").replace("/", "_")
+            _add_branch(bid, root_dir, root_dir)
+            
+            found_files = 0
+            try:
+                for lf in sorted(rp.iterdir(), key=lambda f: f.stat().st_mtime, reverse=True):
+                    if not lf.is_file() or lf.name.startswith("."):
+                        continue
+                    fname = lf.name
+                    svc_id = f"{bid}_{fname}".replace(".", "_")
+                    size_mb = round(lf.stat().st_size / (1024 * 1024), 1) if lf.stat().st_size > 0 else 0
+                    if size_mb == 0:
+                        continue
+                    
+                    running = fname in sup_running
+                    _add_service(svc_id, fname, bid,
+                                log_dir=root_dir, log_file=fname,
+                                size_mb=size_mb, running=running)
+                    found_files += 1
+            except PermissionError:
+                pass
+            
+            if found_files == 0:
+                added_branches.discard(bid)
+                nodes[:] = [n for n in nodes if n["id"] != bid]
+                edges[:] = [e for e in edges if e["source"] != bid and e["target"] != bid]
+            continue
+    
+    # ── 附加：不在 root_dirs 中但有 logs/ 的项目（如 supervisor 管理的新项目）──
+    for entry in _extra_projects:
+        svc_name = entry["name"]
+        svc_id = svc_name.lower().replace(" ", "_")
+        if svc_id in added_services:
+            continue
+        
+        log_dir = entry["log_dir"]
+        # 判断分组
+        if "/main/app/" in entry["path"]:
+            _add_branch("main_app", "/main/app", "/main/app")
+            branch_id = "main_app"
+        elif "/main/server/" in entry["path"]:
+            _add_branch("main_server", "/main/server", "/main/server")
+            branch_id = "main_server"
+        else:
+            continue
+        
+        log_file = _guess_log_file(Path(log_dir), svc_name) or ""
+        size_mb = 0.0
+        if log_file:
+            lf = Path(log_dir) / log_file
+            if lf.exists():
+                size_mb = round(lf.stat().st_size / (1024 * 1024), 1)
+        
+        running = svc_name.lower() in sup_running
+        
+        _add_service(svc_id, _fmt_name(svc_name), branch_id,
+                    log_dir=log_dir, log_file=log_file,
+                    size_mb=size_mb, running=running)
+    
+    return {"nodes": nodes, "edges": edges}
+
+
+def _fmt_name(name: str) -> str:
+    """格式化项目显示名：首字母大写，下划线转大写缩写"""
+    parts = name.split("_")
+    formatted = []
+    for p in parts:
+        if p.upper() == p and len(p) <= 6:
+            # 全大写缩写：保持大写
+            formatted.append(p.upper())
+        else:
+            formatted.append(p.capitalize() if p else p)
+    return " ".join(formatted)
+
+
+def get_topology_config() -> Dict[str, Any]:
+    """获取拓扑图配置（文件树结构）"""
+    return build_topology_tree()
+
+
+# ============================================================
+# 拓扑自动发现 (v0.7.0) — 保留向后兼容
 # ============================================================
 
 # 分类推断规则: (路径模式, 分类ID)

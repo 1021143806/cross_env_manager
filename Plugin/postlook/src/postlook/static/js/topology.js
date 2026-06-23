@@ -1,185 +1,244 @@
 /**
- * postlook · 拓扑图页面逻辑
+ * postlook · 拓扑图 — 文件树同心圆 (v0.8.0)
+ * 
+ * 布局: Cytoscape concentric（根→目录→服务 三层同心圆）
+ * 数据源: /api/topology-config → {nodes, edges}
+ * 状态色: 🟢 running / ⬜ idle / ⚫ missing
  */
+
 var cy = null;
 var topoInited = false;
 var TOPO_DATA = null;
 var TOPO_LOADING = false;
 
-document.addEventListener('DOMContentLoaded', function() {
-    // 构建拓扑数据
-    window.buildTopoData = function(categories, services) {
-        var cats = {};
-        categories.forEach(function(c) { cats[c.id] = c; });
-        var nodes = [{data:{id:'server',label:'postlook\n'+window.location.hostname,type:'server',weight:100},classes:'server'}];
-        var edges = [];
-        for (var k in cats) {
-            var c = cats[k];
-            nodes.push({data:{id:c.id,label:c.label,type:'category',cat:k,weight:60},classes:'category '+k});
-            edges.push({data:{source:'server',target:c.id}});
-        }
-        for (var i=0;i<services.length;i++) {
-            var s = services[i];
-            var sz = Math.max(20, Math.min(50, (s.size_mb || 0.1) * 0.35 + 18));
-            nodes.push({data:{id:s.id,label:s.name||s.id,type:'service',cat:s.category,desc:s.desc||'',logDir:s.log_dir||'',logFile:s.log_file||'',sizeMB:s.size_mb||0,weight:sz},classes:'service '+s.category});
-            if (cats[s.category]) edges.push({data:{source:cats[s.category].id,target:s.id}});
-        }
-        return {nodes:nodes,edges:edges,services:services,categories:cats};
-    };
+document.addEventListener('DOMContentLoaded', function () {
 
-    // 加载拓扑数据
-    window.loadTopoData = function(callback) {
+    // ── 加载拓扑数据 ──
+    window.loadTopoData = function (callback) {
         if (TOPO_DATA) return callback(TOPO_DATA);
-        if (TOPO_LOADING) { setTimeout(function(){ loadTopoData(callback); }, 200); return; }
+        if (TOPO_LOADING) { setTimeout(function () { loadTopoData(callback); }, 200); return; }
         TOPO_LOADING = true;
-        fetch('/api/topology-config').then(function(r){return r.json();}).then(function(data){
-            TOPO_DATA = buildTopoData(data.categories || [], data.services || []);
+        fetch('/api/topology-config').then(function (r) { return r.json(); }).then(function (data) {
+            TOPO_DATA = { nodes: data.nodes || [], edges: data.edges || [] };
             callback(TOPO_DATA);
-        }).catch(function(){
-            var cats = [
-                {id:'apps',label:'应用系统',color:'#0abde3'},
-                {id:'planner',label:'路径规划',color:'#f87171'},
-                {id:'middleware',label:'中间件',color:'#fbbf24'},
-                {id:'system',label:'系统日志',color:'#4ade80'},
-                {id:'database',label:'数据库',color:'#a855f7'}
-            ];
-            var svcs = [
-                {id:'gateway',name:'Gateway',category:'apps',log_dir:'/main/app/gateway/logs',log_file:'GATEWAY.log',size_mb:48},
-                {id:'bms',name:'BMS',category:'apps',log_dir:'/main/app/bms/logs',log_file:'BMS.log',size_mb:96},
-                {id:'nacos',name:'Nacos',category:'middleware',log_dir:'/main/server/nacos/logs',log_file:'nacos.log',size_mb:14},
-                {id:'messages',name:'messages',category:'system',log_dir:'/var/log',log_file:'messages',size_mb:4},
-                {id:'mariadb',name:'MariaDB',category:'database',log_dir:'/main/server/mysql',log_file:'slow-sql',size_mb:1}
-            ];
-            TOPO_DATA = buildTopoData(cats, svcs);
+        }).catch(function () {
+            // 回退：显示一个空根节点
+            TOPO_DATA = {
+                nodes: [
+                    { data: { id: 'root', label: window.location.hostname, type: 'root', level: 0 } }
+                ],
+                edges: []
+            };
             callback(TOPO_DATA);
         });
     };
 
-
-
-    // 初始化拓扑
+    // ── 初始化拓扑 ──
     function initTopology() {
         if (topoInited) { if (cy) { cy.resize(); cy.fit(undefined, 30); } return; }
         topoInited = true;
         var container = document.getElementById('cy');
         if (!container) return;
         var statusEl = document.getElementById('topoStatus');
-        if (statusEl) statusEl.textContent = '加载配置中...';
-        loadTopoData(function(data) {
-            if (!data || !data.nodes) return;
+        if (statusEl) statusEl.textContent = '扫描文件树...';
+        loadTopoData(function (data) {
             _initTopoWithData(container, data);
         });
     }
 
-    // 渲染拓扑图
+    // ── 渲染拓扑图 ──
     function _initTopoWithData(container, data) {
-        cy = cytoscape({
-            container: container,
-            elements: { nodes: data.nodes, edges: data.edges },
-            style: [
-                { selector: '.server', style: { 'shape':'ellipse','background-color':'#818cf8','background-opacity':0.2,'label':'data(label)','color':'#e0e0f0','font-size':'13px','font-weight':'bold','text-valign':'center','text-halign':'center','width':110,'height':110,'border-width':2,'border-color':'#818cf8','text-wrap':'wrap','text-max-width':'80px' } },
-                { selector: '.category', style: { 'shape':'ellipse','label':'data(label)','color':'#c0c0e0','font-size':'12px','font-weight':'bold','text-valign':'center','text-halign':'center','width':75,'height':75,'border-width':2,'border-color':'#a0a0c0' } },
-                { selector: '.apps', style: { 'background-color':'#0abde3','background-opacity':0.18,'border-color':'#0abde3' } },
-                { selector: '.planner', style: { 'background-color':'#f87171','background-opacity':0.18,'border-color':'#f87171' } },
-                { selector: '.middleware', style: { 'background-color':'#fbbf24','background-opacity':0.18,'border-color':'#fbbf24' } },
-                { selector: '.system', style: { 'background-color':'#4ade80','background-opacity':0.18,'border-color':'#4ade80' } },
-                { selector: '.database', style: { 'background-color':'#a855f7','background-opacity':0.18,'border-color':'#a855f7' } },
-                { selector: '.service', style: { 'shape':'ellipse','label':'data(label)','color':'#e8e0f0','font-size':'10px','text-valign':'center','text-halign':'center','width':'data(weight)','height':'data(weight)','border-width':2 } },
-                { selector: '.service:selected', style: { 'border-width':3,'border-color':'#fff' } },
-                { selector: '.pulse-dot', style: { 'shape':'ellipse','width':6,'height':6,'background-opacity':0.9,'border-width':0,'underlay-opacity':0.5,'underlay-padding':4,'pointer-events':'none' } },
-                { selector: 'edge', style: { 'width':1.2,'line-color':'rgba(129,140,248,0.35)','curve-style':'bezier','opacity':0.7 } }
-            ],
-            layout: { name:'cose', animate:true, animationDuration:1000, nodeRepulsion:8000, idealEdgeLength:150, gravity:0.5, numIter:1000 },
-            wheelSensitivity: 0.3, userZoomingEnabled: true, userPanningEnabled: true, minZoom: 0.15, maxZoom: 3,
-            autoungrabify: false, autounselectify: false
+        // 为每个节点添加 CSS class: type + 状态
+        var elements = [];
+        (data.nodes || []).forEach(function (n) {
+            var d = n.data || n;
+            var classes = [d.type || 'service'];
+            if (d.running) classes.push('running');
+            if (d.size_mb <= 0 && d.type === 'service') classes.push('empty');
+            elements.push({ data: d, classes: classes.join(' ') });
+        });
+        (data.edges || []).forEach(function (e) {
+            elements.push({ data: e.data || e });
         });
 
-        // 状态更新
-        document.getElementById('topoStatus').textContent = (data.services.length + 5) + ' 节点就绪';
-
-        // 布局完成后再启动动画
-        setTimeout(function() {
-            cy.resize();
-            cy.fit(undefined, 40);
-            document.getElementById('topoStatus').textContent = (data.services.length + 5) + ' 节点 · 滚轮缩放';
-
-            // ── 节点绕心缓旋 ──
-            var orbitAngle = {}, orbitBasePos = {};
-            cy.nodes(':childless').forEach(function(n) {
-                orbitBasePos[n.id()] = {x:n.position('x'),y:n.position('y')};
-                orbitAngle[n.id()] = Math.random() * Math.PI * 2;
-            });
-            cy.on('free', '.service', function(evt) {
-                var n = evt.target, id = n.id();
-                if (orbitBasePos[id]) {
-                    orbitBasePos[id] = {x:n.position('x'),y:n.position('y')};
-                    n.animate({position:{x:n.position('x'),y:n.position('y')}},{duration:300});
+        cy = cytoscape({
+            container: container,
+            elements: elements,
+            style: [
+                // 根节点
+                {
+                    selector: '.root',
+                    style: {
+                        'shape': 'ellipse', 'width': 100, 'height': 100,
+                        'background-color': '#818cf8', 'background-opacity': 0.18,
+                        'border-width': 2, 'border-color': '#818cf8',
+                        'label': 'data(label)', 'color': '#e8e0f0',
+                        'font-size': '13px', 'font-weight': 'bold',
+                        'text-valign': 'center', 'text-halign': 'center',
+                        'text-wrap': 'wrap', 'text-max-width': '80px'
+                    }
+                },
+                // 目录分支节点（第一层）
+                {
+                    selector: '.branch',
+                    style: {
+                        'shape': 'ellipse', 'width': 70, 'height': 70,
+                        'background-color': '#475569', 'background-opacity': 0.15,
+                        'border-width': 1.5, 'border-color': '#64748b',
+                        'label': 'data(label)', 'color': '#a0aec0',
+                        'font-size': '11px', 'font-weight': '600',
+                        'text-valign': 'center', 'text-halign': 'center',
+                        'text-wrap': 'wrap', 'text-max-width': '65px'
+                    }
+                },
+                // 服务节点（第二层）
+                {
+                    selector: '.service',
+                    style: {
+                        'shape': 'ellipse',
+                        'width': 32, 'height': 32,
+                        'background-color': '#334155', 'background-opacity': 0.5,
+                        'border-width': 1.5, 'border-color': '#475569',
+                        'label': 'data(label)', 'color': '#c0c0d0',
+                        'font-size': '8.5px', 'text-valign': 'center', 'text-halign': 'center',
+                        'text-wrap': 'wrap', 'text-max-width': '60px'
+                    }
+                },
+                // 运行中的服务 🟢
+                {
+                    selector: '.service.running',
+                    style: {
+                        'background-color': '#22c55e', 'background-opacity': 0.22,
+                        'border-color': '#22c55e', 'border-width': 2,
+                        'shadow-color': '#22c55e', 'shadow-opacity': 0.25,
+                        'shadow-blur': 8, 'shadow-offset-x': 0, 'shadow-offset-y': 0
+                    }
+                },
+                // 空项目（无日志/不存在）⚫
+                {
+                    selector: '.service.empty',
+                    style: {
+                        'background-color': '#1e293b', 'background-opacity': 0.3,
+                        'border-color': '#334155', 'border-style': 'dashed',
+                        'border-width': 1
+                    }
+                },
+                // 选中态
+                {
+                    selector: '.service:selected',
+                    style: { 'border-width': 3, 'border-color': '#f8fafc' }
+                },
+                // 边
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 1, 'line-color': 'rgba(129,140,248,0.25)',
+                        'curve-style': 'bezier', 'opacity': 0.6
+                    }
+                },
+                // 脉冲光点
+                {
+                    selector: '.pulse-dot',
+                    style: {
+                        'shape': 'ellipse', 'width': 5, 'height': 5,
+                        'background-opacity': 0.9, 'border-width': 0,
+                        'underlay-opacity': 0.4, 'underlay-padding': 3,
+                        'pointer-events': 'none'
+                    }
                 }
-            });
-            setInterval(function() {
-                cy.nodes(':childless').forEach(function(n) {
-                    var id = n.id(), o = orbitBasePos[id];
-                    if (!o || n.grabbed()) return;
-                    orbitAngle[id] += 0.005;
-                    var a = orbitAngle[id];
-                    n.position({x: o.x + Math.cos(a) * 4, y: o.y - Math.sin(a) * 4});
-                });
-            }, 40);
+            ],
+            layout: {
+                name: 'concentric',
+                concentric: function (node) { return node.data('level') || 0; },
+                levelWidth: function () { return 1; },
+                minNodeSpacing: 18,
+                spacingFactor: 1.3,
+                animate: true,
+                animationDuration: 800,
+                clockwise: false
+            },
+            wheelSensitivity: 0.3,
+            userZoomingEnabled: true,
+            userPanningEnabled: true,
+            minZoom: 0.12,
+            maxZoom: 3,
+            autoungrabify: false,
+            autounselectify: false
+        });
 
-            // ── 连线脉冲动画 ──
-            initEdgePulses();
-        }, 1100); // cose 布局动画 1000ms 结束后启动
+        // 状态栏
+        var svcCount = cy.nodes('.service').length;
+        var branchCount = cy.nodes('.branch').length;
+        var runningCount = cy.nodes('.service.running').length;
+        document.getElementById('topoStatus').textContent =
+            branchCount + ' 目录 · ' + svcCount + ' 服务' + (runningCount ? ' · ' + runningCount + ' 运行中' : '');
 
-        // 点击事件
-        cy.on('tap', '.service', function(evt) { showTopoDetail(evt.target); });
-        cy.on('tap', function(evt) { if(evt.target===cy) closeTopoDetail(); });
+        // 布局完成后 fit + 动画
+        setTimeout(function () {
+            cy.resize();
+            cy.fit(undefined, 50);
+            initEdgePulses(cy);
+        }, 900);
 
-        // 左侧图层
-        var layersDiv = document.getElementById('topoLayers');
-        if (layersDiv) {
-            var h = '<div class="sb-labels">';
-            for (var k in data.categories) {
-                var c = data.categories[k];
-                var count = data.services.filter(function(s){return s.category===k;}).length;
-                h += '<label class="sb-label"><input type="checkbox" checked data-cat="'+k+'" onchange="toggleLayer(\''+k+'\',this.checked)"> <span class="sb-legend-dot" style="background:'+c.color+'"></span> '+c.label+' <span class="count">'+count+'</span></label>';
-            }
-            h += '</div>';
-            layersDiv.innerHTML = h;
-        }
+        // ── 点击事件 ──
+        cy.on('tap', '.service', function (evt) { showTopoDetail(evt.target); });
+        cy.on('tap', '.branch', function (evt) { toggleBranch(evt.target); });
+        cy.on('tap', function (evt) { if (evt.target === cy) closeTopoDetail(); });
 
-        // 左侧图例
+        // ── 侧栏图层 ──
+        renderLayerPanel(cy);
+        // ── 侧栏图例 ──
         var legendDiv = document.querySelector('.sb-legend');
         if (legendDiv) {
-            var h = '';
-            for (var k in data.categories) {
-                var c = data.categories[k];
-                h += '<div class="sb-legend-item"><span class="sb-legend-dot" style="background:'+c.color+'"></span>'+c.label+'</div>';
-            }
-            legendDiv.innerHTML = h;
+            legendDiv.innerHTML =
+                '<div class="sb-legend-item"><span class="sb-legend-dot" style="background:#22c55e;box-shadow:0 0 6px #22c55e"></span>运行中（supervisor）</div>' +
+                '<div class="sb-legend-item"><span class="sb-legend-dot" style="background:#475569"></span>服务节点</div>' +
+                '<div class="sb-legend-item"><span class="sb-legend-dot" style="background:#475569;border:1px dashed #64748b"></span>无数据</div>';
         }
     }
 
-    // ── 连线脉冲：从 server 出发沿每条边发射光点 ──
-    function initEdgePulses() {
-        // 获取分类色映射
-        var catColors = {};
-        try {
-            var cats = JSON.parse(sessionStorage.getItem('topo_cats') || '{}');
-            catColors = cats;
-        } catch(e) {}
-        // 从 data 中提取分类色
-        for (var k in data.categories) {
-            catColors[k] = data.categories[k].color || '#818cf8';
-        }
+    // ── 侧栏图层：目录分支列表 ──
+    function renderLayerPanel(cy) {
+        var layersDiv = document.getElementById('topoLayers');
+        if (!layersDiv) return;
+        var branches = cy.nodes('.branch');
+        if (branches.length === 0) { layersDiv.innerHTML = ''; return; }
+        var h = '<div class="sb-labels">';
+        branches.forEach(function (b) {
+            var id = b.id();
+            var label = escapeHtml(b.data('label') || id);
+            var childCount = b.connectedEdges().filter(function (e) { return e.source().id() === id; }).length;
+            h += '<label class="sb-label"><input type="checkbox" checked data-branch="' + id + '" onchange="toggleBranch(\'' + id + '\',this.checked)">' +
+                '<span class="sb-legend-dot" style="background:#475569"></span> ' + label +
+                '<span class="count">' + childCount + '</span></label>';
+        });
+        h += '</div>';
+        layersDiv.innerHTML = h;
+    }
 
-        cy.edges().forEach(function(edge) {
+    // ── 切换分支可见性 ──
+    window.toggleBranch = function (branchId, show) {
+        if (!cy) return;
+        var branch = cy.getElementById(branchId);
+        if (!branch.length) return;
+        if (typeof show === 'undefined') show = branch.style('display') === 'none';
+        branch.style('display', show ? 'element' : 'none');
+        // 隐藏/显示该分支下的所有服务节点和边
+        branch.connectedEdges().forEach(function (e) {
+            var child = e.target();
+            if (child.id() === branchId) child = e.source();
+            child.style('display', show ? 'element' : 'none');
+            e.style('display', show ? 'element' : 'none');
+        });
+    };
+
+    // ── 连线脉冲动画 ──
+    function initEdgePulses(cy) {
+        cy.edges().forEach(function (edge) {
             var src = edge.source(), tgt = edge.target();
-            // 颜色：优先按 target 的分类色
             var color = '#818cf8';
-            var classes = tgt.className();
-            for (var k in catColors) {
-                if (classes.indexOf(k) >= 0) { color = catColors[k]; break; }
-            }
+            if (tgt.hasClass('running')) color = '#22c55e';
+            else if (tgt.hasClass('empty')) color = '#475569';
 
             var pulse = cy.add({
                 group: 'nodes',
@@ -194,310 +253,238 @@ document.addEventListener('DOMContentLoaded', function() {
                 pulse.position(src.position());
                 pulse.style('opacity', 1);
                 pulse.animate({
-                    position: {x: tgt.position('x'), y: tgt.position('y')},
-                    style: { 'opacity': 0.3 }
+                    position: { x: tgt.position('x'), y: tgt.position('y') },
+                    style: { 'opacity': 0.2 }
                 }, {
-                    duration: 2500,
-                    easing: 'linear',
-                    complete: function() {
+                    duration: 2200,
+                    easing: 'ease-in-out',
+                    complete: function () {
                         pulse.style('opacity', 1);
                         firePulse();
                     }
                 });
             }
-
-            setTimeout(firePulse, Math.random() * 1500);
+            setTimeout(firePulse, Math.random() * 1200);
         });
     }
 
-    // 图层切换
-    window.toggleLayer = function(cat, show) {
+    // ── 搜索过滤 ──
+    window.filterTopoNodes = function (query) {
         if (!cy) return;
-        // 切换分类节点和服务节点
-        cy.nodes('.' + cat).style('display', show ? 'element' : 'none');
-        // 切换对应脉冲点
-        cy.edges().forEach(function(e) {
-            var tgt = e.target();
-            if (tgt.hasClass(cat)) {
-                var pulseId = 'pulse-' + e.id();
-                var pulse = cy.getElementById(pulseId);
-                if (pulse.length) pulse.style('display', show ? 'element' : 'none');
-            }
+        var q = query.toLowerCase().trim();
+        cy.nodes('.service').forEach(function (n) {
+            var label = (n.data('label') || '').toLowerCase();
+            var logDir = (n.data('log_dir') || '').toLowerCase();
+            var match = q === '' || label.indexOf(q) >= 0 || logDir.indexOf(q) >= 0;
+            n.style('display', match ? 'element' : 'none');
+        });
+        // 高亮匹配的分支
+        cy.nodes('.branch').forEach(function (b) {
+            var label = (b.data('label') || '').toLowerCase();
+            if (q === '') { b.style('border-color', '#64748b'); return; }
+            var hasMatch = false;
+            b.connectedEdges().forEach(function (e) {
+                var child = e.target().id() === b.id() ? e.source() : e.target();
+                if (child.hasClass('service') && child.style('display') !== 'none') hasMatch = true;
+            });
+            b.style('border-color', hasMatch || label.indexOf(q) >= 0 ? '#818cf8' : '#64748b');
         });
     };
 
-    // 搜索过滤
-    window.filterTopoNodes = function(query) {
-        if (!cy) return;
-        var q = query.toLowerCase();
-        cy.nodes('.service').forEach(function(n) {
-            var label = (n.data('label')||'').toLowerCase();
-            var desc = (n.data('desc')||'').toLowerCase();
-            n.style('display', (q === '' || label.indexOf(q) >= 0 || desc.indexOf(q) >= 0) ? 'element' : 'none');
-        });
-    };
-
-    // 显示详情
-    window.showTopoDetail = function(node) {
+    // ── 显示详情面板（点击服务节点）──
+    window.showTopoDetail = function (node) {
         try {
             var el = document.getElementById('topoDetail');
-            var name = document.getElementById('topoDetailName');
+            var nameEl = document.getElementById('topoDetailName');
             var body = document.getElementById('topoDetailBody');
-            if (!el || !name || !body) return;
+            if (!el || !nameEl || !body) return;
             el.style.display = 'flex';
-            var label = node.data('label'), logDir = node.data('logDir'), logFile = node.data('logFile'), desc = node.data('desc')||'', sizeMB = node.data('sizeMB')||0;
-            name.textContent = label + (desc ? ' — ' + desc : '');
-            var html = '<div style="margin-bottom:8px;color:var(--text-tertiary);font-size:0.75rem">路径: '+(logDir||'—')+' | 主日志: '+(logFile||'—')+' | '+(sizeMB?sizeMB.toFixed(1)+' MB':'')+'</div>';
+
+            var label = node.data('label') || node.id();
+            var logDir = node.data('log_dir') || '';
+            var logFile = node.data('log_file') || '';
+            var sizeMB = node.data('size_mb') || 0;
+            var running = node.data('running') || false;
+            var status = running ? '<span style="color:#22c55e;font-weight:600">● 运行中</span>' : '<span style="color:#64748b">○ 未运行</span>';
+
+            nameEl.innerHTML = label + ' <span style="font-size:0.7rem;font-weight:400">' + status + '</span>';
+
+            var html = '<div style="margin-bottom:8px;color:var(--text-tertiary);font-size:0.75rem">路径: ' + (logDir || '—') + ' | 主日志: ' + (logFile || '—') + ' | ' + (sizeMB ? sizeMB.toFixed(1) + ' MB' : '') + '</div>';
             html += '<div style="margin-bottom:4px;font-weight:600;font-size:0.8rem">日志文件</div>';
             html += '<div id="topoFileList" style="margin-bottom:10px">加载中...</div>';
             html += '<div style="font-weight:600;font-size:0.8rem">最新预览</div>';
             html += '<div class="log-preview" id="topoLogPreview">加载中...</div>';
             html += '<div style="margin-top:10px;display:flex;gap:6px">';
-            if (logFile) html += '<button class="file-actions" style="padding:4px 12px" onclick="window.open(\'/api/download?path='+encodeURIComponent((logDir||'')+'/'+logFile)+'\')">⬇ 下载</button>';
+            if (logFile && logDir) html += '<button class="file-actions" style="padding:4px 12px" onclick="window.open(\'/api/download?path=' + encodeURIComponent(logDir + '/' + logFile) + '\')">⬇ 下载</button>';
             html += '<button class="file-actions" style="padding:4px 12px" onclick="closeTopoDetail()">关闭</button></div>';
             body.innerHTML = html;
 
-            fetch('/api/files').then(function(r){return r.json();}).then(function(data){
-                var fl = document.getElementById('topoFileList');
-                if (!fl) return;
-                var items = '';
-                if (data.directories && logDir) {
-                    for (var i=0;i<data.directories.length;i++){
-                        var d=data.directories[i];
-                        if (d.path===logDir||d.path.indexOf(logDir+'/')===0){
-                            for (var j=0;j<Math.min(d.files.length,10);j++){
-                                var f=d.files[j];
-                                items += '<div class="file-row"><span class="file-name" title="'+f.path+'">'+f.name+'</span><span class="file-size">'+formatBytes(f.size)+'</span><div class="file-actions"><button onclick="window.open(\'/api/download?path='+encodeURIComponent(f.path)+'\')">⬇</button><button onclick="viewTopoLog(\''+encodeURIComponent(f.path)+'\')">👁</button></div></div>';
+            // 加载文件列表
+            if (logDir) {
+                fetch('/api/files').then(function (r) { return r.json(); }).then(function (data) {
+                    var fl = document.getElementById('topoFileList');
+                    if (!fl) return;
+                    var items = '';
+                    if (data.directories) {
+                        for (var i = 0; i < data.directories.length; i++) {
+                            var d = data.directories[i];
+                            if (d.path === logDir || d.path.indexOf(logDir + '/') === 0) {
+                                for (var j = 0; j < Math.min(d.files.length, 10); j++) {
+                                    var f = d.files[j];
+                                    items += '<div class="file-row"><span class="file-name" title="' + f.path + '">' + f.name + '</span><span class="file-size">' + formatBytes(f.size) + '</span><div class="file-actions"><button onclick="window.open(\'/api/download?path=' + encodeURIComponent(f.path) + '\')">⬇</button><button onclick="viewTopoLog(\'' + encodeURIComponent(f.path) + '\')">👁</button></div></div>';
+                                }
+                                break;
                             }
-                            break;
                         }
                     }
-                }
-                fl.innerHTML = items || '暂无文件';
-            }).catch(function(){ var fl=document.getElementById('topoFileList'); if(fl)fl.innerHTML='加载失败'; });
+                    fl.innerHTML = items || '暂无文件';
+                }).catch(function () { var fl = document.getElementById('topoFileList'); if (fl) fl.innerHTML = '加载失败'; });
 
-            if (logFile && logDir) {
-                fetch('/api/logs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({folder:logDir,pattern:logFile,tail:true,line_start:1,line_end:60,recent_files:1})})
-                    .then(function(r){return r.json();}).then(function(data){
-                        var lp = document.getElementById('topoLogPreview');
-                        if (!lp) return;
-                        var lines = '';
-                        if (data.results) for (var i=0;i<data.results.length;i++){ var c=data.results[i].content; lines += '<div style="font-size:0.68rem;white-space:nowrap;line-height:1.3">'+escapeHtml(c)+'</div>'; }
-                        lp.innerHTML = lines || '暂无日志';
-                    }).catch(function(){ var lp=document.getElementById('topoLogPreview'); if(lp)lp.innerHTML='加载失败'; });
+                // 加载日志预览
+                if (logFile) {
+                    fetch('/api/logs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder: logDir, pattern: logFile, tail: true, line_start: 1, line_end: 60, recent_files: 1 }) })
+                        .then(function (r) { return r.json(); }).then(function (data) {
+                            var lp = document.getElementById('topoLogPreview');
+                            if (!lp) return;
+                            var lines = '';
+                            if (data.results) for (var i = 0; i < data.results.length; i++) { var c = data.results[i].content; lines += '<div style="font-size:0.68rem;white-space:nowrap;line-height:1.3">' + escapeHtml(c) + '</div>'; }
+                            lp.innerHTML = lines || '暂无日志';
+                        }).catch(function () { var lp = document.getElementById('topoLogPreview'); if (lp) lp.innerHTML = '加载失败'; });
+                }
             }
-        } catch(e) { console.error('topoDetail error:', e); }
+        } catch (e) { console.error('topoDetail error:', e); }
     };
 
-    window.closeTopoDetail = function() { var el = document.getElementById('topoDetail'); if (el) el.style.display = 'none'; };
-    window.viewTopoLog = function(path) { window.open('logs.html?folder=' + encodeURIComponent(decodeURIComponent(path))); };
+    window.closeTopoDetail = function () { var el = document.getElementById('topoDetail'); if (el) el.style.display = 'none'; };
+    window.viewTopoLog = function (path) { window.open('logs.html?folder=' + encodeURIComponent(decodeURIComponent(path))); };
 
-    // ──────────────────────────────────────────────
-    // 自动发现服务 (v0.7.0)
-    // ──────────────────────────────────────────────
+    // ════════════════════════════════════════════════════════════
+    //  自动发现服务 (v0.7.0) — 保留
+    // ════════════════════════════════════════════════════════════
 
     var DISCOVER_DATA = null;
 
-    // 打开发现弹窗
-    window.openDiscoverModal = function() {
+    window.openDiscoverModal = function () {
         var overlay = document.getElementById('discoverOverlay');
         var body = document.getElementById('discoverBody');
         var selectAllBtn = document.getElementById('selectAllBtn');
         var mergeBtn = document.getElementById('mergeBtn');
         if (!overlay || !body) return;
-
         overlay.style.display = 'flex';
         body.innerHTML = '<div class="discover-loading">正在扫描 supervisor + 目录...</div>';
         selectAllBtn.style.display = 'none';
         mergeBtn.style.display = 'none';
-
-        fetch('/api/topology/discover')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                DISCOVER_DATA = data;
-                renderDiscoverList(data);
-            })
-            .catch(function(err) {
-                body.innerHTML = '<div class="discover-error">扫描失败: ' + (err.message || '网络错误') + '</div>';
-            });
+        fetch('/api/topology/discover').then(function (r) { return r.json(); }).then(function (data) {
+            DISCOVER_DATA = data;
+            renderDiscoverList(data);
+        }).catch(function (err) {
+            body.innerHTML = '<div class="discover-error">扫描失败: ' + (err.message || '网络错误') + '</div>';
+        });
     };
 
-    // 关闭弹窗
-    window.closeDiscoverModal = function() {
+    window.closeDiscoverModal = function () {
         var overlay = document.getElementById('discoverOverlay');
         if (overlay) overlay.style.display = 'none';
         DISCOVER_DATA = null;
     };
 
-    // 渲染候选列表
     function renderDiscoverList(data) {
         var body = document.getElementById('discoverBody');
         var selectAllBtn = document.getElementById('selectAllBtn');
         var mergeBtn = document.getElementById('mergeBtn');
         if (!body) return;
-
         var cs = data.candidates || [];
         var cats = data.categories || [];
-        var existingIds = data.existing_ids || [];
-
         if (cs.length === 0) {
             body.innerHTML = '<div class="discover-empty">未发现新的服务节点<br><small>确保 supervisor 和 /main/app 目录可访问</small></div>';
-            if (selectAllBtn) selectAllBtn.style.display = 'none';
-            if (mergeBtn) mergeBtn.style.display = 'none';
+            selectAllBtn.style.display = 'none';
+            mergeBtn.style.display = 'none';
             return;
         }
-
-        var newCount = cs.filter(function(c) { return c.is_new; }).length;
-        if (newCount > 0) {
-            if (selectAllBtn) selectAllBtn.style.display = '';
-            if (mergeBtn) mergeBtn.style.display = '';
-        } else {
-            if (selectAllBtn) selectAllBtn.style.display = 'none';
-            if (mergeBtn) mergeBtn.style.display = 'none';
-        }
+        var newCount = cs.filter(function (c) { return c.is_new; }).length;
+        selectAllBtn.style.display = newCount > 0 ? '' : 'none';
+        mergeBtn.style.display = newCount > 0 ? '' : 'none';
 
         var html = '<div class="discover-summary">发现 <b>' + cs.length + '</b> 个候选服务，其中 <b style="color:var(--accent)">' + newCount + '</b> 个为新服务</div>';
         html += '<div class="discover-list">';
-
         for (var i = 0; i < cs.length; i++) {
-            var c = cs[i];
-            var isNew = c.is_new;
+            var c = cs[i], isNew = c.is_new;
             var rowClass = isNew ? 'discover-row new' : 'discover-row existing';
             var checked = isNew ? ' checked' : '';
             var disabled = isNew ? '' : ' disabled';
-            var badge = isNew
-                ? '<span class="discover-badge new">新</span>'
-                : '<span class="discover-badge exist">已有</span>';
-
+            var badge = isNew ? '<span class="discover-badge new">新</span>' : '<span class="discover-badge exist">已有</span>';
             html += '<div class="' + rowClass + '">';
-            html += '<label class="discover-check">';
-            html += '<input type="checkbox" data-id="' + c.id + '"' + checked + disabled + ' onchange="onCandidateToggle()">';
-            html += '</label>';
+            html += '<label class="discover-check"><input type="checkbox" data-id="' + c.id + '"' + checked + disabled + ' onchange="onCandidateToggle()"></label>';
             html += '<div class="discover-info">';
             html += '<div class="discover-name">' + escapeHtml(c.name) + badge + '</div>';
             html += '<div class="discover-meta">';
-            
-            // 分类下拉
             html += '<select class="discover-cat" data-id="' + c.id + '" onchange="onCatChange(this)">';
             for (var j = 0; j < cats.length; j++) {
                 var sel = cats[j].id === c.category ? ' selected' : '';
                 html += '<option value="' + cats[j].id + '"' + sel + '>' + cats[j].label + '</option>';
             }
             html += '</select>';
-
             html += '<span class="discover-path">' + escapeHtml(c.log_dir || '—') + '</span>';
             if (c.log_file) html += '<span class="discover-file">📄 ' + escapeHtml(c.log_file) + '</span>';
             if (c.size_mb) html += '<span class="discover-size">' + c.size_mb.toFixed(1) + ' MB</span>';
             html += '<span class="discover-src">来源: ' + c.source + '</span>';
-            html += '</div>';
-            html += '</div>';  // discover-info
-            html += '</div>';  // discover-row
+            html += '</div></div></div>';
         }
-
-        html += '</div>';  // discover-list
+        html += '</div>';
         body.innerHTML = html;
     }
 
-    // 全选新服务
-    window.selectAllNew = function() {
+    window.selectAllNew = function () {
         if (!DISCOVER_DATA) return;
         var boxes = document.querySelectorAll('.discover-row.new input[type=checkbox]');
         var allChecked = true;
-        for (var i = 0; i < boxes.length; i++) {
-            if (!boxes[i].checked) { allChecked = false; break; }
-        }
-        for (var i = 0; i < boxes.length; i++) {
-            boxes[i].checked = !allChecked;
-        }
+        for (var i = 0; i < boxes.length; i++) { if (!boxes[i].checked) { allChecked = false; break; } }
+        for (var i = 0; i < boxes.length; i++) boxes[i].checked = !allChecked;
         onCandidateToggle();
     };
 
-    // 切换候选时更新按钮状态
-    window.onCandidateToggle = function() {
+    window.onCandidateToggle = function () {
         var mergeBtn = document.getElementById('mergeBtn');
-        var selectAllBtn = document.getElementById('selectAllBtn');
         if (!mergeBtn) return;
         var checked = document.querySelectorAll('.discover-row input[type=checkbox]:checked');
         mergeBtn.textContent = '合并选中 (' + checked.length + ')';
-        if (checked.length === 0) {
-            mergeBtn.style.opacity = '0.5';
-        } else {
-            mergeBtn.style.opacity = '1';
-        }
+        mergeBtn.style.opacity = checked.length === 0 ? '0.5' : '1';
     };
 
-    // 分类下拉变更
-    window.onCatChange = function(sel) {
+    window.onCatChange = function (sel) {
         if (!DISCOVER_DATA) return;
         var id = sel.getAttribute('data-id');
         for (var i = 0; i < DISCOVER_DATA.candidates.length; i++) {
-            if (DISCOVER_DATA.candidates[i].id === id) {
-                DISCOVER_DATA.candidates[i].category = sel.value;
-                break;
-            }
+            if (DISCOVER_DATA.candidates[i].id === id) { DISCOVER_DATA.candidates[i].category = sel.value; break; }
         }
     };
 
-    // 合并选中项
-    window.mergeSelected = function() {
+    window.mergeSelected = function () {
         if (!DISCOVER_DATA) return;
         var boxes = document.querySelectorAll('.discover-row input[type=checkbox]:checked');
         if (boxes.length === 0) return;
-
         var selected = [];
         for (var i = 0; i < boxes.length; i++) {
             var id = boxes[i].getAttribute('data-id');
             for (var j = 0; j < DISCOVER_DATA.candidates.length; j++) {
                 var c = DISCOVER_DATA.candidates[j];
-                if (c.id === id) {
-                    selected.push({
-                        id: c.id,
-                        name: c.name,
-                        category: c.category,
-                        log_dir: c.log_dir,
-                        log_file: c.log_file,
-                        size_mb: c.size_mb,
-                        source: c.source
-                    });
-                    break;
-                }
+                if (c.id === id) { selected.push({ id: c.id, name: c.name, category: c.category, log_dir: c.log_dir, log_file: c.log_file, size_mb: c.size_mb, source: c.source }); break; }
             }
         }
-
         var mergeBtn = document.getElementById('mergeBtn');
-        if (mergeBtn) {
-            mergeBtn.textContent = '合并中...';
-            mergeBtn.disabled = true;
-        }
-
-        fetch('/api/topology/merge', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ selected: selected })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(result) {
-            if (result.status === 'ok') {
-                closeDiscoverModal();
-                // 重新加载拓扑
-                TOPO_DATA = null;
-                if (cy) { cy.destroy(); cy = null; }
-                topoInited = false;
-                initTopology();
-                alert('已添加 ' + result.added + ' 个节点' + (result.skipped ? '，跳过 ' + result.skipped + ' 个' : ''));
-            } else {
-                alert('合并失败: ' + (result.message || '未知错误'));
-            }
-        })
-        .catch(function(err) {
-            alert('合并失败: ' + (err.message || '网络错误'));
-        })
-        .finally(function() {
-            if (mergeBtn) {
-                mergeBtn.textContent = '合并选中';
-                mergeBtn.disabled = false;
-            }
-        });
+        if (mergeBtn) { mergeBtn.textContent = '合并中...'; mergeBtn.disabled = true; }
+        fetch('/api/topology/merge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ selected: selected }) })
+            .then(function (r) { return r.json(); }).then(function (result) {
+                if (result.status === 'ok') {
+                    closeDiscoverModal();
+                    TOPO_DATA = null;
+                    if (cy) { cy.destroy(); cy = null; }
+                    topoInited = false;
+                    initTopology();
+                    alert('已添加 ' + result.added + ' 个节点' + (result.skipped ? '，跳过 ' + result.skipped + ' 个' : ''));
+                } else { alert('合并失败: ' + (result.message || '未知错误')); }
+            }).catch(function (err) { alert('合并失败: ' + (err.message || '网络错误')); })
+            .finally(function () { if (mergeBtn) { mergeBtn.textContent = '合并选中'; mergeBtn.disabled = false; } });
     };
 
     // 启动
