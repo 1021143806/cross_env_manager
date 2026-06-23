@@ -592,16 +592,23 @@ def trigger_restart(delay: int = 3):
         time.sleep(delay)
         # 0. 安装 postlook 依赖（升级代码后必须补齐依赖，否则启动崩溃）
         _install_postlook_deps()
-        # 1. 尝试 supervisorctl
-        for service in ['cross_env_manager', 'postlook']:
-            for sctl in ['/usr/local/bin/supervisorctl', '/usr/bin/supervisorctl', 'supervisorctl']:
-                try:
-                    subprocess.run([sctl, 'restart', service], timeout=10, capture_output=True)
-                    print(f"[Upgrade] supervisorctl restart {service} OK (via {sctl})")
-                    break
-                except Exception:
-                    continue
-        # 2. 兜底：通过 HTTP 触发 Postlook 自重启
+        # 1. 先重启 postlook（不依赖 CEM 进程存活）
+        for sctl in ['/usr/local/bin/supervisorctl', '/usr/bin/supervisorctl', 'supervisorctl']:
+            try:
+                subprocess.run([sctl, 'restart', 'postlook'], timeout=10, capture_output=True)
+                print(f"[Upgrade] supervisorctl restart postlook OK (via {sctl})")
+                break
+            except Exception:
+                continue
+        # 2. 再重启 CEM（此步会杀掉当前进程及本线程，因此放最后）
+        for sctl in ['/usr/local/bin/supervisorctl', '/usr/bin/supervisorctl', 'supervisorctl']:
+            try:
+                subprocess.run([sctl, 'restart', 'cross_env_manager'], timeout=10, capture_output=True)
+                print(f"[Upgrade] supervisorctl restart cross_env_manager OK (via {sctl})")
+                break
+            except Exception:
+                continue
+        # 3. 兜底：通过 HTTP 触发 Postlook 自重启
         try:
             import urllib.request
             req = urllib.request.Request('http://127.0.0.1:5011/api/system/reload', method='POST')
@@ -609,7 +616,7 @@ def trigger_restart(delay: int = 3):
             print("[Upgrade] Postlook HTTP reload triggered")
         except Exception:
             pass
-        # 3. 最终兜底：pkill Postlook
+        # 4. 最终兜底：pkill Postlook
         time.sleep(2)
         try:
             subprocess.run(['pkill', '-f', 'postlook'], timeout=5, capture_output=True)
