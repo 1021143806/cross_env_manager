@@ -186,6 +186,24 @@ def restart_postlook():
         dep_result = {'status': 'error', 'detail': str(e)}
         results.append(f"dep_install error: {e}")
 
+    # 方法0.5: 验证 postlook 能否成功 import（诊断启动崩溃）
+    import_result = None
+    try:
+        import subprocess as _sp2
+        pl_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'Plugin', 'postlook')
+        venv_py = os.path.join(pl_dir, 'venv', 'bin', 'python3')
+        if not os.path.isfile(venv_py):
+            venv_py = os.path.join(pl_dir, 'venv', 'bin', 'python')
+        if os.path.isfile(venv_py):
+            test_cmd = f'{venv_py} -c "from postlook.config import reload_date_queries; print(\"OK\", reload_date_queries())" 2>&1'
+            r = _sp2.run(test_cmd, shell=True, capture_output=True, text=True, timeout=15,
+                         env={**os.environ, 'PYTHONPATH': os.path.join(pl_dir, 'src')})
+            import_result = (r.stdout + r.stderr).strip()[:500]
+            results.append(f"import_test: {import_result[:200]}")
+    except Exception as e:
+        import_result = f"import_test error: {e}"
+        results.append(import_result)
+
     # 方法1: supervisorctl restart（进程在跑时用 restart）
     for sctl in ['/usr/bin/supervisorctl', '/usr/local/bin/supervisorctl', 'supervisorctl']:
         try:
@@ -195,6 +213,8 @@ def restart_postlook():
                 resp = {'success': True, 'message': 'Postlook 已重启 (supervisorctl restart)'}
                 if dep_result:
                     resp['dep_install'] = dep_result
+                if import_result:
+                    resp['import_test'] = import_result
                 return jsonify(resp)
         except Exception as e:
             results.append(f"{sctl} restart error: {e}")
