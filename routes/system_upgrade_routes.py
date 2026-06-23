@@ -177,11 +177,13 @@ def restart_postlook():
     results = []
 
     # 方法0: 先安装依赖（防止升级后缺包导致启动崩溃）
+    dep_result = None
     try:
         from services.upgrade_service import _install_postlook_deps
-        _install_postlook_deps()
-        results.append("dep_install: done")
+        dep_result = _install_postlook_deps()
+        results.append(f"dep_install: {dep_result.get('status','?')} - {dep_result.get('detail','')[:200]}")
     except Exception as e:
+        dep_result = {'status': 'error', 'detail': str(e)}
         results.append(f"dep_install error: {e}")
 
     # 方法1: supervisorctl restart（进程在跑时用 restart）
@@ -190,7 +192,10 @@ def restart_postlook():
             r = _sp.run([sctl, 'restart', 'postlook'], timeout=10, capture_output=True, text=True)
             results.append(f"{sctl} restart: rc={r.returncode} out={r.stdout[:80]}")
             if r.returncode == 0:
-                return jsonify({'success': True, 'message': 'Postlook 已重启 (supervisorctl restart)'})
+                resp = {'success': True, 'message': 'Postlook 已重启 (supervisorctl restart)'}
+                if dep_result:
+                    resp['dep_install'] = dep_result
+                return jsonify(resp)
         except Exception as e:
             results.append(f"{sctl} restart error: {e}")
 

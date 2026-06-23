@@ -552,7 +552,9 @@ def do_rollback(backup_name: str) -> dict:
 
 
 def _install_postlook_deps():
-    """安装 postlook 离线/在线依赖（pydantic/tomli 等），防止升级后启动崩溃"""
+    """安装 postlook 离线依赖（pydantic/tomli 等），防止升级后启动崩溃
+    返回: dict {status: 'ok'/'skip'/'fail', detail: str}
+    """
     postlook_dir = os.path.join(BASE_DIR, 'Plugin', 'postlook')
     vendor_dir = os.path.join(postlook_dir, 'deploy', 'vendor_packages')
     venv_python = os.path.join(postlook_dir, 'venv', 'bin', 'python3')
@@ -560,37 +562,47 @@ def _install_postlook_deps():
     if not os.path.isfile(venv_python):
         venv_python = os.path.join(postlook_dir, 'venv', 'bin', 'python')
     if not os.path.isfile(venv_python):
-        print("[Upgrade] postlook venv 不存在，跳过依赖安装")
-        return
+        msg = f"postlook venv 不存在: {venv_python}"
+        print(f"[Upgrade] {msg}")
+        return {'status': 'skip', 'detail': msg}
     
-    installed_ok = False
-    import subprocess as _sp
+    if not os.path.isdir(vendor_dir):
+        msg = f"vendor_packages 目录不存在: {vendor_dir}"
+        print(f"[Upgrade] {msg}")
+        return {'status': 'skip', 'detail': msg}
     
-    # 方式1: 离线安装（vendor_packages）
-    if os.path.isdir(vendor_dir):
-        links = []
-        for sub in ['common', 'cp39', 'cp311']:
-            d = os.path.join(vendor_dir, sub)
-            if os.path.isdir(d):
-                links.append(f'--find-links={d}')
-        if links:
-            link_args = ' '.join(links)
-            command = f'{venv_python} -m pip install --no-index {link_args} pydantic pydantic-core tomli fastapi uvicorn starlette 2>&1'
-            print(f"[Upgrade] 离线安装 postlook 依赖...")
-            try:
-                result = _sp.run(command, shell=True, capture_output=True, text=True, timeout=60)
-                if result.returncode == 0:
-                    print(f"[Upgrade] postlook 离线依赖安装成功")
-                    installed_ok = True
-                else:
-                    print(f"[Upgrade] 离线安装失败: {(result.stdout+result.stderr)[:200]}")
-            except Exception as e:
-                print(f"[Upgrade] 离线安装异常: {e}")
-    else:
-        print("[Upgrade] 警告: postlook vendor_packages 不存在，依赖可能缺失")
+    # 收集 find-links
+    links = []
+    for sub in ['common', 'cp39', 'cp311']:
+        d = os.path.join(vendor_dir, sub)
+        if os.path.isdir(d):
+            whl_count = len([f for f in os.listdir(d) if f.endswith('.whl')])
+            links.append(f'--find-links={d}')
+            print(f"[Upgrade] vendor_packages/{sub}: {whl_count} .whl")
+        else:
+            print(f"[Upgrade] vendor_packages/{sub}: 不存在")
     
-    if not installed_ok:
-        print("[Upgrade] 警告: postlook 依赖安装失败，服务可能无法启动")
+    if not links:
+        return {'status': 'skip', 'detail': 'vendor_packages 无可用子目录'}
+    
+    link_args = ' '.join(links)
+    packages = 'pydantic pydantic-core tomli fastapi uvicorn starlette'
+    command = f'{venv_python} -m pip install --no-index {link_args} {packages} 2>&1'
+    print(f"[Upgrade] 离线安装: {command[:120]}...")
+    try:
+        import subprocess as _sp
+        result = _sp.run(command, shell=True, capture_output=True, text=True, timeout=60)
+        output = (result.stdout + result.stderr).strip()
+        if result.returncode == 0:
+            print(f"[Upgrade] postlook 离线依赖安装成功")
+            return {'status': 'ok', 'detail': '依赖安装成功'}
+        else:
+            print(f"[Upgrade] 离线安装失败: {output[:500]}")
+            return {'status': 'fail', 'detail': output[:500]}
+    except Exception as e:
+        msg = f"安装异常: {e}"
+        print(f"[Upgrade] {msg}")
+        return {'status': 'fail', 'detail': msg}
 
 
 def trigger_restart(delay: int = 3):
