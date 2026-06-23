@@ -65,43 +65,43 @@ document.addEventListener('DOMContentLoaded', function () {
             container: container,
             elements: elements,
             style: [
-                // 根节点
+                // 根节点 — 圆角矩形，醒目
                 {
                     selector: '.root',
                     style: {
-                        'shape': 'ellipse', 'width': 100, 'height': 100,
-                        'background-color': '#818cf8', 'background-opacity': 0.18,
-                        'border-width': 2, 'border-color': '#818cf8',
-                        'label': 'data(label)', 'color': '#e8e0f0',
+                        'shape': 'round-rectangle', 'width': 90, 'height': 40,
+                        'background-color': '#818cf8', 'background-opacity': 0.25,
+                        'border-width': 2.5, 'border-color': '#818cf8',
+                        'label': 'data(label)', 'color': '#e8e8f8',
                         'font-size': '13px', 'font-weight': 'bold',
                         'text-valign': 'center', 'text-halign': 'center',
                         'text-wrap': 'wrap', 'text-max-width': '80px'
                     }
                 },
-                // 目录分支节点（第一层）
+                // 目录分支节点 — 胶囊形
                 {
                     selector: '.branch',
                     style: {
-                        'shape': 'ellipse', 'width': 70, 'height': 70,
-                        'background-color': '#475569', 'background-opacity': 0.15,
+                        'shape': 'ellipse', 'width': 65, 'height': 32,
+                        'background-color': '#475569', 'background-opacity': 0.2,
                         'border-width': 1.5, 'border-color': '#64748b',
                         'label': 'data(label)', 'color': '#a0aec0',
-                        'font-size': '11px', 'font-weight': '600',
+                        'font-size': '10.5px', 'font-weight': '600',
                         'text-valign': 'center', 'text-halign': 'center',
-                        'text-wrap': 'wrap', 'text-max-width': '65px'
+                        'text-wrap': 'wrap', 'text-max-width': '60px'
                     }
                 },
-                // 服务节点（第二层）
+                // 服务节点 — 小圆
                 {
                     selector: '.service',
                     style: {
                         'shape': 'ellipse',
-                        'width': 32, 'height': 32,
-                        'background-color': '#334155', 'background-opacity': 0.5,
+                        'width': 28, 'height': 28,
+                        'background-color': '#334155', 'background-opacity': 0.55,
                         'border-width': 1.5, 'border-color': '#475569',
                         'label': 'data(label)', 'color': '#c0c0d0',
-                        'font-size': '8.5px', 'text-valign': 'center', 'text-halign': 'center',
-                        'text-wrap': 'wrap', 'text-max-width': '60px'
+                        'font-size': '9px', 'text-valign': 'center', 'text-halign': 'center',
+                        'text-wrap': 'wrap', 'text-max-width': '55px'
                     }
                 },
                 // 运行中的服务 🟢
@@ -128,12 +128,17 @@ document.addEventListener('DOMContentLoaded', function () {
                     selector: '.service:selected',
                     style: { 'border-width': 3, 'border-color': '#f8fafc' }
                 },
-                // 边
+                // 边 — 直线 + 末端箭头，更像思维导图
                 {
                     selector: 'edge',
                     style: {
-                        'width': 1, 'line-color': 'rgba(129,140,248,0.25)',
-                        'curve-style': 'bezier', 'opacity': 0.6
+                        'width': 1.5,
+                        'line-color': 'rgba(129,140,248,0.3)',
+                        'curve-style': 'bezier',
+                        'opacity': 0.6,
+                        'target-arrow-color': 'rgba(129,140,248,0.4)',
+                        'target-arrow-shape': 'triangle',
+                        'arrow-scale': 0.8
                     }
                 },
                 // 脉冲光点
@@ -148,19 +153,19 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             ],
             layout: {
-                name: 'concentric',
-                concentric: function (node) { return node.data('level') || 0; },
-                levelWidth: function () { return 1; },
-                minNodeSpacing: 18,
-                spacingFactor: 1.3,
+                name: 'breadthfirst',
+                directed: true,
+                spacingFactor: 1.25,
+                avoidOverlap: true,
+                nodeDimensionsIncludeLabels: true,
                 animate: true,
                 animationDuration: 800,
-                clockwise: false
+                maximal: false
             },
             wheelSensitivity: 0.3,
             userZoomingEnabled: true,
             userPanningEnabled: true,
-            minZoom: 0.12,
+            minZoom: 0.08,
             maxZoom: 3,
             autoungrabify: false,
             autounselectify: false
