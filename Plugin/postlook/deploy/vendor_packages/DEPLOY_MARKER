@@ -1,0 +1,4 @@
+# postlook 离线依赖包标记文件
+# 此文件确保 vendor_packages 目录在 CEM 增量升级中被包含
+# 修改此行可触发增量升级重新部署离线包
+# timestamp: 2026-06-23
