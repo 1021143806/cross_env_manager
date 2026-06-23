@@ -522,24 +522,6 @@
     }
 
     // 侧栏绑定事件
-    if (els.dateQueriesContainer) {
-        els.dateQueriesContainer.addEventListener('click', function(e) {
-            var delBtn = e.target.closest('.dq-delete');
-            if (delBtn) {
-                e.stopPropagation();
-                var idx = parseInt(delBtn.getAttribute('data-idx'));
-                deleteDateQuery(idx);
-                return;
-            }
-            var item = e.target.closest('.dq-item');
-            if (!item) return;
-            var idx = parseInt(item.getAttribute('data-idx'));
-            var q = _dateQueries[idx];
-            if (!q) return;
-            applyDateQuery(q);
-        });
-    }
-
     function applyDateQuery(q) {
         if (q.folder) els.folder.value = q.folder;
         if (q.pattern) els.pattern.value = q.pattern;
@@ -630,6 +612,25 @@
     // ── 初始化 ──
     document.addEventListener('DOMContentLoaded', function() {
         cacheEls();
+
+        // 侧栏快捷查询点击事件（必须在 cacheEls 之后绑定）
+        if (els.dateQueriesContainer) {
+            els.dateQueriesContainer.addEventListener('click', function(e) {
+                var delBtn = e.target.closest('.dq-delete');
+                if (delBtn) {
+                    e.stopPropagation();
+                    var idx = parseInt(delBtn.getAttribute('data-idx'));
+                    deleteDateQuery(idx);
+                    return;
+                }
+                var item = e.target.closest('.dq-item');
+                if (!item) return;
+                var idx = parseInt(item.getAttribute('data-idx'));
+                var q = _dateQueries[idx];
+                if (!q) return;
+                applyDateQuery(q);
+            });
+        }
 
         // 加载 Postlook 版本号
         fetch('/api/help').then(function(r) { return r.json(); }).then(function(d) {
