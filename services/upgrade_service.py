@@ -545,10 +545,53 @@ def do_rollback(backup_name: str) -> dict:
     }
 
 
+def _install_postlook_deps():
+    """安装 postlook 离线依赖（pydantic/tomli 等），防止升级后启动崩溃"""
+    postlook_dir = os.path.join(BASE_DIR, 'Plugin', 'postlook')
+    vendor_dir = os.path.join(postlook_dir, 'deploy', 'vendor_packages')
+    venv_python = os.path.join(postlook_dir, 'venv', 'bin', 'python3')
+    
+    if not os.path.isdir(vendor_dir):
+        print("[Upgrade] postlook vendor_packages 不存在，跳过依赖安装")
+        return
+    if not os.path.isfile(venv_python):
+        # 尝试系统 python
+        venv_python = os.path.join(postlook_dir, 'venv', 'bin', 'python')
+    if not os.path.isfile(venv_python):
+        print("[Upgrade] postlook venv 不存在，跳过依赖安装")
+        return
+    
+    # 收集所有 find-links
+    links = []
+    for sub in ['common', 'cp39', 'cp311']:
+        d = os.path.join(vendor_dir, sub)
+        if os.path.isdir(d):
+            links.append(f'--find-links={d}')
+    
+    if not links:
+        return
+    
+    link_args = ' '.join(links)
+    command = f'{venv_python} -m pip install --no-index {link_args} pydantic pydantic-core tomli fastapi uvicorn starlette 2>&1'
+    print(f"[Upgrade] 安装 postlook 依赖: {command[:100]}...")
+    try:
+        import subprocess as _sp
+        result = _sp.run(command, shell=True, capture_output=True, text=True, timeout=60)
+        output = (result.stdout + result.stderr).strip()[-300:]
+        if result.returncode == 0:
+            print(f"[Upgrade] postlook 依赖安装成功")
+        else:
+            print(f"[Upgrade] postlook 依赖安装失败: {output}")
+    except Exception as e:
+        print(f"[Upgrade] postlook 依赖安装异常: {e}")
+
+
 def trigger_restart(delay: int = 3):
     """延迟触发重启（后台线程），多路径兜底"""
     def _restart():
         time.sleep(delay)
+        # 0. 安装 postlook 依赖（升级代码后必须补齐依赖，否则启动崩溃）
+        _install_postlook_deps()
         # 1. 尝试 supervisorctl
         for service in ['cross_env_manager', 'postlook']:
             for sctl in ['/usr/local/bin/supervisorctl', '/usr/bin/supervisorctl', 'supervisorctl']:

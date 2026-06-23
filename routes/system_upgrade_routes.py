@@ -171,10 +171,18 @@ def api_rollback(backup_name):
 @upgrade_bp.route('/api/system/restart-postlook', methods=['POST'])
 @login_required
 def restart_postlook():
-    """强制重启 Postlook 服务（先 supervisorctl restart，再 start，最后 pkill）"""
+    """强制重启 Postlook 服务（先安装依赖，再 supervisorctl restart，最后 pkill）"""
     import subprocess as _sp, os as _os, shutil, signal
 
     results = []
+
+    # 方法0: 先安装依赖（防止升级后缺包导致启动崩溃）
+    try:
+        from services.upgrade_service import _install_postlook_deps
+        _install_postlook_deps()
+        results.append("dep_install: done")
+    except Exception as e:
+        results.append(f"dep_install error: {e}")
 
     # 方法1: supervisorctl restart（进程在跑时用 restart）
     for sctl in ['/usr/bin/supervisorctl', '/usr/local/bin/supervisorctl', 'supervisorctl']:
