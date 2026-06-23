@@ -2,12 +2,17 @@
 postlook · API 路由
 """
 
+import asyncio
 import os
 from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
+
+# ── 并发控制 ──
+_MAX_QUERY_CONCURRENCY = 3
+_query_semaphore = asyncio.Semaphore(_MAX_QUERY_CONCURRENCY)
 
 from . import config as app_config
 from .scanner import scan_logs, resolve_folder, is_allowed_download
@@ -64,30 +69,32 @@ async def query_logs(req: LogQueryRequest):
     """
     查询日志内容。
     在指定文件夹内按文件名、关键字、行数等条件搜索。
+    并发限制: 最多 {_MAX_QUERY_CONCURRENCY} 个同时查询。
     """
-    try:
-        from .app import __version__
-        result = scan_logs(
-            folder=req.folder,
-            root_dirs=app_config.ROOT_DIRS,
-            pattern=req.pattern,
-            keyword=req.keyword,
-            tail=req.tail,
-            recent_files=req.recent_files,
-            line_start=req.line_start,
-            line_end=req.line_end,
-        )
-        result["postlook_version"] = __version__
+    async with _query_semaphore:
+        try:
+            from .app import __version__
+            result = scan_logs(
+                folder=req.folder,
+                root_dirs=app_config.ROOT_DIRS,
+                pattern=req.pattern,
+                keyword=req.keyword,
+                tail=req.tail,
+                recent_files=req.recent_files,
+                line_start=req.line_start,
+                line_end=req.line_end,
+            )
+            result["postlook_version"] = __version__
 
-        if result.get("error") and not result.get("results"):
-            raise HTTPException(status_code=404, detail=result["error"])
+            if result.get("error") and not result.get("results"):
+                raise HTTPException(status_code=404, detail=result["error"])
 
-        return result
+            return result
 
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        except PermissionError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
 
 class ConfigUpdateRequest(BaseModel):

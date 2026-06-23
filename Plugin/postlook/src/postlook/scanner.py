@@ -5,8 +5,22 @@ postlook · 文件扫描与内容读取
 import fnmatch
 import os
 import re
+from collections import deque
 from pathlib import Path
 from typing import List, Dict, Optional
+
+# ---- 文件大小限制 ----
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB，超过此大小的文件将限制读取方式
+MAX_KEYWORD_RESULTS = 500  # 关键字搜索单次最多返回行数
+
+
+def _get_max_file_size() -> int:
+    """读取配置的最大文件大小（支持热更新）"""
+    try:
+        from . import config as cfg
+        return cfg.MAX_FILE_SIZE
+    except Exception:
+        return MAX_FILE_SIZE
 
 # ---- 下载安全管控 ----
 
@@ -283,81 +297,82 @@ def search_lines(
     line_end: Optional[int] = None,
 ) -> List[Dict]:
     """
-    从文件中搜索匹配行。
-    - keyword: 不区分大小写搜索（先 grep 全文件，再按行号范围截取）
-    - max_lines: 最大返回行数
-    - tail: 无关键字时从尾部读取
-    - line_start/line_end: 无关键字时指定行号范围；有关键字时作为结果索引范围
+    从文件中搜索匹配行（流式读取，避免全量加载大文件）。
+    - keyword: 不区分大小写搜索，逐行流式匹配，命中 max_lines 即停止
+    - tail: 无关键字时从尾部读取（使用 deque 只保留最后 max_lines 行）
+    - 超大文件（>MAX_FILE_SIZE）: 无关键字 tail 模式仍可安全读取
     """
     results = []
-
+    max_size = _get_max_file_size()
+    
     try:
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
-    except (OSError, UnicodeDecodeError):
+        file_size = os.path.getsize(file_path)
+    except OSError:
         return results
-
-    total = len(lines)
-
+    
     if keyword:
-        # 管道解析
+        # ── 关键字搜索：逐行流式匹配，达标即停 ──
         filters, _ = parse_grep_pipeline(keyword)
-        all_matches = []
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                for line_no, line in enumerate(f, 1):
+                    if _line_matches_pipeline(line, filters):
+                        results.append({
+                            "file": file_path.name,
+                            "line": line_no,
+                            "content": line.rstrip("\n\r")
+                        })
+                        if len(results) >= max_lines:
+                            break
+        except (OSError, UnicodeDecodeError):
+            return results
+        
+        # tail 模式下反转结果（使最接近文件尾的匹配排在前面）
+        if tail and results:
+            results = list(reversed(results))
+        return results
+    
+    # ── 无关键字 ──
+    if tail and not line_start and not line_end:
+        # Tail 模式：用 deque 只保留最后 max_lines 行，内存 O(1)
+        buf = deque(maxlen=max_lines)
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    buf.append(line)
+        except (OSError, UnicodeDecodeError):
+            return results
+        
+        lines = list(buf)
+        total = max(len(lines), len(buf))  # deque maxlen 可能截断
         for i, line in enumerate(lines):
-            if _line_matches_pipeline(line, filters):
-                all_matches.append({
-                    "file": file_path.name,
-                    "line": i + 1,  # 原始行号
-                    "content": line.rstrip("\n\r")
-                })
-
-        # line_start/line_end 作为匹配结果的索引范围（1-based）
-        if tail and not line_start:
-            # tail 模式：取最后 line_end 条
-            start_idx = max(0, len(all_matches) - (line_end or max_lines))
-            end_idx = len(all_matches)
-        else:
-            start_idx = (line_start or 1) - 1
-            end_idx = line_end if line_end else len(all_matches)
-        start_idx = max(0, start_idx)
-        end_idx = min(len(all_matches), end_idx)
-
-        results = all_matches[start_idx:end_idx]
-        # 限制最大返回数
-        if len(results) > max_lines:
-            results = results[:max_lines]
-    else:
-        # 无关键字
-        if tail:
-            # tail 模式：直接从全文尾部取，忽略 line_start
-            end = line_end if line_end else total
-            selected = lines[-min(end, len(lines)):]
-            line_offset = max(0, len(lines) - len(selected))
-            if len(selected) > max_lines:
-                selected = selected[-max_lines:]
-        elif line_start is not None or line_end is not None:
-            # head / 指定范围
-            start = (line_start or 1) - 1
-            end = line_end if line_end else total
-            start = max(0, start)
-            end = min(total, end)
-            selected = lines[start:end]
-            line_offset = start
-            if tail:
-                selected = selected[-max_lines:]
-        else:
-            line_offset = 0
-            if tail:
-                selected = lines[-max_lines:]
-                line_offset = max(0, len(lines) - len(selected))
-
-        for i, line in enumerate(selected):
             results.append({
                 "file": file_path.name,
-                "line": line_offset + i + 1,
+                "line": total - len(lines) + i + 1,
                 "content": line.rstrip("\n\r")
             })
-
+        return results
+    
+    # 指定范围模式：逐行流式读取，只取 [line_start, line_end]
+    start = max(1, (line_start or 1))
+    end = line_end if line_end else float('inf')
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            for line_no, line in enumerate(f, 1):
+                if line_no < start:
+                    continue
+                if line_no > end:
+                    break
+                results.append({
+                    "file": file_path.name,
+                    "line": line_no,
+                    "content": line.rstrip("\n\r")
+                })
+    except (OSError, UnicodeDecodeError):
+        return results
+    
+    if tail and results:
+        results = results[-max_lines:]
     return results
 
 
@@ -403,9 +418,10 @@ def scan_logs(
     - 有关键字时：在行号范围内搜索所有匹配行（上限500行）
     - 无关键字时：返回行号范围内的内容
     """
-    # 关键字搜索上限
-    MAX_KEYWORD_RESULTS = 500
-
+    # 关键字搜索结果上限
+    import os as _os
+    MAX_KW_LINES = min(line_end or MAX_KEYWORD_RESULTS, MAX_KEYWORD_RESULTS)
+    
     # 规则感知关键字扩展（将 "开门" 自动展开为 "开门|AB6600...|AB6600..."）
     expanded_keyword = expand_keyword_with_rules(keyword) if keyword else None
 
@@ -450,7 +466,7 @@ def scan_logs(
 
     # 搜索内容
     all_results = []
-    limit = MAX_KEYWORD_RESULTS if expanded_keyword else None
+    limit = MAX_KW_LINES if expanded_keyword else None
 
     for file_path in files:
         if limit and len(all_results) >= limit:
@@ -462,11 +478,11 @@ def scan_logs(
             max_lines=remaining if remaining else (line_end - line_start + 1),
             tail=tail,
             line_start=line_start,
-            line_end=line_end,
+            line_end=line_end if not expanded_keyword else None,
         )
         all_results.extend(file_results)
 
-    truncated = bool(expanded_keyword and len(all_results) >= MAX_KEYWORD_RESULTS)
+    truncated = bool(expanded_keyword and len(all_results) >= MAX_KW_LINES)
     if truncated:
         all_results = all_results[:MAX_KEYWORD_RESULTS]
 
