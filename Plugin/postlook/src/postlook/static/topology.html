@@ -52,6 +52,12 @@
                         <input type="text" class="sb-search" id="topoSearch" placeholder="搜索节点..." oninput="window.filterTopoNodes(this.value)">
                     </div>
                     <div class="sb-section">
+                        <button class="topo-discover-btn" id="topoDiscoverBtn" onclick="openDiscoverModal()" title="自动扫描 supervisor + 目录发现新服务">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                            自动发现
+                        </button>
+                    </div>
+                    <div class="sb-section">
                         <h4>图层</h4>
                         <div class="sb-layers" id="topoLayers"></div>
                     </div>
@@ -77,6 +83,25 @@
             </main>
         </div>
     </div>
+
+    <!-- 自动发现弹窗 -->
+    <div class="modal-overlay" id="discoverOverlay" style="display:none">
+        <div class="modal discover-modal">
+            <div class="modal-header">
+                <h3>🔄 自动发现服务</h3>
+                <button class="modal-close" onclick="closeDiscoverModal()">✕</button>
+            </div>
+            <div class="modal-body" id="discoverBody">
+                <div class="discover-loading">正在扫描 supervisor + 目录...</div>
+            </div>
+            <div class="modal-footer">
+                <button class="topo-discover-btn" onclick="selectAllNew()" id="selectAllBtn" style="display:none">☑ 全选新服务</button>
+                <button class="topo-discover-btn primary" onclick="mergeSelected()" id="mergeBtn" style="display:none">合并选中项</button>
+                <button class="topo-discover-btn" onclick="closeDiscoverModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
     <script src="js/common.js"></script>
     <script src="js/topology.js"></script>
 </body>

@@ -1146,3 +1146,217 @@ input:focus, select:focus, textarea:focus {
    ============================================================ */
 .embed-mode .topbar { display: none; }
 .embed-mode body { overflow: auto; }
+
+/* ============================================================
+   自动发现弹窗 (v0.7.0)
+   ============================================================ */
+
+/* 发现按钮 */
+.topo-discover-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-secondary);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.topo-discover-btn:hover {
+    background: var(--surface-hover);
+    border-color: var(--accent);
+}
+.topo-discover-btn.primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+.topo-discover-btn.primary:hover {
+    opacity: 0.85;
+}
+
+/* 弹窗叠加层 */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 弹窗容器 */
+.discover-modal {
+    width: 560px;
+    max-width: 90vw;
+    max-height: 80vh;
+    background: var(--surface-primary);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.35);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+}
+.modal-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+}
+.modal-close {
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+.modal-close:hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+}
+
+.modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+}
+
+.modal-footer {
+    display: flex;
+    gap: 8px;
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    justify-content: flex-end;
+}
+
+/* 发现列表 */
+.discover-loading,
+.discover-error,
+.discover-empty {
+    text-align: center;
+    padding: 32px 16px;
+    color: var(--text-tertiary);
+}
+.discover-error { color: #ef4444; }
+
+.discover-summary {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    background: var(--surface-secondary);
+    border-radius: 8px;
+}
+
+.discover-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.discover-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--surface-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    transition: all 0.2s;
+}
+.discover-row:hover {
+    border-color: var(--accent);
+    background: var(--surface-hover);
+}
+.discover-row.new {
+    border-left: 3px solid var(--accent);
+}
+.discover-row.existing {
+    opacity: 0.6;
+}
+
+.discover-check input[type=checkbox] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.discover-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.discover-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.discover-badge {
+    font-size: 0.65rem;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+.discover-badge.new {
+    background: rgba(79, 143, 247, 0.15);
+    color: #4f8ff7;
+}
+.discover-badge.exist {
+    background: rgba(148, 163, 184, 0.12);
+    color: #94a3b8;
+}
+
+.discover-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+}
+
+.discover-cat {
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface-primary);
+    color: var(--text-primary);
+    font-size: 0.72rem;
+    cursor: pointer;
+}
+
+.discover-path {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.discover-file { color: var(--text-secondary); }
+.discover-size { color: var(--accent); }
+.discover-src {
+    font-style: italic;
+    opacity: 0.7;
+}

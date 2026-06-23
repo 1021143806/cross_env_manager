@@ -292,6 +292,214 @@ document.addEventListener('DOMContentLoaded', function() {
     window.closeTopoDetail = function() { var el = document.getElementById('topoDetail'); if (el) el.style.display = 'none'; };
     window.viewTopoLog = function(path) { window.open('logs.html?folder=' + encodeURIComponent(decodeURIComponent(path))); };
 
+    // ──────────────────────────────────────────────
+    // 自动发现服务 (v0.7.0)
+    // ──────────────────────────────────────────────
+
+    var DISCOVER_DATA = null;
+
+    // 打开发现弹窗
+    window.openDiscoverModal = function() {
+        var overlay = document.getElementById('discoverOverlay');
+        var body = document.getElementById('discoverBody');
+        var selectAllBtn = document.getElementById('selectAllBtn');
+        var mergeBtn = document.getElementById('mergeBtn');
+        if (!overlay || !body) return;
+
+        overlay.style.display = 'flex';
+        body.innerHTML = '<div class="discover-loading">正在扫描 supervisor + 目录...</div>';
+        selectAllBtn.style.display = 'none';
+        mergeBtn.style.display = 'none';
+
+        fetch('/api/topology/discover')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                DISCOVER_DATA = data;
+                renderDiscoverList(data);
+            })
+            .catch(function(err) {
+                body.innerHTML = '<div class="discover-error">扫描失败: ' + (err.message || '网络错误') + '</div>';
+            });
+    };
+
+    // 关闭弹窗
+    window.closeDiscoverModal = function() {
+        var overlay = document.getElementById('discoverOverlay');
+        if (overlay) overlay.style.display = 'none';
+        DISCOVER_DATA = null;
+    };
+
+    // 渲染候选列表
+    function renderDiscoverList(data) {
+        var body = document.getElementById('discoverBody');
+        var selectAllBtn = document.getElementById('selectAllBtn');
+        var mergeBtn = document.getElementById('mergeBtn');
+        if (!body) return;
+
+        var cs = data.candidates || [];
+        var cats = data.categories || [];
+        var existingIds = data.existing_ids || [];
+
+        if (cs.length === 0) {
+            body.innerHTML = '<div class="discover-empty">未发现新的服务节点<br><small>确保 supervisor 和 /main/app 目录可访问</small></div>';
+            if (selectAllBtn) selectAllBtn.style.display = 'none';
+            if (mergeBtn) mergeBtn.style.display = 'none';
+            return;
+        }
+
+        var newCount = cs.filter(function(c) { return c.is_new; }).length;
+        if (newCount > 0) {
+            if (selectAllBtn) selectAllBtn.style.display = '';
+            if (mergeBtn) mergeBtn.style.display = '';
+        } else {
+            if (selectAllBtn) selectAllBtn.style.display = 'none';
+            if (mergeBtn) mergeBtn.style.display = 'none';
+        }
+
+        var html = '<div class="discover-summary">发现 <b>' + cs.length + '</b> 个候选服务，其中 <b style="color:var(--accent)">' + newCount + '</b> 个为新服务</div>';
+        html += '<div class="discover-list">';
+
+        for (var i = 0; i < cs.length; i++) {
+            var c = cs[i];
+            var isNew = c.is_new;
+            var rowClass = isNew ? 'discover-row new' : 'discover-row existing';
+            var checked = isNew ? ' checked' : '';
+            var disabled = isNew ? '' : ' disabled';
+            var badge = isNew
+                ? '<span class="discover-badge new">新</span>'
+                : '<span class="discover-badge exist">已有</span>';
+
+            html += '<div class="' + rowClass + '">';
+            html += '<label class="discover-check">';
+            html += '<input type="checkbox" data-id="' + c.id + '"' + checked + disabled + ' onchange="onCandidateToggle()">';
+            html += '</label>';
+            html += '<div class="discover-info">';
+            html += '<div class="discover-name">' + escapeHtml(c.name) + badge + '</div>';
+            html += '<div class="discover-meta">';
+            
+            // 分类下拉
+            html += '<select class="discover-cat" data-id="' + c.id + '" onchange="onCatChange(this)">';
+            for (var j = 0; j < cats.length; j++) {
+                var sel = cats[j].id === c.category ? ' selected' : '';
+                html += '<option value="' + cats[j].id + '"' + sel + '>' + cats[j].label + '</option>';
+            }
+            html += '</select>';
+
+            html += '<span class="discover-path">' + escapeHtml(c.log_dir || '—') + '</span>';
+            if (c.log_file) html += '<span class="discover-file">📄 ' + escapeHtml(c.log_file) + '</span>';
+            if (c.size_mb) html += '<span class="discover-size">' + c.size_mb.toFixed(1) + ' MB</span>';
+            html += '<span class="discover-src">来源: ' + c.source + '</span>';
+            html += '</div>';
+            html += '</div>';  // discover-info
+            html += '</div>';  // discover-row
+        }
+
+        html += '</div>';  // discover-list
+        body.innerHTML = html;
+    }
+
+    // 全选新服务
+    window.selectAllNew = function() {
+        if (!DISCOVER_DATA) return;
+        var boxes = document.querySelectorAll('.discover-row.new input[type=checkbox]');
+        var allChecked = true;
+        for (var i = 0; i < boxes.length; i++) {
+            if (!boxes[i].checked) { allChecked = false; break; }
+        }
+        for (var i = 0; i < boxes.length; i++) {
+            boxes[i].checked = !allChecked;
+        }
+        onCandidateToggle();
+    };
+
+    // 切换候选时更新按钮状态
+    window.onCandidateToggle = function() {
+        var mergeBtn = document.getElementById('mergeBtn');
+        var selectAllBtn = document.getElementById('selectAllBtn');
+        if (!mergeBtn) return;
+        var checked = document.querySelectorAll('.discover-row input[type=checkbox]:checked');
+        mergeBtn.textContent = '合并选中 (' + checked.length + ')';
+        if (checked.length === 0) {
+            mergeBtn.style.opacity = '0.5';
+        } else {
+            mergeBtn.style.opacity = '1';
+        }
+    };
+
+    // 分类下拉变更
+    window.onCatChange = function(sel) {
+        if (!DISCOVER_DATA) return;
+        var id = sel.getAttribute('data-id');
+        for (var i = 0; i < DISCOVER_DATA.candidates.length; i++) {
+            if (DISCOVER_DATA.candidates[i].id === id) {
+                DISCOVER_DATA.candidates[i].category = sel.value;
+                break;
+            }
+        }
+    };
+
+    // 合并选中项
+    window.mergeSelected = function() {
+        if (!DISCOVER_DATA) return;
+        var boxes = document.querySelectorAll('.discover-row input[type=checkbox]:checked');
+        if (boxes.length === 0) return;
+
+        var selected = [];
+        for (var i = 0; i < boxes.length; i++) {
+            var id = boxes[i].getAttribute('data-id');
+            for (var j = 0; j < DISCOVER_DATA.candidates.length; j++) {
+                var c = DISCOVER_DATA.candidates[j];
+                if (c.id === id) {
+                    selected.push({
+                        id: c.id,
+                        name: c.name,
+                        category: c.category,
+                        log_dir: c.log_dir,
+                        log_file: c.log_file,
+                        size_mb: c.size_mb,
+                        source: c.source
+                    });
+                    break;
+                }
+            }
+        }
+
+        var mergeBtn = document.getElementById('mergeBtn');
+        if (mergeBtn) {
+            mergeBtn.textContent = '合并中...';
+            mergeBtn.disabled = true;
+        }
+
+        fetch('/api/topology/merge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ selected: selected })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(result) {
+            if (result.status === 'ok') {
+                closeDiscoverModal();
+                // 重新加载拓扑
+                TOPO_DATA = null;
+                if (cy) { cy.destroy(); cy = null; }
+                topoInited = false;
+                initTopology();
+                alert('已添加 ' + result.added + ' 个节点' + (result.skipped ? '，跳过 ' + result.skipped + ' 个' : ''));
+            } else {
+                alert('合并失败: ' + (result.message || '未知错误'));
+            }
+        })
+        .catch(function(err) {
+            alert('合并失败: ' + (err.message || '网络错误'));
+        })
+        .finally(function() {
+            if (mergeBtn) {
+                mergeBtn.textContent = '合并选中';
+                mergeBtn.disabled = false;
+            }
+        });
+    };
+
     // 启动
     initTopology();
 });

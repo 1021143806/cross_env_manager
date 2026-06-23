@@ -6,7 +6,7 @@ postlook · 配置模块
 import os
 import threading
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 
 # 项目根目录
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -631,6 +631,302 @@ def _check_topology_health():
 
         if not recovered:
             print("[Config] 警告: 拓扑/目录配置丢失，且备份和模板均不可用")
+
+
+# ============================================================
+# 拓扑自动发现 (v0.7.0)
+# ============================================================
+
+# 分类推断规则: (路径模式, 分类ID)
+_CATEGORY_INFERENCE_RULES: List[Tuple[str, str]] = [
+    (r"/rtps", "planner"),
+    (r"/server/mysql", "database"),
+    (r"/server/redis", "middleware"),
+    (r"/server/nacos", "middleware"),
+    (r"/server/filebeat", "middleware"),
+    (r"/server/", "middleware"),
+    (r"/app/", "apps"),
+]
+
+# 已知分类默认属性
+_KNOWN_CATEGORIES: Dict[str, Dict[str, str]] = {
+    "apps":       {"label": "应用系统", "color": "#0abde3", "desc": "自动发现的 Java/微服务"},
+    "planner":    {"label": "路径规划", "color": "#f87171", "desc": "自动发现的 C++ 算法进程"},
+    "middleware": {"label": "中间件",   "color": "#fbbf24", "desc": "自动发现的中间件服务"},
+    "database":   {"label": "数据库",   "color": "#a855f7", "desc": "自动发现的数据库服务"},
+    "system":     {"label": "系统日志", "color": "#4ade80", "desc": "自动发现的系统服务"},
+}
+
+
+def _infer_category(dir_path: str) -> str:
+    """根据目录路径推断分类"""
+    for pattern, cat_id in _CATEGORY_INFERENCE_RULES:
+        if pattern in dir_path:
+            return cat_id
+    return "apps"
+
+
+def _guess_log_file(log_dir: Path, service_id: str) -> Optional[str]:
+    """猜测日志目录中的主日志文件"""
+    if not log_dir.exists():
+        return None
+    try:
+        logs = sorted(
+            [f for f in log_dir.iterdir() if f.is_file() and f.suffix in ('.log', '')],
+            key=lambda f: f.stat().st_mtime, reverse=True
+        )
+        # 优先匹配同名文件
+        for f in logs:
+            if f.stem.lower() == service_id.lower():
+                return f.name
+        # 其次取最新 .log 文件
+        for f in logs:
+            if f.suffix == '.log':
+                return f.name
+        # 最后取任意最新文件
+        if logs:
+            return logs[0].name
+    except PermissionError:
+        pass
+    return None
+
+
+def _parse_supervisor_status() -> List[Dict[str, str]]:
+    """解析 supervisorctl status 输出，返回运行中的程序列表"""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["supervisorctl", "status"], capture_output=True, text=True, timeout=5
+        )
+        # rc != 0 仅表示部分进程非 RUNNING，stdout 仍有数据
+        if not result.stdout.strip():
+            return []
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return []
+
+    programs = []
+    for line in result.stdout.strip().split("\n"):
+        if not line.strip():
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        name = parts[0].rstrip(":")
+        status = parts[1]
+        if status == "RUNNING":
+            programs.append({"name": name, "status": status})
+    return programs
+
+
+def _scan_app_dirs() -> List[Dict[str, str]]:
+    """扫描 /main/app 和 /main/server 下有 logs/ 子目录的项目"""
+    candidates = []
+    for base in ["/main/app", "/main/server"]:
+        base_path = Path(base)
+        if not base_path.exists():
+            continue
+        try:
+            for entry in sorted(base_path.iterdir()):
+                if not entry.is_dir():
+                    continue
+                logs_dir = entry / "logs"
+                if logs_dir.exists() and logs_dir.is_dir():
+                    dir_path = str(entry)
+                    candidates.append({
+                        "name": entry.name,
+                        "path": dir_path,
+                        "log_dir": str(logs_dir),
+                    })
+        except PermissionError:
+            continue
+    return candidates
+
+
+def discover_services() -> Dict[str, Any]:
+    """自动发现可加入拓扑的服务节点
+
+    扫描来源:
+      1. supervisorctl status（运行中的进程）
+      2. /main/app/*/ 下有 logs/ 子目录的项目
+      3. /main/server/*/ 下有 logs/ 子目录的项目
+
+    返回:
+      {
+        "candidates": [ {id, name, category, log_dir, log_file, source, is_new, size_mb}, ... ],
+        "existing_ids": [...],
+        "categories": [ {id, label, color} ]
+      }
+    """
+    existing_ids = {s.get("id", "") for s in _cached_topo_services}
+    existing_set = set()  # 用于去重 (name, log_dir) 组合
+    candidates: List[Dict[str, Any]] = []
+
+    def _add_candidate(svc_id: str, name: str, log_dir: str, category: str, source: str):
+        key = (name.lower(), log_dir)
+        if key in existing_set:
+            return
+        existing_set.add(key)
+
+        log_path = Path(log_dir) if log_dir else None
+        log_file = _guess_log_file(log_path, svc_id) if log_path else None
+
+        # 文件大小估算
+        size_mb = 0.0
+        if log_path and log_file:
+            lf = log_path / log_file
+            if lf.exists():
+                size_mb = round(lf.stat().st_size / (1024 * 1024), 1)
+
+        candidates.append({
+            "id": svc_id,
+            "name": name,
+            "category": category,
+            "log_dir": log_dir,
+            "log_file": log_file or "",
+            "size_mb": size_mb,
+            "source": source,
+            "is_new": svc_id not in existing_ids,
+        })
+
+    # 1. 扫描 supervisor
+    for prog in _parse_supervisor_status():
+        svc_name = prog["name"]
+        svc_id = svc_name.lower().replace(" ", "_")
+        # 尝试推断 log_dir
+        log_dir = ""
+        for base in ["/main/app", "/main/server"]:
+            candidate_logs = Path(base) / svc_name / "logs"
+            if candidate_logs.exists():
+                log_dir = str(candidate_logs)
+                break
+        if not log_dir:
+            # 特殊处理已知 supervisor 进程
+            if svc_name == "postlook":
+                log_dir = str(PROJECT_ROOT / "logs")
+            elif svc_name == "cross_env_manager" or svc_name == "cross_env2_manager":
+                log_dir = "/main/app/cross_env_manager/logs"
+            elif svc_name == "asap_adapter":
+                log_dir = "/main/app/asap_adapter/logs"
+
+        category = _infer_category(log_dir) if log_dir else "apps"
+        _add_candidate(svc_id, svc_name, log_dir, category, "supervisor")
+
+    # 过滤掉无日志目录的候选项
+    candidates = [c for c in candidates if c.get("log_dir")]
+
+    # 2. 扫描 /main/app + /main/server 目录
+    for entry in _scan_app_dirs():
+        svc_name = entry["name"]
+        svc_id = svc_name.lower().replace(" ", "_")
+        log_dir = entry["log_dir"]
+        category = _infer_category(entry["path"])
+        # 去重：supervisor 已添加的跳过
+        if (svc_name.lower(), log_dir) in existing_set:
+            continue
+        source = "filesystem"
+        _add_candidate(svc_id, svc_name, log_dir, category, source)
+
+    # 构建分类列表（用于前端下拉菜单）
+    categories = []
+    for cat_id in sorted(set(c["category"] for c in candidates)):
+        info = _KNOWN_CATEGORIES.get(cat_id, {"label": cat_id, "color": "#94a3b8", "desc": ""})
+        categories.append({
+            "id": cat_id,
+            "label": info["label"],
+            "color": info["color"],
+        })
+
+    return {
+        "candidates": candidates,
+        "existing_ids": list(existing_ids),
+        "categories": categories,
+    }
+
+
+def merge_topology_services(selected: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """将选中的服务节点合并到拓扑配置中
+
+    参数:
+      selected: [ {id, name, category, log_dir, log_file, desc?}, ... ]
+
+    返回:
+      {"status": "ok", "added": N, "skipped": N, "new_categories": [...]}
+    """
+    existing_ids = {s.get("id", "") for s in _cached_topo_services}
+    existing_cat_ids = {c.get("id", "") for c in _cached_topo_categories}
+
+    config_path = _get_config_path()
+    if not config_path.exists():
+        return {"status": "error", "message": "配置文件不存在，请先初始化配置"}
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    new_blocks = []
+    new_cats = []
+    added = 0
+    skipped = 0
+
+    for svc in selected:
+        svc_id = svc.get("id", "")
+        if not svc_id or svc_id in existing_ids:
+            skipped += 1
+            continue
+
+        cat_id = svc.get("category", "apps")
+        # 如果分类不存在，添加新分类
+        if cat_id not in existing_cat_ids and cat_id not in {c["id"] for c in new_cats}:
+            cat_info = _KNOWN_CATEGORIES.get(cat_id, {"label": cat_id, "color": "#94a3b8", "desc": ""})
+            new_cats.append({
+                "id": cat_id,
+                "label": cat_info["label"],
+                "color": cat_info["color"],
+            })
+            existing_cat_ids.add(cat_id)
+
+        # 构建 TOML 条目
+        lines = [
+            f"# auto-discovered ({svc.get('source', 'manual')})",
+            f"[[topology.service]]",
+            f'id = "{svc_id}"',
+            f'name = "{svc.get("name", svc_id)}"',
+            f'category = "{cat_id}"',
+        ]
+        log_dir = svc.get("log_dir", "")
+        if log_dir:
+            lines.append(f'log_dir = "{log_dir}"')
+        log_file = svc.get("log_file", "")
+        if log_file:
+            lines.append(f'log_file = "{log_file}"')
+        size_mb = svc.get("size_mb", 0)
+        if size_mb:
+            lines.append(f"size_mb = {size_mb}")
+        desc = svc.get("desc", "")
+        if desc:
+            lines.append(f'desc = "{desc}"')
+        else:
+            lines.append(f'desc = "自动发现 — {svc.get("source", "")} 扫描"')
+
+        new_blocks.append("\n".join(lines))
+        existing_ids.add(svc_id)
+        added += 1
+
+    if not new_blocks:
+        return {"status": "ok", "added": 0, "skipped": skipped, "new_categories": [], "message": "没有需要添加的服务"}
+
+    # 追加到配置文件末尾
+    content = content.rstrip() + "\n\n" + "\n\n".join(new_blocks) + "\n"
+
+    # 原子写入 + 热更新
+    save_config_toml(content)
+
+    return {
+        "status": "ok",
+        "added": added,
+        "skipped": skipped,
+        "new_categories": new_cats,
+        "message": f"已添加 {added} 个服务节点" + (f"，跳过 {skipped} 个已存在" if skipped else ""),
+    }
 
 
 # 初始加载

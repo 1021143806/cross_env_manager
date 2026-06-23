@@ -343,6 +343,50 @@ async def get_topology_config():
     return _get_topo()
 
 
+@router.get("/api/topology/discover")
+async def discover_topology_services():
+    """自动发现可加入拓扑的服务节点
+
+    扫描来源:
+      1. supervisorctl status（运行中的进程）
+      2. /main/app/*/ 下有 logs/ 子目录的项目
+      3. /main/server/*/ 下有 logs/ 子目录的项目
+
+    返回候选列表，由用户确认后合并到拓扑配置
+    """
+    from .config import discover_services
+    try:
+        return discover_services()
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] discover: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"发现服务失败: {e}")
+
+
+class TopologyMergeRequest(BaseModel):
+    """POST /api/topology/merge 请求体"""
+    selected: list = Field(..., description="用户选中的服务节点列表 [{id, name, category, log_dir, log_file, ...}]")
+
+
+@router.post("/api/topology/merge")
+async def merge_topology_services(req: TopologyMergeRequest):
+    """将选中的服务节点合并到拓扑配置（写入 config.toml + 热更新）"""
+    from .config import merge_topology_services as _merge
+    try:
+        result = _merge(req.selected)
+        if result.get("status") == "error":
+            raise HTTPException(status_code=400, detail=result.get("message", "合并失败"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] merge: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"合并失败: {e}")
+
+
 @router.get("/api/dirs-meta")
 async def get_dirs_meta():
     """获取日志目录元数据"""
