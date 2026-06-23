@@ -213,7 +213,7 @@
                         <div class="filter-grid">
                             <div class="form-group">
                                 <label for="folder">日志路径</label>
-                                <input type="text" id="folder" placeholder="目录: /var/log 或文件路径" autocomplete="off">
+                                <input type="text" id="folder" placeholder="输入日志目录后点击查询，例: /var/log" autocomplete="off">
                                 <div id="historyDropdown" class="history-dropdown"></div>
                             </div>
                             <div class="form-group">
@@ -272,6 +272,7 @@
                             </button>
                             <span id="queryTime" style="font-size:0.75rem;color:var(--text-tertiary);"></span>
                         </div>
+                        <div id="feedbackMsg" style="font-size:0.78rem;color:var(--warning, #f59e0b);margin-top:0.35rem;display:none;"></div>
                     </div>
 
                     <!-- 等效 Shell 命令 -->

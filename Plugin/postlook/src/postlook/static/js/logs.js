@@ -18,10 +18,21 @@
 
     // ── DOM 引用 ──
     var els = {};
+    var _feedbackTimer = null;
+
+    function showFeedback(msg, type) {
+        var el = document.getElementById('feedbackMsg');
+        if (!el) return;
+        el.textContent = msg;
+        el.style.color = type === 'warning' ? 'var(--warning, #f59e0b)' : type === 'error' ? 'var(--danger, #ef4444)' : 'var(--text-secondary)';
+        el.style.display = 'block';
+        clearTimeout(_feedbackTimer);
+        _feedbackTimer = setTimeout(function() { el.style.display = 'none'; }, 3000);
+    }
     function cacheEls() {
         ['folder','pattern','keyword','lineCount','tail','recentFiles',
          'chipFilters','btnQuery','btnLive','btnLiveLabel','queryTime','logResults','historyDropdown','dateQueriesContainer',
-          'shellCmdBar','shellCmdText'].forEach(function(id) {
+          'shellCmdBar','shellCmdText','feedbackMsg'].forEach(function(id) {
             els[id] = document.getElementById(id);
         });
     }
@@ -183,8 +194,13 @@
     window.doQuery = function() {
         if (queryLoading) return;
         var folder = els.folder.value.trim();
-        if (!folder) return;
+        if (!folder) {
+            showFeedback('请先输入日志路径再点击查询', 'warning');
+            els.folder.focus();
+            return;
+        }
 
+        showFeedback('', '');
         queryLoading = true;
         if (!_isLiveQuery) {
             els.btnQuery.innerHTML = '<span class="spinner" style="display:inline-block;width:14px;height:14px;border-width:2px;"></span> 查询中...';
@@ -483,6 +499,7 @@
             renderDateQueries();
         }).catch(function() {
             els.dateQueriesContainer.innerHTML = '<div style="font-size:0.75rem;color:var(--text-tertiary);padding:4px">加载失败</div>';
+            showFeedback('快捷查询列表加载失败，请刷新页面', 'error');
         });
     }
 
@@ -538,7 +555,11 @@
 
     window.openSaveDialog = function() {
         var folder = els.folder.value.trim();
-        if (!folder) return;
+        if (!folder) {
+            showFeedback('请先输入日志路径后再保存快捷查询', 'warning');
+            els.folder.focus();
+            return;
+        }
         _editingFilename = null;
         document.getElementById('saveName').value = '';
         document.getElementById('saveDesc').value = '';
@@ -580,8 +601,9 @@
             _dateQueries = d.queries || [];
             renderDateQueries();
             closeSaveDialog();
+            showFeedback('快捷查询「' + escapeHtml(name) + '」已保存', 'ok');
         }).catch(function(err) {
-            alert('保存失败: ' + err.message);
+            showFeedback('保存失败: ' + err.message, 'error');
         }).finally(function() {
             btn.disabled = false;
             btn.textContent = '保存';
@@ -664,7 +686,7 @@
         els.keyword.addEventListener('input', function() { autoQuery(); });
         els.folder.addEventListener('change', function() {
             var v = els.folder.value.trim();
-            if (v) { chipAdd(v, 'folder', v); }
+            if (v) { showFeedback('', ''); chipAdd(v, 'folder', v); }
         });
 
         // 查询按钮
