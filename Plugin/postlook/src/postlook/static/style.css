@@ -542,7 +542,7 @@ body {
     min-width: 0;
 }
 
-.log-row-content .highlight {
+.lr-content .highlight {
     background: rgba(255, 149, 0, 0.3);
     border-radius: 2px;
     padding: 0 2px;
