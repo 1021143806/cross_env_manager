@@ -39,7 +39,13 @@ EXCLUDE_PATTERNS = [
     'skill.md',
     'README.md',
     'deploy_iraypleos/',
-    'Plugin/postlook/deploy/',
+    # postlook: 仅排除部署脚本/平台资源，放行 vendor_packages（离线依赖包）
+    'Plugin/postlook/deploy/backup/',
+    'Plugin/postlook/deploy/lib/',
+    'Plugin/postlook/deploy/platform/',
+    'Plugin/postlook/deploy/deploy.conf',
+    'Plugin/postlook/deploy/deploy.sh',
+    'Plugin/postlook/deploy/README.md',
     'Plugin/postlook/venv/',
     '__pycache__/',
     '*.pyc',
@@ -580,23 +586,11 @@ def _install_postlook_deps():
                     print(f"[Upgrade] 离线安装失败: {(result.stdout+result.stderr)[:200]}")
             except Exception as e:
                 print(f"[Upgrade] 离线安装异常: {e}")
-    
-    # 方式2: 在线兜底（清华镜像）
-    if not installed_ok:
-        print("[Upgrade] 尝试在线安装 postlook 依赖 (清华镜像)...")
-        command = f'{venv_python} -m pip install pydantic pydantic-core tomli fastapi uvicorn starlette -i https://pypi.tuna.tsinghua.edu.cn/simple 2>&1'
-        try:
-            result = _sp.run(command, shell=True, capture_output=True, text=True, timeout=120)
-            if result.returncode == 0:
-                print(f"[Upgrade] postlook 在线依赖安装成功")
-                installed_ok = True
-            else:
-                print(f"[Upgrade] 在线安装失败: {(result.stdout+result.stderr)[:300]}")
-        except Exception as e:
-            print(f"[Upgrade] 在线安装异常: {e}")
+    else:
+        print("[Upgrade] 警告: postlook vendor_packages 不存在，依赖可能缺失")
     
     if not installed_ok:
-        print("[Upgrade] 警告: postlook 依赖安装全部失败，服务可能无法启动")
+        print("[Upgrade] 警告: postlook 依赖安装失败，服务可能无法启动")
 
 
 def trigger_restart(delay: int = 3):
