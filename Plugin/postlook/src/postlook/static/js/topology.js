@@ -776,14 +776,6 @@ document.addEventListener('DOMContentLoaded', function () {
         var nodeType = node.data('type') || 'service';
         title.innerHTML = nodeLabel + ' <span style="font-size:0.6rem;opacity:0.6">' + nodeType + '</span>';
 
-        // 跳转日志页链接
-        var logDir = node.data('log_dir') || node.data('folder') || '';
-        var logPath = node.data('path') || '';
-        var jumpDir = logDir || (logPath ? logPath.substring(0, logPath.lastIndexOf('/')) : '');
-        if (jumpDir) {
-            body.innerHTML = '<a class="topo-jump-link" href="logs.html?folder=' + encodeURIComponent(jumpDir) + '" target="_blank" title="在新标签页搜索此目录日志">🔍 搜索此目录日志: ' + escapeHtml(jumpDir) + '</a><hr style="border-color:var(--border);margin:8px 0">';
-        }
-
         // 收集所有关联的三元组
         var triples = [];
         cy.edges().forEach(function (e) {
@@ -798,10 +790,19 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
 
+        // 跳转日志页链接
+        var logDir = node.data('log_dir') || node.data('folder') || '';
+        var logPath = node.data('path') || '';
+        var jumpDir = logDir || (logPath ? logPath.substring(0, logPath.lastIndexOf('/')) : '');
+        var jumpHtml = '';
+        if (jumpDir) {
+            jumpHtml = '<a class="topo-jump-link" href="logs.html?folder=' + encodeURIComponent(jumpDir) + '" target="_blank" title="在新标签页搜索此目录日志">🔍 搜索此目录日志</a>';
+        }
+
         if (triples.length === 0) {
-            body.innerHTML = '<div style="padding:12px;color:var(--text-tertiary);font-size:0.75rem">无关联关系</div>';
+            body.innerHTML = jumpHtml || '<div style="padding:12px;color:var(--text-tertiary);font-size:0.75rem">无关联关系</div>';
         } else {
-            var html = '<div class="kg-triple-list">';
+            var html = jumpHtml + '<div class="kg-triple-list">';
             triples.forEach(function (t) {
                 var relClass = 'kg-rel ' + t.relation;
                 html += '<div class="kg-triple-row" onclick="cy.getElementById(\'' + t.targetId + '\').select()">';
