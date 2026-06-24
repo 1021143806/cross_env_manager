@@ -76,7 +76,7 @@
                             <span style="font-size:0.7rem;color:var(--text-secondary)">全局<span style="color:#818cf8"> ●</span></span>
                             <span style="font-size:0.7rem;color:var(--text-tertiary);margin-left:auto" id="statsCache">缓存: —</span>
                         </div>
-                        <canvas id="concurrencyChart" height="160"></canvas>
+                        <div style="height:170px"><canvas id="concurrencyChart"></canvas></div>
                     </div>
                 </section>
 
@@ -107,7 +107,7 @@
                 ]
             },
             options: {
-                responsive: true, maintainAspectRatio: false,
+                responsive: true, maintainAspectRatio: false, resizeDelay: 0,
                 animation: { duration: 300 },
                 plugins: { legend: { display: false } },
                 scales: {
