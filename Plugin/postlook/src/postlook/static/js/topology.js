@@ -664,37 +664,42 @@ document.addEventListener('DOMContentLoaded', function () {
     // ════════════════════════════════════════════════════════════
 
     function _staggeredEntrance(cy) {
-        // BFS 计算深度
-        var depths = {};
-        var roots = cy.nodes().filter(function (n) {
-            return n.incomers('node').length === 0;
-        });
-        var q = [];
-        roots.forEach(function (r) { q.push({ id: r.id(), d: 0 }); });
-        while (q.length) {
-            var cur = q.shift();
-            if (cur.id in depths) continue;
-            depths[cur.id] = cur.d;
-            var node = cy.getElementById(cur.id);
-            if (node.length) {
-                node.outgoers('node').forEach(function (child) {
-                    q.push({ id: child.id(), d: cur.d + 1 });
-                });
-            }
-        }
-
-        var maxDepth = Math.max(0, ...Object.values(depths));
-        cy.nodes().forEach(function (n) {
-            var d = depths[n.id()] || 0;
-            n.style('opacity', 0);
-            n.animate({
-                style: { 'opacity': 1 }
-            }, {
-                duration: 400,
-                delay: d * 100,
-                easing: 'ease-out'
+        try {
+            // BFS 计算深度
+            var depths = {};
+            var roots = cy.nodes().filter(function (n) {
+                return n.incomers('node').length === 0;
             });
-        });
+            var q = [];
+            roots.forEach(function (r) { q.push({ id: r.id(), d: 0 }); });
+            while (q.length) {
+                var cur = q.shift();
+                if (cur.id in depths) continue;
+                depths[cur.id] = cur.d;
+                var node = cy.getElementById(cur.id);
+                if (node.length) {
+                    node.outgoers('node').forEach(function (child) {
+                        q.push({ id: child.id(), d: cur.d + 1 });
+                    });
+                }
+            }
+
+            cy.nodes().forEach(function (n) {
+                var d = depths[n.id()] || 0;
+                // 确保节点可见，再渐入
+                n.style('opacity', 0.01);
+                n.animate({
+                    style: { 'opacity': 1 }
+                }, {
+                    duration: 400,
+                    delay: d * 80,
+                    easing: 'ease-out'
+                });
+            });
+        } catch (e) {
+            // 动画失败时强制所有节点可见
+            cy.nodes().style('opacity', 1);
+        }
     }
 
     window.tidyUpKG = function () {
