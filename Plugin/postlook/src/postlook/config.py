@@ -642,9 +642,7 @@ def build_topology_tree() -> Dict[str, Any]:
     返回:
       { "nodes": [...], "edges": [...] }
     """
-    import socket
     
-    hostname = socket.gethostname()
     nodes: List[Dict[str, Any]] = []
     edges: List[Dict[str, Any]] = []
     added_branches: set = set()  # 已添加的 branch id
@@ -653,7 +651,7 @@ def build_topology_tree() -> Dict[str, Any]:
     # 根节点
     nodes.append({
         "id": "root",
-        "label": hostname,
+        "label": "/",
         "type": "root",
         "level": 0,
     })

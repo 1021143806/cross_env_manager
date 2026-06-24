@@ -1,7 +1,7 @@
 /**
- * postlook · 拓扑图 — 文件树同心圆 (v0.8.0)
+ * postlook · 拓扑图 — 多视图切换 (v0.10.0)
  * 
- * 布局: Cytoscape concentric（根→目录→服务 三层同心圆）
+ * 视图: 放射图 | 树形图 | 同心圆
  * 数据源: /api/topology-config → {nodes, edges}
  * 状态色: 🟢 running / ⬜ idle / ⚫ missing
  */
@@ -10,6 +10,13 @@ var cy = null;
 var topoInited = false;
 var TOPO_DATA = null;
 var TOPO_LOADING = false;
+
+// ── 视图注册表 ──
+var LAYOUTS = {};
+var currentLayout = (function () {
+    try { return localStorage.getItem('topo-layout') || 'radial'; }
+    catch (e) { return 'radial'; }
+})();
 
 document.addEventListener('DOMContentLoaded', function () {
 
@@ -25,7 +32,7 @@ document.addEventListener('DOMContentLoaded', function () {
             // 回退：显示一个空根节点
             TOPO_DATA = {
                 nodes: [
-                    { data: { id: 'root', label: window.location.hostname, type: 'root', level: 0 } }
+                    { data: { id: 'root', label: '/', type: 'root', level: 0 } }
                 ],
                 edges: []
             };
@@ -156,8 +163,8 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('topoStatus').textContent =
             branchCount + ' 目录 · ' + svcCount + ' 服务' + (runningCount ? ' · ' + runningCount + ' 运行中' : '');
 
-        // 手动计算放射状布局
-        _doTreeLayout(cy);
+        // 使用当前选择的布局
+        applyLayout(cy);
         initBreathing(cy);
 
         // ── 点击事件 ──
@@ -167,6 +174,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // ── 侧栏图层 ──
         renderLayerPanel(cy);
+        renderViewButtons();
         // ── 侧栏图例 ──
         var legendDiv = document.querySelector('.sb-legend');
         if (legendDiv) {
@@ -178,10 +186,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ════════════════════════════════════════════════════════════
-    //  放射状思维导图布局：根中心 → 分支扇形 → 递归展开
+    //  布局 1：放射图（根居中，分支扇形展开）
     // ════════════════════════════════════════════════════════════
 
-    function _doTreeLayout(cy) {
+    function _doRadialLayout(cy) {
         var R1 = 150;          // 第一层半径（分支节点）
         var R_STEP = 140;      // 每深入一层增加半径
         var FULL_CIRCLE = 2 * Math.PI;
@@ -254,6 +262,140 @@ document.addEventListener('DOMContentLoaded', function () {
         cy.fit(undefined, 60);
     }
 
+    // ════════════════════════════════════════════════════════════
+    //  布局 2：树形图（根在左，向右逐层展开）
+    // ════════════════════════════════════════════════════════════
+
+    function _doHorizontalTreeLayout(cy) {
+        var LEVEL_GAP = 180;
+        var NODE_GAP = 36;
+
+        function layoutSubtree(node, x, startY) {
+            if (node.style('display') === 'none') return 0;
+
+            var children = [];
+            node.connectedEdges().forEach(function (e) {
+                if (e.style('display') === 'none') return;
+                if (e.source().id() !== node.id()) return;
+                var child = e.target();
+                if (child.id() === node.id()) return;
+                if (child.style('display') === 'none') return;
+                children.push(child);
+            });
+
+            if (children.length === 0) {
+                node.position({ x: x, y: startY + NODE_GAP / 2 });
+                return NODE_GAP;
+            }
+
+            var y = startY;
+            for (var i = 0; i < children.length; i++) {
+                y += layoutSubtree(children[i], x + LEVEL_GAP, y);
+            }
+
+            var centerY = (startY + y) / 2;
+            node.position({ x: x, y: centerY });
+            return y - startY;
+        }
+
+        var root = cy.nodes('.root').first();
+        if (!root.length) return;
+
+        layoutSubtree(root, 0, 0);
+        cy.layout({ name: 'preset', animate: false, fit: false }).run();
+        cy.fit(undefined, 60);
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  布局 3：同心圆（根居中，层级分环）
+    // ════════════════════════════════════════════════════════════
+
+    function _doConcentricLayout(cy) {
+        var root = cy.nodes('.root').first();
+        if (!root.length) return;
+        root.position({ x: 0, y: 0 });
+
+        var branches = [];
+        root.connectedEdges().forEach(function (e) {
+            if (e.style('display') === 'none') return;
+            if (e.source().id() !== root.id()) return;
+            var child = e.target();
+            if (child.style('display') === 'none') return;
+            branches.push(child);
+        });
+
+        var anglePerBranch = (2 * Math.PI) / Math.max(1, branches.length);
+        var startAngle = -Math.PI / 2;
+
+        branches.forEach(function (branch, bi) {
+            var a = startAngle + bi * anglePerBranch;
+            branch.position({ x: 160 * Math.cos(a), y: 160 * Math.sin(a) });
+
+            var services = [];
+            branch.connectedEdges().forEach(function (e) {
+                if (e.style('display') === 'none') return;
+                if (e.source().id() !== branch.id()) return;
+                var child = e.target();
+                if (child.style('display') === 'none') return;
+                services.push(child);
+            });
+
+            if (services.length === 0) return;
+
+            var spread = anglePerBranch * 0.7;
+            var svcStart = a - spread / 2;
+            var svcStep = services.length > 1 ? spread / (services.length - 1) : 0;
+
+            services.forEach(function (svc, si) {
+                var sa = services.length === 1 ? a : svcStart + svcStep * si;
+                svc.position({ x: 290 * Math.cos(sa), y: 290 * Math.sin(sa) });
+            });
+        });
+
+        cy.layout({ name: 'preset', animate: false, fit: false }).run();
+        cy.fit(undefined, 60);
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  视图切换
+    // ════════════════════════════════════════════════════════════
+
+    // 注册布局
+    LAYOUTS = {
+        radial:     { name: '放射图', fn: _doRadialLayout },
+        tree:       { name: '树形图', fn: _doHorizontalTreeLayout },
+        concentric: { name: '同心圆', fn: _doConcentricLayout }
+    };
+
+    function applyLayout(cy) {
+        var layout = LAYOUTS[currentLayout];
+        if (layout && layout.fn) {
+            layout.fn(cy);
+        } else {
+            _doRadialLayout(cy);
+        }
+    }
+
+    window.switchLayout = function (name) {
+        if (!cy || !LAYOUTS[name]) return;
+        currentLayout = name;
+        try { localStorage.setItem('topo-layout', name); } catch (e) {}
+        applyLayout(cy);
+        renderViewButtons();
+    };
+
+    function renderViewButtons() {
+        var container = document.getElementById('viewSwitcher');
+        if (!container) return;
+        var html = '';
+        for (var key in LAYOUTS) {
+            var active = key === currentLayout ? ' active' : '';
+            html += '<button class="view-btn' + active + '" onclick="switchLayout(\'' + key + '\')">' +
+                LAYOUTS[key].name + '</button>';
+        }
+        container.innerHTML = html;
+    }
+
     // ── 侧栏图层：目录分支列表 ──
 
     // ── 侧栏图层：目录分支列表 ──
@@ -289,8 +431,8 @@ document.addEventListener('DOMContentLoaded', function () {
             child.style('display', show ? 'element' : 'none');
             e.style('display', show ? 'element' : 'none');
         });
-        // 重排布局（隐藏的节点高度为 0，其他节点自动填充）
-        _doTreeLayout(cy);
+        // 重排布局
+        applyLayout(cy);
     };
 
     // ── 呼吸灯：运行中的服务节点柔光脉冲 ──
