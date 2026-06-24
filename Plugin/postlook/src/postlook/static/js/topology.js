@@ -128,7 +128,20 @@ document.addEventListener('DOMContentLoaded', function () {
                         'background-color': '#22c55e', 'background-opacity': 0.22,
                         'border-color': '#22c55e', 'border-width': 2,
                         'shadow-color': '#22c55e', 'shadow-opacity': 0.25,
-                        'shadow-blur': 8, 'shadow-offset-x': 0, 'shadow-offset-y': 0
+                        'shadow-blur': 8, 'shadow-offset-x': 0, 'shadow-offset-y': 0,
+                        'underlay-color': '#22c55e', 'underlay-opacity': 0.05,
+                        'underlay-padding': 4
+                    }
+                },
+                // 已停用服务 🔴
+                {
+                    selector: '.service.deprecated',
+                    style: {
+                        'border-style': 'dashed', 'border-color': '#ef4444',
+                        'border-width': 1.5, 'opacity': 0.6,
+                        'background-color': '#ef4444', 'background-opacity': 0.12,
+                        'shadow-color': '#ef4444', 'shadow-opacity': 0.15,
+                        'shadow-blur': 6
                     }
                 },
                 // 空项目（无日志/不存在）⚫
@@ -394,28 +407,51 @@ document.addEventListener('DOMContentLoaded', function () {
         _startKgSimulation(cy);
     };
 
-    // ── 呼吸灯：运行中的服务节点柔光脉冲 ──
+    // ── 呼吸灯：弥散光感 + 自然呼吸曲线 + 多态颜色 ──
     function initBreathing(cy) {
-        cy.nodes('.service.running').forEach(function (node) {
-            var expanding = true;
-            function breathe() {
+        cy.nodes('.service.running').forEach(function (node, i) {
+            // 颜色分层
+            var deprecated = node.data('deprecated');
+            var colors = deprecated
+                ? { shadow: '#ef4444', underlay: '#ef4444' }   // 已停用: 红光极慢
+                : { shadow: '#22c55e', underlay: '#22c55e' };  // 运行中: 绿光
+
+            // 初始化光晕颜色
+            node.style('underlay-color', colors.underlay);
+            node.style('shadow-color', colors.shadow);
+
+            var cycle = deprecated ? 6000 : 4000;  // 已停用更慢
+
+            function inhale() {
                 node.animate({
                     style: {
-                        'shadow-opacity': expanding ? 0.5 : 0.12,
-                        'shadow-blur': expanding ? 16 : 6,
-                        'border-width': expanding ? 3 : 2
+                        'underlay-opacity': 0.2, 'underlay-padding': 10,
+                        'shadow-opacity': 0.45, 'shadow-blur': 18,
+                        'border-width': 3.5
                     }
-                }, {
-                    duration: 2200,
-                    easing: 'ease-in-out',
-                    complete: function () {
-                        expanding = !expanding;
-                        breathe();
-                    }
-                });
+                }, { duration: cycle * 0.4, easing: 'ease-in', complete: hold });
             }
-            // 随机起始相位，避免所有节点同步闪烁
-            setTimeout(breathe, Math.random() * 1500);
+            function hold() {
+                node.animate({
+                    style: {
+                        'underlay-opacity': 0.2, 'underlay-padding': 10,
+                        'shadow-opacity': 0.45, 'shadow-blur': 18,
+                        'border-width': 3.5
+                    }
+                }, { duration: cycle * 0.1, easing: 'linear', complete: exhale });
+            }
+            function exhale() {
+                node.animate({
+                    style: {
+                        'underlay-opacity': 0.03, 'underlay-padding': 3,
+                        'shadow-opacity': 0.15, 'shadow-blur': 8,
+                        'border-width': 2
+                    }
+                }, { duration: cycle * 0.5, easing: 'ease-out', complete: inhale });
+            }
+
+            // 相位差: 随机 0~1.5s 延迟，避免所有节点同步
+            setTimeout(inhale, Math.random() * 1500);
         });
     }
 
