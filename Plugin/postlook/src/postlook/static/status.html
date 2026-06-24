@@ -7,6 +7,7 @@
     <title>postlook · 服务状态</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234f8ff7' stroke-width='2.5'><path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><polyline points='14 2 14 8 20 8'/></svg>">
     <link rel="stylesheet" href="style.css">
+    <script src="lib/chart.min.js"></script>
 </head>
 <body>
     <div class="app">
@@ -54,6 +55,19 @@
             </aside>
 
             <main class="content" style="padding:var(--content-padding)">
+                <!-- 并发监控折线图 -->
+                <section class="panel active" style="margin-bottom:16px">
+                    <div class="glass-card" style="padding:16px">
+                        <h4 style="margin:0 0 12px 0;font-size:0.9rem">📊 并发监控</h4>
+                        <div style="display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+                            <span style="font-size:0.7rem;color:var(--text-secondary)">查询<span style="color:#f87171"> ●</span></span>
+                            <span style="font-size:0.7rem;color:var(--text-secondary)">KG<span style="color:#fbbf24"> ●</span></span>
+                            <span style="font-size:0.7rem;color:var(--text-secondary)">全局<span style="color:#818cf8"> ●</span></span>
+                            <span style="font-size:0.7rem;color:var(--text-tertiary);margin-left:auto" id="statsCache">缓存: —</span>
+                        </div>
+                        <canvas id="concurrencyChart" height="160"></canvas>
+                    </div>
+                </section>
                 <section class="panel active">
                     <div class="glass-card" id="statusInfo">
                         <div class="status-loading"><div class="spinner"></div><p>正在检查服务状态...</p></div>
@@ -64,5 +78,57 @@
     </div>
     <script src="js/common.js"></script>
     <script src="js/status.js"></script>
+    <script>
+    // ── 并发监控折线图 ──
+    (function() {
+        var ctx = document.getElementById('concurrencyChart');
+        if (!ctx) return;
+        var chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    { label: '查询', data: [], borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.08)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5 },
+                    { label: 'KG',   data: [], borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.08)',  fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5 },
+                    { label: '全局', data: [], borderColor: '#818cf8', backgroundColor: 'rgba(129,140,248,0.08)',  fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                animation: { duration: 300 },
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { display: false },
+                    y: { min: 0, max: 10, ticks: { color: '#64748b', font: { size: 9 }, stepSize: 2 }, grid: { color: 'rgba(100,116,139,0.1)' } }
+                },
+                interaction: { intersect: false, mode: 'index' }
+            }
+        });
+
+        function formatTime(ts) {
+            var d = new Date(ts * 1000);
+            return d.getHours().toString().padStart(2,'0') + ':' +
+                   d.getMinutes().toString().padStart(2,'0') + ':' +
+                   d.getSeconds().toString().padStart(2,'0');
+        }
+
+        function refresh() {
+            fetch('/api/system/stats').then(function(r) { return r.json(); }).then(function(d) {
+                var labels = d.timestamps.map(formatTime);
+                chart.data.labels = labels;
+                chart.data.datasets[0].data = d.query;
+                chart.data.datasets[1].data = d.kg;
+                chart.data.datasets[2].data = d.global;
+                chart.options.scales.y.max = Math.max(4, d.max.global || 10);
+                chart.update('none');
+                var cacheEl = document.getElementById('statsCache');
+                if (cacheEl) cacheEl.textContent = '缓存命中: ' + (d.cache_hits || 0);
+            }).catch(function() {});
+        }
+
+        refresh();
+        setInterval(refresh, 5000);
+    })();
+    </script>
 </body>
 </html>

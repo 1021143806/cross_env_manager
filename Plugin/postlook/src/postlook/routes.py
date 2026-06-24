@@ -5,6 +5,8 @@ postlook · API 路由
 import asyncio
 import os
 import time
+import threading
+from collections import deque
 from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
@@ -23,6 +25,40 @@ _global_semaphore = asyncio.Semaphore(_MAX_GLOBAL_CONCURRENCY)
 _kg_cache: Optional[dict] = None
 _kg_cache_time: float = 0.0
 _KG_CACHE_TTL = 30.0
+_kg_cache_hits = 0
+
+# ── 并发监控：滚动缓冲区（60点 × 5秒 = 5分钟）──
+_stats_lock = threading.Lock()
+_stats_buffer = {
+    "timestamps": deque(maxlen=60),
+    "query":      deque(maxlen=60),
+    "kg":         deque(maxlen=60),
+    "global":     deque(maxlen=60),
+}
+_stats_total_requests = 0
+_stats_collector_started = False
+
+def _record_stats():
+    """记录当前并发使用量（线程安全）"""
+    with _stats_lock:
+        t = int(time.time())
+        _stats_buffer["timestamps"].append(t)
+        _stats_buffer["query"].append(_MAX_QUERY_CONCURRENCY - _query_semaphore._value)
+        _stats_buffer["kg"].append(_MAX_KG_CONCURRENCY - _kg_semaphore._value)
+        _stats_buffer["global"].append(_MAX_GLOBAL_CONCURRENCY - _global_semaphore._value)
+
+async def _stats_collector():
+    """后台任务：每5秒采集并发数据"""
+    while True:
+        await asyncio.sleep(5)
+        _record_stats()
+
+async def start_stats_collector():
+    """启动监控采集器（由 app.py 调用）"""
+    global _stats_collector_started
+    if not _stats_collector_started:
+        _stats_collector_started = True
+        asyncio.create_task(_stats_collector())
 
 from . import config as app_config
 from .scanner import scan_logs, resolve_folder, is_allowed_download
@@ -363,6 +399,8 @@ async def get_knowledge_graph():
     # 缓存命中
     now = time.time()
     if _kg_cache is not None and (now - _kg_cache_time) < _KG_CACHE_TTL:
+        global _kg_cache_hits
+        _kg_cache_hits += 1
         return _kg_cache
 
     async with _global_semaphore:
@@ -574,6 +612,27 @@ async def api_help():
             "default_lines": app_config.DEFAULT_LINES,
         }
     }
+
+
+@router.get("/api/system/stats")
+async def system_stats():
+    """并发监控数据 — 供 Chart.js 折线图使用"""
+    global _stats_total_requests, _kg_cache_hits
+    _stats_total_requests += 1
+    with _stats_lock:
+        return {
+            "timestamps": list(_stats_buffer["timestamps"]),
+            "query":      [min(v, _MAX_QUERY_CONCURRENCY) for v in _stats_buffer["query"]],
+            "kg":         [min(v, _MAX_KG_CONCURRENCY) for v in _stats_buffer["kg"]],
+            "global":     [min(v, _MAX_GLOBAL_CONCURRENCY) for v in _stats_buffer["global"]],
+            "max": {
+                "query": _MAX_QUERY_CONCURRENCY,
+                "kg": _MAX_KG_CONCURRENCY,
+                "global": _MAX_GLOBAL_CONCURRENCY,
+            },
+            "cache_hits": _kg_cache_hits,
+            "cache_ttl": _KG_CACHE_TTL,
+        }
 
 
 @router.get("/api/version")

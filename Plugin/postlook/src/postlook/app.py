@@ -50,6 +50,13 @@ app.add_middleware(FrameAncestorsMiddleware)
 app.include_router(router)
 
 
+@app.on_event("startup")
+async def startup():
+    """启动后台任务"""
+    from .routes import start_stats_collector
+    await start_stats_collector()
+
+
 @app.get("/api/health")
 async def health():
     """健康检查端点"""
