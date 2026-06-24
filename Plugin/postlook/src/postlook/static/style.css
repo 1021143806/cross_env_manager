@@ -1362,35 +1362,41 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* ============================================================
-   视图切换按钮 (v0.10.0)
+   视图切换按钮 — 分段控制器 (v0.10.2)
    ============================================================ */
 
 .view-switcher {
     display: flex;
-    gap: 4px;
+    background: var(--surface-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 3px;
+    gap: 0;
 }
 
 .view-btn {
     flex: 1;
-    padding: 4px 6px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--surface-secondary);
+    padding: 5px 8px;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
     color: var(--text-tertiary);
     font-size: 0.72rem;
+    font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1.2);
     text-align: center;
+    position: relative;
+    z-index: 1;
 }
 
 .view-btn:hover {
-    background: var(--surface-hover);
     color: var(--text-primary);
 }
 
 .view-btn.active {
     background: var(--accent);
     color: #fff;
-    border-color: var(--accent);
     font-weight: 600;
+    box-shadow: 0 2px 8px rgba(79, 143, 247, 0.35);
 }

@@ -371,9 +371,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // 注册布局
     LAYOUTS = {
-        radial:     { name: '放射图', fn: _doRadialLayout },
-        tree:       { name: '树形图', fn: _doHorizontalTreeLayout },
-        concentric: { name: '同心圆', fn: _doConcentricLayout }
+        radial:     { name: '放射', icon: '◎', fn: _doRadialLayout },
+        tree:       { name: '树形', icon: '├', fn: _doHorizontalTreeLayout },
+        concentric: { name: '同心', icon: '⊙', fn: _doConcentricLayout }
     };
 
     function applyLayout(cy) {
@@ -399,8 +399,8 @@ document.addEventListener('DOMContentLoaded', function () {
         var html = '';
         for (var key in LAYOUTS) {
             var active = key === currentLayout ? ' active' : '';
-            html += '<button class="view-btn' + active + '" onclick="switchLayout(\'' + key + '\')">' +
-                LAYOUTS[key].name + '</button>';
+            html += '<button class="view-btn' + active + '" onclick="switchLayout(\'' + key + '\')" title="' + LAYOUTS[key].name + '">' +
+                LAYOUTS[key].icon + ' ' + LAYOUTS[key].name + '</button>';
         }
         container.innerHTML = html;
     }
