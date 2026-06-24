@@ -62,6 +62,14 @@ document.addEventListener('DOMContentLoaded', function () {
             var classes = [d.type || 'service'];
             if (d.running) classes.push('running');
             if (d.size_mb <= 0 && d.type === 'service') classes.push('empty');
+
+            // 对数映射日志大小 → 节点尺寸（18~50px）
+            if (d.type === 'service') {
+                d.weight = d.size_mb > 0
+                    ? Math.round(Math.max(18, Math.min(50, 18 + Math.log2(d.size_mb + 0.05) * 8)))
+                    : 22;
+            }
+
             elements.push({ data: d, classes: classes.join(' ') });
         });
         (data.edges || []).forEach(function (e) {
@@ -98,12 +106,13 @@ document.addEventListener('DOMContentLoaded', function () {
                         'text-wrap': 'wrap', 'text-max-width': '60px'
                     }
                 },
-                // 服务节点 — 小圆
+                // 服务节点 — 大小按日志量自适应
                 {
                     selector: '.service',
                     style: {
                         'shape': 'ellipse',
-                        'width': 28, 'height': 28,
+                        'width': 'data(weight)',
+                        'height': 'data(weight)',
                         'background-color': '#334155', 'background-opacity': 0.55,
                         'border-width': 1.5, 'border-color': '#475569',
                         'label': 'data(label)', 'color': '#c0c0d0',
