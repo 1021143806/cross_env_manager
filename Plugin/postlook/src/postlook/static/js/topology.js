@@ -14,8 +14,8 @@ var TOPO_LOADING = false;
 // ── 视图注册表 ──
 var LAYOUTS = {};
 var currentLayout = (function () {
-    try { return localStorage.getItem('topo-layout') || 'radial'; }
-    catch (e) { return 'radial'; }
+    try { return localStorage.getItem('topo-layout') || 'horizontal'; }
+    catch (e) { return 'horizontal'; }
 })();
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -195,249 +195,29 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ════════════════════════════════════════════════════════════
-    //  布局 1：放射图（自适应半径 + 按子节点数比例分配角度）
+    //  布局引擎：dagre（mermaid 同款，自动间距 + 永不重叠）
     // ════════════════════════════════════════════════════════════
 
-    function _doRadialLayout(cy) {
-        var R1 = 150;               // 第一层基础半径
-        var R_STEP = 155;           // 基础层间距
-        var ARC_PER_CHILD = 55;     // 每个子节点需要的最小弧长(px)
-        var FULL_CIRCLE = 2 * Math.PI;
-        var START_ANGLE = -Math.PI / 2;
-
-        // 递归布局子树
-        function layoutSubtree(node, angleStart, angleEnd, radius) {
-            if (node.style('display') === 'none') return;
-
-            var angle = (angleStart + angleEnd) / 2;
-            node.position({
-                x: radius * Math.cos(angle),
-                y: radius * Math.sin(angle)
-            });
-
-            // 收集可见直接子节点
-            var children = [];
-            node.connectedEdges().forEach(function (e) {
-                if (e.style('display') === 'none') return;
-                if (e.source().id() !== node.id()) return;
-                var child = e.target();
-                if (child.id() === node.id()) return;
-                if (child.style('display') === 'none') return;
-                children.push(child);
-            });
-
-            if (children.length === 0) return;
-
-            // 自适应半径：子节点越多，半径越大
-            var angleSpan = Math.abs(angleEnd - angleStart);
-            var arc = angleSpan * radius;                      // 当前弧长
-            var neededArc = children.length * ARC_PER_CHILD;   // 需要的弧长
-            var scale = Math.max(1, neededArc / Math.max(1, arc));
-            var adaptiveStep = Math.round(R_STEP * scale);
-            var childRadius = radius + adaptiveStep;
-
-            var angleStep = (angleEnd - angleStart) / children.length;
-            for (var i = 0; i < children.length; i++) {
-                var cStart = angleStart + i * angleStep;
-                var cEnd = cStart + angleStep;
-                layoutSubtree(children[i], cStart, cEnd, childRadius);
-            }
-        }
-
-        // 辅助：统计节点下可见子节点总数（递归）
-        function countDescendants(node) {
-            var total = 0;
-            node.connectedEdges().forEach(function (e) {
-                if (e.style('display') === 'none') return;
-                if (e.source().id() !== node.id()) return;
-                var child = e.target();
-                if (child.style('display') === 'none') return;
-                total += 1 + countDescendants(child);
-            });
-            return total;
-        }
-
-        var root = cy.nodes('.root').first();
-        if (!root.length) return;
-        root.position({ x: 0, y: 0 });
-
-        // 收集可见分支
-        var branches = [];
-        root.connectedEdges().forEach(function (e) {
-            if (e.style('display') === 'none') return;
-            if (e.source().id() !== root.id()) return;
-            var child = e.target();
-            if (child.style('display') === 'none') return;
-            branches.push(child);
-        });
-
-        if (branches.length === 0) return;
-
-        // 按子节点数比例分配角度（节点多的分支占更大扇形）
-        var totalDescendants = 0;
-        var branchWeights = branches.map(function (b) {
-            var w = countDescendants(b) || 1;
-            totalDescendants += w;
-            return { node: b, weight: w };
-        });
-
-        var currentAngle = START_ANGLE;
-        branchWeights.forEach(function (bw) {
-            var angleSize = FULL_CIRCLE * bw.weight / totalDescendants;
-            layoutSubtree(bw.node, currentAngle, currentAngle + angleSize, R1);
-            currentAngle += angleSize;
-        });
-
-        cy.layout({ name: 'preset', animate: false, fit: false }).run();
-        cy.fit(undefined, 60);
-    }
-
-    // ════════════════════════════════════════════════════════════
-    //  布局 2：树形图（根在左，向右逐层展开）
-    // ════════════════════════════════════════════════════════════
-
-    function _doHorizontalTreeLayout(cy) {
-        var LEVEL_GAP = 190;
-        var NODE_GAP = 52;   // 适配最大 50px 节点
-
-        function layoutSubtree(node, x, startY) {
-            if (node.style('display') === 'none') return 0;
-
-            var children = [];
-            node.connectedEdges().forEach(function (e) {
-                if (e.style('display') === 'none') return;
-                if (e.source().id() !== node.id()) return;
-                var child = e.target();
-                if (child.id() === node.id()) return;
-                if (child.style('display') === 'none') return;
-                children.push(child);
-            });
-
-            if (children.length === 0) {
-                node.position({ x: x, y: startY + NODE_GAP / 2 });
-                return NODE_GAP;
-            }
-
-            var y = startY;
-            for (var i = 0; i < children.length; i++) {
-                y += layoutSubtree(children[i], x + LEVEL_GAP, y);
-            }
-
-            var centerY = (startY + y) / 2;
-            node.position({ x: x, y: centerY });
-            return y - startY;
-        }
-
-        var root = cy.nodes('.root').first();
-        if (!root.length) return;
-
-        layoutSubtree(root, 0, 0);
-        cy.layout({ name: 'preset', animate: false, fit: false }).run();
-        cy.fit(undefined, 60);
-    }
-
-    // ════════════════════════════════════════════════════════════
-    //  布局 3：同心圆（自适应半径 + 按子节点数比例分配角度）
-    // ════════════════════════════════════════════════════════════
-
-    function _doConcentricLayout(cy) {
-        var ARC_PER_CHILD = 55;
-        var FULL_CIRCLE = 2 * Math.PI;
-
-        // 辅助：递归统计后代数
-        function countDescendants(node) {
-            var total = 0;
-            node.connectedEdges().forEach(function (e) {
-                if (e.style('display') === 'none') return;
-                if (e.source().id() !== node.id()) return;
-                var child = e.target();
-                if (child.style('display') === 'none') return;
-                total += 1 + countDescendants(child);
-            });
-            return total;
-        }
-
-        var root = cy.nodes('.root').first();
-        if (!root.length) return;
-        root.position({ x: 0, y: 0 });
-
-        var branches = [];
-        root.connectedEdges().forEach(function (e) {
-            if (e.style('display') === 'none') return;
-            if (e.source().id() !== root.id()) return;
-            var child = e.target();
-            if (child.style('display') === 'none') return;
-            branches.push(child);
-        });
-
-        // 按后代数比例分配角度
-        var totalDescendants = 0;
-        var branchWeights = branches.map(function (b) {
-            var w = countDescendants(b) || 1;
-            totalDescendants += w;
-            return { node: b, weight: w };
-        });
-
-        var currentAngle = -Math.PI / 2;
-        branchWeights.forEach(function (bw) {
-            var angleSize = FULL_CIRCLE * bw.weight / totalDescendants;
-            var a = currentAngle + angleSize / 2;
-
-            // 分支节点：基础半径
-            bw.node.position({ x: 160 * Math.cos(a), y: 160 * Math.sin(a) });
-
-            // 收集服务子节点
-            var services = [];
-            bw.node.connectedEdges().forEach(function (e) {
-                if (e.style('display') === 'none') return;
-                if (e.source().id() !== bw.node.id()) return;
-                var child = e.target();
-                if (child.style('display') === 'none') return;
-                services.push(child);
-            });
-
-            if (services.length > 0) {
-                // 自适应半径
-                var arc = angleSize * 160;
-                var neededArc = services.length * ARC_PER_CHILD;
-                var scale = Math.max(1, neededArc / Math.max(1, arc));
-                var svcRadius = Math.round(290 * scale);
-
-                var spread = angleSize * 0.8;
-                var svcStart = currentAngle + (angleSize - spread) / 2;
-                var svcStep = services.length > 1 ? spread / (services.length - 1) : 0;
-
-                services.forEach(function (svc, si) {
-                    var sa = services.length === 1 ? a : svcStart + svcStep * si;
-                    svc.position({ x: svcRadius * Math.cos(sa), y: svcRadius * Math.sin(sa) });
-                });
-            }
-
-            currentAngle += angleSize;
-        });
-
-        cy.layout({ name: 'preset', animate: false, fit: false }).run();
-        cy.fit(undefined, 60);
-    }
-
-    // ════════════════════════════════════════════════════════════
-    //  视图切换
-    // ════════════════════════════════════════════════════════════
-
-    // 注册布局
     LAYOUTS = {
-        radial:     { name: '放射', icon: '◎', fn: _doRadialLayout },
-        tree:       { name: '树形', icon: '├', fn: _doHorizontalTreeLayout },
-        concentric: { name: '同心', icon: '⊙', fn: _doConcentricLayout }
+        horizontal: { name: '横向', icon: '⇢', rankDir: 'LR', rankSep: 110, nodeSep: 38 },
+        vertical:   { name: '纵向', icon: '⇣', rankDir: 'TB', rankSep: 90,  nodeSep: 34 },
+        compact:    { name: '紧凑', icon: '⊞', rankDir: 'LR', rankSep: 55,  nodeSep: 24, ranker: 'tight-tree' }
     };
 
     function applyLayout(cy) {
-        var layout = LAYOUTS[currentLayout];
-        if (layout && layout.fn) {
-            layout.fn(cy);
-        } else {
-            _doRadialLayout(cy);
-        }
+        var cfg = LAYOUTS[currentLayout] || LAYOUTS['horizontal'];
+        cy.layout({
+            name: 'dagre',
+            rankDir: cfg.rankDir,
+            rankSep: cfg.rankSep,
+            nodeSep: cfg.nodeSep,
+            edgeSep: 15,
+            ranker: cfg.ranker || 'network-simplex',
+            animate: true,
+            animationDuration: 500,
+            fit: true,
+            padding: 50
+        }).run();
     }
 
     window.switchLayout = function (name) {
