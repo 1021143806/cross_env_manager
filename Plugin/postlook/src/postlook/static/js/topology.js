@@ -207,28 +207,28 @@ document.addEventListener('DOMContentLoaded', function () {
                         'text-wrap': 'wrap', 'text-max-width': '50px'
                     }
                 },
-                // 普通查询节点 — 小圆黄
+                // 普通查询节点 — 中圆黄
                 {
                     selector: '.query',
                     style: {
-                        'shape': 'ellipse', 'width': 18, 'height': 18,
-                        'background-color': '#fbbf24', 'background-opacity': 0.25,
+                        'shape': 'ellipse', 'width': 30, 'height': 30,
+                        'background-color': '#fbbf24', 'background-opacity': 0.22,
                         'border-width': 1.5, 'border-color': '#fbbf24',
                         'label': 'data(label)', 'color': '#fcd34d',
-                        'font-size': '7px', 'text-valign': 'center', 'text-halign': 'center',
-                        'text-wrap': 'wrap', 'text-max-width': '60px'
+                        'font-size': '8px', 'text-valign': 'center', 'text-halign': 'center',
+                        'text-wrap': 'wrap', 'text-max-width': '70px'
                     }
                 },
-                // 错误查询节点 — 小圆红
+                // 错误查询节点 — 中圆红
                 {
                     selector: '.error_query',
                     style: {
-                        'shape': 'ellipse', 'width': 20, 'height': 20,
-                        'background-color': '#ef4444', 'background-opacity': 0.28,
+                        'shape': 'ellipse', 'width': 34, 'height': 34,
+                        'background-color': '#ef4444', 'background-opacity': 0.25,
                         'border-width': 2, 'border-color': '#ef4444',
                         'label': 'data(label)', 'color': '#fca5a5',
-                        'font-size': '7px', 'text-valign': 'center', 'text-halign': 'center',
-                        'text-wrap': 'wrap', 'text-max-width': '60px',
+                        'font-size': '8px', 'text-valign': 'center', 'text-halign': 'center',
+                        'text-wrap': 'wrap', 'text-max-width': '70px',
                         'shadow-color': '#ef4444', 'shadow-opacity': 0.2,
                         'shadow-blur': 6
                     }
@@ -655,6 +655,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 html += '</div>';
             });
             html += '</div>';
+            
+            // 节点额外信息
+            var desc = node.data('desc') || '';
+            var keyword = node.data('keyword') || '';
+            if (desc || keyword) {
+                html += '<div style="margin-top:10px;padding:8px;background:var(--surface-secondary);border-radius:6px;font-size:0.7rem">';
+                if (desc) html += '<div style="color:var(--text-secondary);margin-bottom:4px">' + escapeHtml(desc) + '</div>';
+                if (keyword) html += '<div style="color:var(--accent);font-family:monospace;font-size:0.65rem">关键词: ' + escapeHtml(keyword) + '</div>';
+                html += '</div>';
+            }
+            
             body.innerHTML = html;
         }
         el.style.display = 'flex';
