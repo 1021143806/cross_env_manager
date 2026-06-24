@@ -289,3 +289,51 @@ category = "apps"
 log_dir = "/main/app/cross_env_manager/Plugin/postlook/logs"
 log_file = "postlook.log"
 desc = "自动发现 — supervisor 扫描"
+
+# auto-discovered (supervisor)
+[[topology.service]]
+id = "asap_adapter"
+name = "asap_adapter"
+category = "apps"
+log_dir = "/main/app/asap_adapter/logs"
+log_file = "asap_adapter.log"
+size_mb = 4.8
+desc = "自动发现 — supervisor 扫描"
+
+# auto-discovered (supervisor)
+[[topology.service]]
+id = "cross_env2_manager"
+name = "cross_env2_manager"
+category = "apps"
+log_dir = "/main/app/cross_env_manager/logs"
+log_file = "cross_env2_manager.log"
+size_mb = 2.5
+desc = "自动发现 — supervisor 扫描"
+
+# auto-discovered (filesystem)
+[[topology.service]]
+id = "cross_env_manager"
+name = "cross_env_manager"
+category = "apps"
+log_dir = "/main/app/cross_env_manager/logs"
+log_file = "cross_env_manager.log"
+size_mb = 2.4
+desc = "自动发现 — filesystem 扫描"
+
+# auto-discovered (filesystem)
+[[topology.service]]
+id = "toolsforpersonal"
+name = "toolsForPersonal"
+category = "apps"
+log_dir = "/main/app/toolsForPersonal/logs"
+desc = "自动发现 — filesystem 扫描"
+
+# auto-discovered (filesystem)
+[[topology.service]]
+id = "filebeat"
+name = "filebeat"
+category = "middleware"
+log_dir = "/main/server/filebeat/logs"
+log_file = "filebeat"
+size_mb = 6.7
+desc = "自动发现 — filesystem 扫描"
