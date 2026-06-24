@@ -665,7 +665,31 @@ document.addEventListener('DOMContentLoaded', function () {
             body.innerHTML = jumpHtml || '<div style="padding:12px;color:var(--text-tertiary);font-size:0.75rem">无关联关系</div>';
         } else {
             var html = jumpHtml;
-            // 中文元数据卡片
+
+            // ── 日志文件下载 ──
+            var logFile = node.data('log_file') || '';
+            var logDirSvc = node.data('log_dir') || '';
+            var logPathNode = node.data('path') || '';
+            var downloadPath = '';
+            var downloadLabel = '';
+            if (logFile && logDirSvc) {
+                downloadPath = logDirSvc + '/' + logFile;
+                downloadLabel = logFile;
+            } else if (logPathNode) {
+                downloadPath = logPathNode;
+                downloadLabel = logPathNode.split('/').pop();
+            }
+            if (downloadPath) {
+                var sizeMB = node.data('size_mb') || 0;
+                html += '<div class="kg-download-row">';
+                html += '<span class="kg-file-name" title="' + escapeHtml(downloadPath) + '">📄 ' + escapeHtml(downloadLabel) + '</span>';
+                if (sizeMB) html += '<span class="kg-file-size">' + sizeMB.toFixed(1) + ' MB</span>';
+                html += '<a class="kg-dl-btn" href="/api/download?path=' + encodeURIComponent(downloadPath) + '" title="下载日志文件">⬇</a>';
+                html += '<button class="kg-dl-btn" onclick="window.open(\'logs.html?folder=' + encodeURIComponent(downloadPath) + '\')" title="查看此文件">👁</button>';
+                html += '</div>';
+            }
+
+            // ── 中文元数据 ──
             var desc = node.data('desc') || '';
             var tags = node.data('tags') || [];
             if (desc || tags.length) {
@@ -678,6 +702,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 html += '</div>';
             }
+
             html += '<div class="kg-triple-list">';
             triples.forEach(function (t) {
                 var relClass = 'kg-rel ' + t.relation;
@@ -695,14 +720,10 @@ document.addEventListener('DOMContentLoaded', function () {
             });
             html += '</div>';
             
-            // 节点额外信息
-            var desc = node.data('desc') || '';
+            // 查询关键词
             var keyword = node.data('keyword') || '';
-            if (desc || keyword) {
-                html += '<div style="margin-top:10px;padding:8px;background:var(--surface-secondary);border-radius:6px;font-size:0.7rem">';
-                if (desc) html += '<div style="color:var(--text-secondary);margin-bottom:4px">' + escapeHtml(desc) + '</div>';
-                if (keyword) html += '<div style="color:var(--accent);font-family:monospace;font-size:0.65rem">关键词: ' + escapeHtml(keyword) + '</div>';
-                html += '</div>';
+            if (keyword) {
+                html += '<div style="margin-top:8px;padding:6px 8px;background:var(--surface-secondary);border-radius:6px;font-size:0.65rem;font-family:monospace;color:var(--accent)">关键词: ' + escapeHtml(keyword) + '</div>';
             }
             
             body.innerHTML = html;

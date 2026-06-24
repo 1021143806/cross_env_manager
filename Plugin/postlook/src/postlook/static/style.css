@@ -1470,3 +1470,23 @@ input:focus, select:focus, textarea:focus {
     color: #fff;
     box-shadow: 0 2px 12px rgba(79, 143, 247, 0.2);
 }
+
+/* ── 日志下载行 ── */
+.kg-download-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 10px; margin-bottom: 8px;
+    background: var(--surface-secondary); border-radius: 8px;
+    font-size: 0.7rem;
+}
+.kg-file-name {
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--text-secondary);
+}
+.kg-file-size { color: var(--text-tertiary); font-size: 0.65rem; white-space: nowrap; }
+.kg-dl-btn {
+    padding: 3px 8px; border: 1px solid var(--border); border-radius: 5px;
+    background: transparent; color: var(--text-tertiary);
+    font-size: 0.85rem; cursor: pointer; text-decoration: none;
+    transition: all 0.15s;
+}
+.kg-dl-btn:hover { background: var(--surface-hover); color: var(--accent); }
