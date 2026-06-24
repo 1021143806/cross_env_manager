@@ -4,15 +4,25 @@ postlook · API 路由
 
 import asyncio
 import os
+import time
 from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
-# ── 并发控制 ──
+# ── 并发控制（防刷爆）──
 _MAX_QUERY_CONCURRENCY = 3
+_MAX_KG_CONCURRENCY = 2
+_MAX_GLOBAL_CONCURRENCY = 10
 _query_semaphore = asyncio.Semaphore(_MAX_QUERY_CONCURRENCY)
+_kg_semaphore = asyncio.Semaphore(_MAX_KG_CONCURRENCY)
+_global_semaphore = asyncio.Semaphore(_MAX_GLOBAL_CONCURRENCY)
+
+# ── KG 结果缓存（30秒内复用，避免重复扫盘）──
+_kg_cache: Optional[dict] = None
+_kg_cache_time: float = 0.0
+_KG_CACHE_TTL = 30.0
 
 from . import config as app_config
 from .scanner import scan_logs, resolve_folder, is_allowed_download
@@ -338,22 +348,36 @@ async def get_rules_toml():
 
 @router.get("/api/topology-config")
 async def get_topology_config():
-    """获取拓扑图配置（分类+服务节点）"""
+    """获取拓扑图配置（文件树结构）"""
     from .config import get_topology_config as _get_topo
-    return _get_topo()
+    async with _global_semaphore:
+        return _get_topo()
 
 
 @router.get("/api/topology-kg")
 async def get_knowledge_graph():
-    """获取知识图谱数据（多类型节点 + 多关系边）"""
+    """获取知识图谱数据（多类型节点 + 多关系边，30秒缓存）"""
+    global _kg_cache, _kg_cache_time
     from .config import build_knowledge_graph
-    try:
-        return build_knowledge_graph()
-    except Exception as e:
-        import traceback
-        print(f"[ERROR] kg: {type(e).__name__}: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"知识图谱构建失败: {e}")
+
+    # 缓存命中
+    now = time.time()
+    if _kg_cache is not None and (now - _kg_cache_time) < _KG_CACHE_TTL:
+        return _kg_cache
+
+    async with _global_semaphore:
+        async with _kg_semaphore:
+            try:
+                # 阻塞操作放到线程池，不卡事件循环
+                result = await asyncio.to_thread(build_knowledge_graph)
+                _kg_cache = result
+                _kg_cache_time = time.time()
+                return result
+            except Exception as e:
+                import traceback
+                print(f"[ERROR] kg: {type(e).__name__}: {e}")
+                traceback.print_exc()
+                raise HTTPException(status_code=500, detail=f"知识图谱构建失败: {e}")
 
 
 @router.get("/api/topology/discover")
