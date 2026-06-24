@@ -959,6 +959,64 @@ def build_knowledge_graph() -> Dict[str, Any]:
     def _add_edge(src: str, tgt: str, relation: str):
         edges.append({"source": src, "target": tgt, "relation": relation})
     
+    def _add_log_files(svc_id: str, log_dir: str, max_files: int = 3):
+        """扫描日志目录: 自动发现子文件夹 → 文件挂在文件夹下"""
+        if not log_dir:
+            return
+        lp = Path(log_dir)
+        if not lp.exists() or not lp.is_dir():
+            return
+        
+        # 收集该目录下的文件 + 子目录
+        entries = sorted(list(lp.iterdir()), key=lambda f: f.stat().st_mtime, reverse=True)
+        top_files = []
+        subdirs = []
+        for e in entries:
+            if e.is_dir() and not e.name.startswith("."):
+                subdirs.append(e)
+            elif e.is_file() and not e.name.startswith("."):
+                top_files.append(e)
+        
+        # 顶层文件直接挂服务
+        for lf in top_files[:max_files]:
+            if not _is_log_ext(lf.name):
+                continue
+            lf_id = f"{svc_id}_lf_{lf.name.replace('.', '_')}"
+            size_mb = round(lf.stat().st_size / (1024 * 1024), 1)
+            _add_node(lf_id, lf.name, "logfile", path=str(lf), size_mb=size_mb)
+            _add_edge(svc_id, lf_id, "produces")
+        
+        # 子文件夹: 创建 folder 节点, 文件挂在 folder 下
+        for sd in subdirs[:5]:
+            folder_name = sd.name
+            folder_id = f"{svc_id}_folder_{folder_name.replace('.', '_')}"
+            
+            # 找文件夹里的日志文件
+            try:
+                sd_files = sorted(
+                    [f for f in sd.iterdir() if f.is_file() and not f.name.startswith(".") and _is_log_ext(f.name)],
+                    key=lambda f: f.stat().st_mtime, reverse=True
+                )
+            except PermissionError:
+                continue
+            
+            if not sd_files:
+                continue
+            
+            _add_node(folder_id, folder_name, "folder")
+            _add_edge(svc_id, folder_id, "contains")
+            
+            for lf in sd_files[:max_files]:
+                lf_id = f"{folder_id}_lf_{lf.name.replace('.', '_')}"
+                size_mb = round(lf.stat().st_size / (1024 * 1024), 1)
+                _add_node(lf_id, lf.name, "logfile", path=str(lf), size_mb=size_mb)
+                _add_edge(folder_id, lf_id, "contains")
+    
+    def _is_log_ext(filename: str) -> bool:
+        """判断文件是否为日志类型"""
+        base = filename.lower()
+        return base.endswith(('.log', '.out', '.txt')) or '.' not in base
+    
     def _branch_for_path(path: str) -> tuple:
         """根据路径推断所属分支 (branch_id, branch_label)"""
         if "/main/app/" in path:
@@ -1000,18 +1058,7 @@ def build_knowledge_graph() -> Dict[str, Any]:
             running = svc_name.lower() in sup_running or svc_name in sup_running
             
             if rp.exists():
-                # 找日志文件
-                log_files = sorted(
-                    [f for f in rp.iterdir() if f.is_file() and not f.name.startswith(".")],
-                    key=lambda f: f.stat().st_mtime, reverse=True
-                ) if rp.is_dir() else []
-                
-                for lf in log_files[:3]:  # 每个服务最多3个日志节点
-                    lf_id = f"{svc_id}_lf_{lf.name.replace('.', '_')}"
-                    size_mb = round(lf.stat().st_size / (1024 * 1024), 1)
-                    _add_node(lf_id, lf.name, "logfile",
-                              path=str(lf), size_mb=size_mb)
-                    _add_edge(svc_id, lf_id, "produces")
+                _add_log_files(svc_id, root_dir)
             
             _add_node(svc_id, _fmt_name(svc_name), "service",
                       running=running, log_dir=root_dir)
@@ -1061,16 +1108,7 @@ def build_knowledge_graph() -> Dict[str, Any]:
                   running=running, log_dir=log_dir)
         _connect_service_to_branch(svc_id, log_dir)
         
-        # 找日志文件
-        lp = Path(log_dir)
-        if lp.exists() and lp.is_dir():
-            for lf in sorted(lp.iterdir(), key=lambda f: f.stat().st_mtime, reverse=True)[:2]:
-                if lf.is_file() and not lf.name.startswith("."):
-                    lf_id = f"{svc_id}_lf_{lf.name.replace('.', '_')}"
-                    size_mb = round(lf.stat().st_size / (1024 * 1024), 1)
-                    _add_node(lf_id, lf.name, "logfile",
-                              path=str(lf), size_mb=size_mb)
-                    _add_edge(svc_id, lf_id, "produces")
+        _add_log_files(svc_id, log_dir)
     
     # ── 6. 叠加中文元数据 ──
     _overlay_service_meta(nodes)
@@ -1127,10 +1165,10 @@ def _compute_service_sizes(nodes: list, edges: list):
     if not log_sizes:
         return
 
-    # 累加每个服务的 produces 子日志大小
+    # 累加每个服务的 produces + contains 子日志大小
     svc_totals: Dict[str, float] = {}
     for e in edges:
-        if e.get("relation") == "produces":
+        if e.get("relation") in ("produces", "contains"):
             svc = e["source"]
             lf = e["target"]
             svc_totals[svc] = svc_totals.get(svc, 0) + log_sizes.get(lf, 0)

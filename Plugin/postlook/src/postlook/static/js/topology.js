@@ -152,6 +152,18 @@ document.addEventListener('DOMContentLoaded', function () {
                     selector: '.service:selected',
                     style: { 'border-width': 3, 'border-color': '#f8fafc' }
                 },
+                // 文件夹节点
+                {
+                    selector: '.folder',
+                    style: {
+                        'shape': 'rectangle', 'width': 40, 'height': 28,
+                        'background-color': '#64748b', 'background-opacity': 0.2,
+                        'border-width': 1, 'border-color': '#94a3b8',
+                        'label': 'data(label)', 'color': '#94a3b8',
+                        'font-size': '8px', 'text-valign': 'center', 'text-halign': 'center',
+                        'text-wrap': 'wrap', 'text-max-width': '35px'
+                    }
+                },
                 // 边 — haystack 基础
                 {
                     selector: 'edge',
@@ -178,6 +190,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 {
                     selector: '.belongs_to',
                     style: { 'line-color': 'rgba(129,140,248,0.2)', 'width': 1, 'line-style': 'dashed' }
+                },
+                {
+                    selector: '.contains',
+                    style: { 'line-color': 'rgba(148,163,184,0.25)', 'width': 1, 'line-style': 'dotted' }
                 },
                 // 服务器节点 — 大圆紫
                 {
