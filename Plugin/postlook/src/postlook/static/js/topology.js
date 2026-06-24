@@ -177,47 +177,56 @@ document.addEventListener('DOMContentLoaded', function () {
                     selector: '.runs_on',
                     style: { 'line-color': 'rgba(129,140,248,0.3)', 'width': 1 }
                 },
-                // 服务器节点
+                // 服务器节点 — 大圆紫
                 {
                     selector: '.server',
                     style: {
-                        'shape': 'round-rectangle', 'width': 100, 'height': 36,
-                        'background-color': '#818cf8', 'background-opacity': 0.2,
+                        'shape': 'ellipse', 'width': 85, 'height': 85,
+                        'background-color': '#818cf8', 'background-opacity': 0.18,
                         'border-width': 2.5, 'border-color': '#818cf8',
                         'label': 'data(label)', 'color': '#e0e0f0',
                         'font-size': '12px', 'font-weight': 'bold',
-                        'text-valign': 'center', 'text-halign': 'center'
+                        'text-valign': 'center', 'text-halign': 'center',
+                        'text-wrap': 'wrap', 'text-max-width': '70px'
                     }
                 },
-                // 日志文件节点
+                // 日志文件节点 — 小圆蓝灰
                 {
                     selector: '.logfile',
                     style: {
-                        'shape': 'rectangle', 'width': 'data(weight)', 'height': 'data(weight)',
-                        'background-color': '#64748b', 'background-opacity': 0.3,
-                        'border-width': 1, 'border-color': '#94a3b8',
-                        'label': 'data(label)', 'color': '#c0c0d0',
+                        'shape': 'ellipse',
+                        'width': 'data(weight)', 'height': 'data(weight)',
+                        'background-color': '#64748b', 'background-opacity': 0.35,
+                        'border-width': 1.5, 'border-color': '#94a3b8',
+                        'label': 'data(label)', 'color': '#b0b8c8',
                         'font-size': '8px', 'text-valign': 'center', 'text-halign': 'center',
-                        'text-wrap': 'wrap', 'text-max-width': '55px'
+                        'text-wrap': 'wrap', 'text-max-width': '50px'
                     }
                 },
-                // 查询/错误查询节点
+                // 普通查询节点 — 小圆黄
                 {
-                    selector: '.query, .error_query',
+                    selector: '.query',
                     style: {
-                        'shape': 'triangle', 'width': 20, 'height': 20,
+                        'shape': 'ellipse', 'width': 18, 'height': 18,
                         'background-color': '#fbbf24', 'background-opacity': 0.25,
                         'border-width': 1.5, 'border-color': '#fbbf24',
-                        'label': 'data(label)', 'color': '#fbbf24',
-                        'font-size': '7px', 'text-valign': 'bottom', 'text-halign': 'center',
-                        'text-margin-y': 4, 'text-wrap': 'wrap', 'text-max-width': '70px'
+                        'label': 'data(label)', 'color': '#fcd34d',
+                        'font-size': '7px', 'text-valign': 'center', 'text-halign': 'center',
+                        'text-wrap': 'wrap', 'text-max-width': '60px'
                     }
                 },
+                // 错误查询节点 — 小圆红
                 {
                     selector: '.error_query',
                     style: {
-                        'background-color': '#ef4444', 'background-opacity': 0.3,
-                        'border-color': '#ef4444', 'color': '#fca5a5'
+                        'shape': 'ellipse', 'width': 20, 'height': 20,
+                        'background-color': '#ef4444', 'background-opacity': 0.28,
+                        'border-width': 2, 'border-color': '#ef4444',
+                        'label': 'data(label)', 'color': '#fca5a5',
+                        'font-size': '7px', 'text-valign': 'center', 'text-halign': 'center',
+                        'text-wrap': 'wrap', 'text-max-width': '60px',
+                        'shadow-color': '#ef4444', 'shadow-opacity': 0.2,
+                        'shadow-blur': 6
                     }
                 }
             ],
@@ -344,15 +353,16 @@ document.addEventListener('DOMContentLoaded', function () {
         if (cfg.engine === 'radial') {
             _doRadialLayout(cy);
         } else if (cfg.engine === 'kg') {
-            // 图谱用 cose 力导向布局
+            // 图谱用 dagre，层级分明不混乱
             cy.layout({
-                name: 'cose',
-                nodeRepulsion: 6000,
-                idealEdgeLength: 120,
-                gravity: 0.3,
-                numIter: 2000,
+                name: 'dagre',
+                rankDir: 'LR',
+                rankSep: 80,
+                nodeSep: 20,
+                edgeSep: 10,
+                ranker: 'network-simplex',
                 animate: true,
-                animationDuration: 800,
+                animationDuration: 600,
                 fit: true,
                 padding: 50
             }).run();
