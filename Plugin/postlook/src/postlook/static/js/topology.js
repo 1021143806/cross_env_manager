@@ -667,27 +667,39 @@ document.addEventListener('DOMContentLoaded', function () {
             var html = jumpHtml;
 
             // ── 日志文件下载 ──
+            var downloadPaths = [];  // [{path, label, size}]
+
+            // 优先：从节点自身字段获取
             var logFile = node.data('log_file') || '';
             var logDirSvc = node.data('log_dir') || '';
             var logPathNode = node.data('path') || '';
-            var downloadPath = '';
-            var downloadLabel = '';
             if (logFile && logDirSvc) {
-                downloadPath = logDirSvc + '/' + logFile;
-                downloadLabel = logFile;
+                var dp = logDirSvc + '/' + logFile;
+                downloadPaths.push({ path: dp, label: logFile, size: node.data('size_mb') || 0 });
             } else if (logPathNode) {
-                downloadPath = logPathNode;
-                downloadLabel = logPathNode.split('/').pop();
+                downloadPaths.push({ path: logPathNode, label: logPathNode.split('/').pop(), size: node.data('size_mb') || 0 });
             }
-            if (downloadPath) {
-                var sizeMB = node.data('size_mb') || 0;
+
+            // 补充：从关联的 logfile 子节点获取路径
+            cy.edges().forEach(function (e) {
+                if (e.data('relation') !== 'produces') return;
+                var child = e.source().id() === nodeId ? cy.getElementById(e.target().id()) : null;
+                if (!child || !child.length) return;
+                var cp = child.data('path') || '';
+                if (!cp) return;
+                // 去重
+                if (downloadPaths.some(function (d) { return d.path === cp; })) return;
+                downloadPaths.push({ path: cp, label: child.data('label') || cp.split('/').pop(), size: child.data('size_mb') || 0 });
+            });
+
+            downloadPaths.forEach(function (dp) {
                 html += '<div class="kg-download-row">';
-                html += '<span class="kg-file-name" title="' + escapeHtml(downloadPath) + '">📄 ' + escapeHtml(downloadLabel) + '</span>';
-                if (sizeMB) html += '<span class="kg-file-size">' + sizeMB.toFixed(1) + ' MB</span>';
-                html += '<a class="kg-dl-btn" href="/api/download?path=' + encodeURIComponent(downloadPath) + '" title="下载日志文件">⬇</a>';
-                html += '<button class="kg-dl-btn" onclick="window.open(\'logs.html?folder=' + encodeURIComponent(downloadPath) + '\')" title="查看此文件">👁</button>';
+                html += '<span class="kg-file-name" title="' + escapeHtml(dp.path) + '">📄 ' + escapeHtml(dp.label) + '</span>';
+                if (dp.size) html += '<span class="kg-file-size">' + dp.size.toFixed(1) + ' MB</span>';
+                html += '<a class="kg-dl-btn" href="/api/download?path=' + encodeURIComponent(dp.path) + '" title="下载">⬇</a>';
+                html += '<button class="kg-dl-btn" onclick="window.open(\'logs.html?folder=' + encodeURIComponent(dp.path) + '\')" title="查看">👁</button>';
                 html += '</div>';
-            }
+            });
 
             // ── 中文元数据 ──
             var desc = node.data('desc') || '';
