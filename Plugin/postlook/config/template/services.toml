@@ -194,3 +194,149 @@ id = "light"
 name = "模拟电梯（Light）"
 desc = "模拟电梯模块"
 tags = ["核心"]
+
+# ── 10.68.2.31 专用 ──
+
+[[service]]
+id = "rtpsa-31"
+name = "RTPS-A（31号机）"
+desc = "算法分配库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-31"
+name = "RTPS-P（31号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsa-32,33,31,29"
+name = "RTPS-A（32/33/31/29）"
+desc = "算法分配库 - 多机合并"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsa-25,26,27"
+name = "RTPS-A（25/26/27）"
+desc = "算法分配库 - 多机合并"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsa-7,20,8,10,19,23"
+name = "RTPS-A（7/20/8/10/19/23）"
+desc = "算法分配库 - 多机合并"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsa-2"
+name = "RTPS-A（2号机）"
+desc = "算法分配库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsa-12,15"
+name = "RTPS-A（12/15）"
+desc = "算法分配库 - 多机合并"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsa-9"
+name = "RTPS-A（9号机）"
+desc = "算法分配库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-2"
+name = "RTPS-P（2号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-32"
+name = "RTPS-P（32号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-33"
+name = "RTPS-P（33号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-26"
+name = "RTPS-P（26号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-27"
+name = "RTPS-P（27号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-29"
+name = "RTPS-P（29号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-25"
+name = "RTPS-P（25号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-23"
+name = "RTPS-P（23号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-20"
+name = "RTPS-P（20号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-19"
+name = "RTPS-P（19号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-7"
+name = "RTPS-P（7号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-8"
+name = "RTPS-P（8号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-10"
+name = "RTPS-P（10号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-12"
+name = "RTPS-P（12号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-15"
+name = "RTPS-P（15号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
+
+[[service]]
+id = "rtpsp-9"
+name = "RTPS-P（9号机）"
+desc = "算法规划库 - 10.68.2.31"
+tags = ["核心", "算法"]
