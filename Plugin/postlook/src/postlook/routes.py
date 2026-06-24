@@ -8,7 +8,7 @@ import time
 import threading
 from collections import deque
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
@@ -70,6 +70,46 @@ def _resolve_with_topo_dirs(path: str) -> Optional[Path]:
     rp = _Path(path).resolve()
     if not rp.exists():
         return None
+    
+    parent = rp.parent
+    for base in ["/main/app", "/main/server"]:
+        bp = _Path(base)
+        if not bp.exists():
+            continue
+        try:
+            for entry in bp.iterdir():
+                if not entry.is_dir():
+                    continue
+                logs_dir = entry / "logs"
+                if logs_dir.exists() and logs_dir.is_dir():
+                    try:
+                        rp.relative_to(entry)
+                        return rp
+                    except ValueError:
+                        pass
+        except PermissionError:
+            continue
+    return None
+
+
+def _get_effective_root_dirs() -> List[str]:
+    """返回有效白名单：root_dirs + 拓扑扫描到的项目目录"""
+    from pathlib import Path as _Path
+    dirs = list(app_config.ROOT_DIRS)
+    for base in ["/main/app", "/main/server"]:
+        bp = _Path(base)
+        if not bp.exists():
+            continue
+        try:
+            for entry in bp.iterdir():
+                if not entry.is_dir():
+                    continue
+                logs_dir = entry / "logs"
+                if logs_dir.exists() and logs_dir.is_dir():
+                    dirs.append(str(logs_dir))
+        except PermissionError:
+            continue
+    return dirs
     
     parent = rp.parent
     # 只放行 /main/app/ 或 /main/server/ 下已有 logs 子目录的项目
@@ -152,7 +192,7 @@ async def query_logs(req: LogQueryRequest):
             from .app import __version__
             result = scan_logs(
                 folder=req.folder,
-                root_dirs=app_config.ROOT_DIRS,
+                root_dirs=_get_effective_root_dirs(),
                 pattern=req.pattern,
                 keyword=req.keyword,
                 tail=req.tail,
