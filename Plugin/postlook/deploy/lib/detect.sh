@@ -21,12 +21,12 @@ detect_os() {
     step "1.1" "检测操作系统..."
 
     if [ -f /etc/os-release ]; then
-        OS_ID=$(grep -oP '^ID="?\K[^"]+' /etc/os-release | head -1)
-        OS_VERSION=$(grep -oP '^VERSION_ID="?\K[^"]+' /etc/os-release | head -1 | cut -d. -f1)
-        OS_PRETTY=$(grep -oP '^PRETTY_NAME="?\K[^"]+' /etc/os-release | head -1)
+        OS_ID=$(grep -oP '^ID="?\K[^"]+' /etc/os-release | head -1 || true)
+        OS_VERSION=$(grep -oP '^VERSION_ID="?\K[^"]+' /etc/os-release | head -1 | cut -d. -f1 || true)
+        OS_PRETTY=$(grep -oP '^PRETTY_NAME="?\K[^"]+' /etc/os-release | head -1 || true)
     elif [ -f /etc/redhat-release ]; then
         OS_ID="centos"
-        OS_VERSION=$(grep -oP '[0-9]+' /etc/redhat-release | head -1)
+        OS_VERSION=$(grep -oP '[0-9]+' /etc/redhat-release | head -1 || true)
         OS_PRETTY=$(cat /etc/redhat-release)
     elif [ -f /etc/debian_version ]; then
         OS_ID="debian"
@@ -50,6 +50,7 @@ detect_os() {
         openeuler|iraypleos) OS_ID="openEuler" ;;
         centos|rhel|fedora)  OS_ID="centos" ;;
         ubuntu|debian)       OS_ID="debian" ;;
+        catos|arch)          OS_ID="debian" ;;  # Arch 系系统，行为类似 debian（自带现代 Python）
     esac
 }
 
@@ -62,13 +63,21 @@ detect_python() {
     if [ -n "${PYTHON3_PATH:-}" ] && [ -x "$PYTHON3_PATH" ]; then
         PYTHON3="$PYTHON3_PATH"
         log_info "使用配置指定的 Python: $PYTHON3_PATH"
-    # 2. 系统默认 python3
+    # 2. conda base Python（自带 pydantic_core + SSL 完整，离线部署最佳选择）
+    elif [ -x "/home/a1/miniconda3/bin/python3" ]; then
+        PYTHON3="/home/a1/miniconda3/bin/python3"
+        log_info "使用 conda base Python: $PYTHON3"
+    # 3. 系统默认 python3
     elif command -v python3 &>/dev/null; then
         PYTHON3="$(command -v python3)"
-    # 3. CentOS 7 SCL
+    # 4. cross_env_manager 项目安装的 Python 3.9（备选，注意：可能缺少 SSL 模块）
+    elif [ -x "/main/app/python39/bin/python3.9" ]; then
+        PYTHON3="/main/app/python39/bin/python3.9"
+        log_info "使用 cross_env_manager 共享 Python: $PYTHON3"
+    # 5. CentOS 7 SCL
     elif [ -x "/opt/rh/rh-python39/root/bin/python3" ]; then
         PYTHON3="/opt/rh/rh-python39/root/bin/python3"
-    # 4. 通用路径
+    # 6. 通用路径
     elif [ -x "/usr/local/bin/python3" ]; then
         PYTHON3="/usr/local/bin/python3"
     elif [ -x "/usr/local/python3/bin/python3" ]; then
@@ -81,10 +90,19 @@ detect_python() {
         return
     fi
 
-    PYTHON_VERSION=$($PYTHON3 --version 2>&1 | grep -oP '[0-9]+\.[0-9]+\.[0-9]+')
+    PYTHON_VERSION=$($PYTHON3 --version 2>&1 | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' || true)
     PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
     PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
     PYTHON_ABI="cp$PYTHON_MAJOR$PYTHON_MINOR"
+
+    # 检测是否为 conda Python（conda 环境自带 pydantic_core 等包）
+    # 如果是，后续创建的 venv 会加 --system-site-packages 继承 conda 包
+    if echo "$PYTHON3" | grep -q "miniconda\|anaconda"; then
+        USE_SYSTEM_SITE_PACKAGES=true
+        log_info "检测到 conda Python，venv 将继承系统站点包"
+    else
+        USE_SYSTEM_SITE_PACKAGES=false
+    fi
 
     log_info "Python 路径:    $PYTHON3"
     log_info "Python 版本:    $PYTHON_VERSION"

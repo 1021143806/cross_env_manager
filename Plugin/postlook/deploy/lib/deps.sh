@@ -30,6 +30,11 @@ install_deps() {
     # 检查关键包是否存在（在 common 或 abi 目录中）
     local MISSING_PKGS=()
     for pkg in "${KEY_PACKAGES[@]}"; do
+        # pydantic_core 在 conda 环境中由系统站点包提供，跳过 vendor 检查
+        if [ "$pkg" = "pydantic_core" ] && [ "${USE_SYSTEM_SITE_PACKAGES:-false}" = "true" ]; then
+            log_ok "$pkg: 由 conda 系统站点包提供（跳过 vendor 检查）"
+            continue
+        fi
         local found=$(find "$VENDOR_COMMON" "$VENDOR_ABI" -type f -iname "*${pkg}*.whl" 2>/dev/null | head -1)
         if [ -f "$found" ]; then
             log_ok "$pkg: $(basename "$found")"
@@ -63,11 +68,14 @@ install_deps() {
     log_info "从离线目录安装: ${FIND_LINKS[*]}"
 
     # ---- ABI 匹配校验：安装前确认 ABI 包与当前 Python 匹配 ----
-    if [ -d "$VENDOR_ABI" ] && [ "$ABI_COUNT" -gt 0 ]; then
+    # conda 环境跳过 ABI 校验（pydantic_core 由系统站点包提供）
+    if [ "${USE_SYSTEM_SITE_PACKAGES:-false}" = "true" ]; then
+        log_ok "conda 环境，跳过 ABI 校验（pydantic_core 由系统站点包提供）"
+    elif [ -d "$VENDOR_ABI" ] && [ "$ABI_COUNT" -gt 0 ]; then
         local first_abi_whl=$(find "$VENDOR_ABI" -name "*.whl" 2>/dev/null | head -1)
         if [ -f "$first_abi_whl" ]; then
             # 从文件名提取 ABI 标签，如 pydantic_core-2.46.4-cp311-cp311-manylinux... → cp311
-            local whl_abi=$(basename "$first_abi_whl" | grep -oP 'cp[0-9]+' | head -1)
+            local whl_abi=$(basename "$first_abi_whl" | grep -oP 'cp[0-9]+' | head -1 || true)
             if [ "$whl_abi" != "$PYTHON_ABI" ]; then
                 die "ABI 不匹配: vendor_packages/${PYTHON_ABI}/ 中的包标记为 ${whl_abi}，\n  \
 但当前 Python 是 ${PYTHON_VERSION} (${PYTHON_ABI})\n  \
@@ -78,7 +86,12 @@ install_deps() {
     fi
 
     # 阶段 1：批量安装（pip 会自动匹配 ABI）
-    if pip install --no-index $LINKS_ARGS fastapi uvicorn pydantic starlette anyio pydantic-core tomli 2>/dev/null; then
+    # conda 环境跳过 pydantic-core（由系统站点包提供）
+    local install_pkgs="fastapi uvicorn pydantic starlette anyio tomli"
+    if [ "${USE_SYSTEM_SITE_PACKAGES:-false}" != "true" ]; then
+        install_pkgs="$install_pkgs pydantic-core"
+    fi
+    if pip install --no-index $LINKS_ARGS $install_pkgs 2>/dev/null; then
         log_ok "批量依赖安装成功"
     else
         # 阶段 2：逐个安装

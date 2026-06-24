@@ -102,6 +102,12 @@ configure_supervisor() {
     LOG_PATH="$PROJECT_DIR/${LOG_DIR:-logs}"
     VENV_PATH="$PROJECT_DIR/${VENV_DIR:-venv}"
 
+    # 自动选择配置路径：优先 conf.d/，否则放在父目录
+    if [ -d "$SUPERVISOR_CONF_DIR/conf.d" ]; then
+        SUPERVISOR_CONF="$SUPERVISOR_CONF_DIR/conf.d/${PROJECT_NAME}.conf"
+        log_info "检测到 conf.d/ 目录，配置将创建至: $SUPERVISOR_CONF"
+    fi
+
     log_info "Supervisor 配置路径: $SUPERVISOR_CONF"
     log_info "日志目录: $LOG_PATH"
     log_info "虚拟环境: $VENV_PATH"

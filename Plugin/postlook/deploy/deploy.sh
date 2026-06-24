@@ -63,6 +63,18 @@ else
     log_warn "已跳过 OS 白名单校验 (BYPASS_OS_CHECK=1)，风险自负"
 fi
 
+# ---- 按系统覆盖运行时配置 ----
+# 不同 OS 的用户、路径等可能不同
+case "$OS_ID" in
+    debian)
+        # CatOS / Arch 系（开发机）：使用当前登录用户
+        if grep -q "catos" /etc/os-release 2>/dev/null; then
+            SUPERVISOR_USER="$(whoami)"
+            log_info "CatOS 开发环境，Supervisor 用户设为: $SUPERVISOR_USER"
+        fi
+        ;;
+esac
+
 # 2. 项目文件检查
 step "1.4" "检查项目文件..."
 cd "$PROJECT_DIR"

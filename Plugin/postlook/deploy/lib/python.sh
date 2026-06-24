@@ -108,6 +108,14 @@ create_venv() {
 
     $PYTHON3 -m venv "$VENV_PATH" || die "虚拟环境创建失败"
 
+    # conda Python 环境：让 venv 继承系统站点包（如 pydantic_core）
+    local venv_cfg="$VENV_PATH/pyvenv.cfg"
+    if [ -f "$venv_cfg" ] && [ "${USE_SYSTEM_SITE_PACKAGES:-false}" = "true" ]; then
+        # 移除 include-system-site-packages = false，改为 true
+        sed -i 's/^include-system-site-packages = false/include-system-site-packages = true/' "$venv_cfg"
+        log_ok "已启用系统站点包继承 (pydantic_core 等 conda 包可用)"
+    fi
+
     if [ ! -f "$VENV_PATH/bin/python" ]; then
         die "虚拟环境创建失败: $VENV_PATH/bin/python 不存在"
     fi
