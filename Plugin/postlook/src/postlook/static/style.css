@@ -1433,3 +1433,27 @@ input:focus, select:focus, textarea:focus {
 .kg-rel.produces  { background: rgba(148,163,184,0.15); color: #94a3b8; }
 .kg-rel.has_query { background: rgba(251,191,36,0.15); color: #fbbf24; }
 .kg-rel.runs_on   { background: rgba(129,140,248,0.12); color: #818cf8; }
+
+/* ============================================================
+   拓扑面板 → 跳转日志搜索链接 (v0.13.1)
+   ============================================================ */
+
+.topo-jump-link {
+    display: block;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    background: var(--accent);
+    background-opacity: 0.1;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 500;
+    text-decoration: none;
+    text-align: center;
+    transition: all 0.2s;
+}
+.topo-jump-link:hover {
+    background: var(--accent);
+    color: #fff;
+}

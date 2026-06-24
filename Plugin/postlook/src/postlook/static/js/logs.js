@@ -51,6 +51,20 @@
     function init() {
         cacheEls();
 
+        // 0. URL 参数自动填入（来自拓扑跳转）
+        try {
+            var params = new URLSearchParams(window.location.search);
+            var urlFolder = params.get('folder');
+            if (urlFolder) {
+                var folderEl = document.getElementById('folder');
+                if (folderEl) {
+                    folderEl.value = decodeURIComponent(urlFolder);
+                    // 自动触发查询
+                    setTimeout(function() { doQuery(); }, 300);
+                }
+            }
+        } catch (e) {}
+
         // 1. 规则引擎（着色 + 自定义注释）
         if (typeof loadRules === 'function') {
             loadRules();

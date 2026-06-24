@@ -636,7 +636,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
             nameEl.innerHTML = label + ' <span style="font-size:0.7rem;font-weight:400">' + status + '</span>';
 
-            var html = '<div style="margin-bottom:8px;color:var(--text-tertiary);font-size:0.75rem">路径: ' + (logDir || '—') + ' | 主日志: ' + (logFile || '—') + ' | ' + (sizeMB ? sizeMB.toFixed(1) + ' MB' : '') + '</div>';
+            var html = '';
+            // 跳转日志页按钮
+            if (logDir) {
+                html += '<a class="topo-jump-link" href="logs.html?folder=' + encodeURIComponent(logDir) + '" target="_blank" title="在新标签页搜索此目录日志">🔍 搜索此目录日志</a>';
+            }
+            html += '<div style="margin-bottom:8px;color:var(--text-tertiary);font-size:0.75rem">路径: ' + (logDir || '—') + ' | 主日志: ' + (logFile || '—') + ' | ' + (sizeMB ? sizeMB.toFixed(1) + ' MB' : '') + '</div>';
             html += '<div style="margin-bottom:4px;font-weight:600;font-size:0.8rem">日志文件</div>';
             html += '<div id="topoFileList" style="margin-bottom:10px">加载中...</div>';
             html += '<div style="font-weight:600;font-size:0.8rem">最新预览</div>';
@@ -770,6 +775,14 @@ document.addEventListener('DOMContentLoaded', function () {
         var nodeLabel = node.data('label') || nodeId;
         var nodeType = node.data('type') || 'service';
         title.innerHTML = nodeLabel + ' <span style="font-size:0.6rem;opacity:0.6">' + nodeType + '</span>';
+
+        // 跳转日志页链接
+        var logDir = node.data('log_dir') || node.data('folder') || '';
+        var logPath = node.data('path') || '';
+        var jumpDir = logDir || (logPath ? logPath.substring(0, logPath.lastIndexOf('/')) : '');
+        if (jumpDir) {
+            body.innerHTML = '<a class="topo-jump-link" href="logs.html?folder=' + encodeURIComponent(jumpDir) + '" target="_blank" title="在新标签页搜索此目录日志">🔍 搜索此目录日志: ' + escapeHtml(jumpDir) + '</a><hr style="border-color:var(--border);margin:8px 0">';
+        }
 
         // 收集所有关联的三元组
         var triples = [];
