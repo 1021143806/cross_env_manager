@@ -195,29 +195,97 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ════════════════════════════════════════════════════════════
-    //  布局引擎：dagre（mermaid 同款，自动间距 + 永不重叠）
+    //  布局引擎：dagre（平的）+ 放射（圆的）
     // ════════════════════════════════════════════════════════════
 
     LAYOUTS = {
-        horizontal: { name: '横向', icon: '⇢', rankDir: 'LR', rankSep: 110, nodeSep: 38 },
-        vertical:   { name: '纵向', icon: '⇣', rankDir: 'TB', rankSep: 90,  nodeSep: 34 },
-        compact:    { name: '紧凑', icon: '⊞', rankDir: 'LR', rankSep: 55,  nodeSep: 24, ranker: 'tight-tree' }
+        horizontal: { name: '横向', icon: '⇢', engine: 'dagre', rankDir: 'LR', rankSep: 110, nodeSep: 38 },
+        vertical:   { name: '纵向', icon: '⇣', engine: 'dagre', rankDir: 'TB', rankSep: 90,  nodeSep: 34 },
+        radial:     { name: '放射', icon: '◎', engine: 'radial' }
     };
 
+    // ── 放射图（自适应半径 + 按子节点数比例分配角度）──
+    function _doRadialLayout(cy) {
+        var R1 = 150, R_STEP = 155, ARC_PER_CHILD = 55;
+        var FULL_CIRCLE = 2 * Math.PI, START_ANGLE = -Math.PI / 2;
+
+        function layoutSubtree(node, angleStart, angleEnd, radius) {
+            if (node.style('display') === 'none') return;
+            var angle = (angleStart + angleEnd) / 2;
+            node.position({ x: radius * Math.cos(angle), y: radius * Math.sin(angle) });
+            var children = [];
+            node.connectedEdges().forEach(function (e) {
+                if (e.style('display') === 'none') return;
+                if (e.source().id() !== node.id()) return;
+                var child = e.target();
+                if (child.id() === node.id()) return;
+                if (child.style('display') === 'none') return;
+                children.push(child);
+            });
+            if (children.length === 0) return;
+            var angleSpan = Math.abs(angleEnd - angleStart);
+            var arc = angleSpan * radius;
+            var neededArc = children.length * ARC_PER_CHILD;
+            var scale = Math.max(1, neededArc / Math.max(1, arc));
+            var childRadius = radius + Math.round(R_STEP * scale);
+            var angleStep = (angleEnd - angleStart) / children.length;
+            for (var i = 0; i < children.length; i++) {
+                layoutSubtree(children[i], angleStart + i * angleStep, angleStart + (i + 1) * angleStep, childRadius);
+            }
+        }
+        function countDescendants(node) {
+            var t = 0;
+            node.connectedEdges().forEach(function (e) {
+                if (e.style('display') === 'none') return;
+                if (e.source().id() !== node.id()) return;
+                var c = e.target();
+                if (c.style('display') === 'none') return;
+                t += 1 + countDescendants(c);
+            });
+            return t;
+        }
+        var root = cy.nodes('.root').first();
+        if (!root.length) return;
+        root.position({ x: 0, y: 0 });
+        var branches = [];
+        root.connectedEdges().forEach(function (e) {
+            if (e.style('display') === 'none') return;
+            if (e.source().id() !== root.id()) return;
+            var c = e.target();
+            if (c.style('display') === 'none') return;
+            branches.push(c);
+        });
+        if (branches.length === 0) return;
+        var total = 0, weights = branches.map(function (b) { var w = countDescendants(b) || 1; total += w; return { node: b, weight: w }; });
+        var a = START_ANGLE;
+        weights.forEach(function (bw) {
+            var sz = FULL_CIRCLE * bw.weight / total;
+            layoutSubtree(bw.node, a, a + sz, R1);
+            a += sz;
+        });
+        cy.layout({ name: 'preset', animate: false, fit: false }).run();
+        cy.fit(undefined, 60);
+    }
+
+    // ── 统一布局入口 ──
     function applyLayout(cy) {
         var cfg = LAYOUTS[currentLayout] || LAYOUTS['horizontal'];
-        cy.layout({
-            name: 'dagre',
-            rankDir: cfg.rankDir,
-            rankSep: cfg.rankSep,
-            nodeSep: cfg.nodeSep,
-            edgeSep: 15,
-            ranker: cfg.ranker || 'network-simplex',
-            animate: true,
-            animationDuration: 500,
-            fit: true,
-            padding: 50
-        }).run();
+        if (cfg.engine === 'radial') {
+            _doRadialLayout(cy);
+        } else {
+            cy.layout({
+                name: 'dagre',
+                rankDir: cfg.rankDir,
+                rankSep: cfg.rankSep,
+                nodeSep: cfg.nodeSep,
+                edgeSep: 15,
+                ranker: cfg.ranker || 'network-simplex',
+                animate: true,
+                animationDuration: 500,
+                fit: true,
+                padding: 50
+            }).run();
+        }
     }
 
     window.switchLayout = function (name) {
