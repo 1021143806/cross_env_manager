@@ -413,10 +413,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 padding: 60
             }).run();
 
-            // cose 动画后交错入场（用延迟替代 layoutstop 避免竞态）
+            // cose 完成后交错入场
             setTimeout(function () {
-                _staggeredEntrance(cy);
-            }, 1000);
+                if (cy && currentLayout === 'kg') _staggeredEntrance(cy);
+            }, 1200);
         } else {
             cy.layout({
                 name: 'dagre',
