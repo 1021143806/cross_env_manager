@@ -127,10 +127,27 @@
 
         function refresh() {
             fetch('/api/system/stats').then(function(r) { return r.json(); }).then(function(d) {
-                chart.data.labels = d.timestamps.map(formatTime);
-                chart.data.datasets[0].data = d.query;
-                chart.data.datasets[1].data = d.kg;
-                chart.data.datasets[2].data = d.global;
+                var N = 60;  // 固定 60 点 = 5 分钟窗口
+                var t0 = Math.floor(Date.now() / 1000) - N * 5;
+                var labels = [];
+                for (var i = 0; i < N; i++) labels.push(formatTime(t0 + i * 5));
+
+                var q = new Array(N).fill(0);
+                var k = new Array(N).fill(0);
+                var g = new Array(N).fill(0);
+                for (var i = 0; i < d.timestamps.length; i++) {
+                    var idx = Math.floor((d.timestamps[i] - t0) / 5);
+                    if (idx >= 0 && idx < N) {
+                        q[idx] = Math.min(d.query[i], d.max.query);
+                        k[idx] = Math.min(d.kg[i], d.max.kg);
+                        g[idx] = Math.min(d.global[i], d.max.global);
+                    }
+                }
+
+                chart.data.labels = labels;
+                chart.data.datasets[0].data = q;
+                chart.data.datasets[1].data = k;
+                chart.data.datasets[2].data = g;
                 chart.options.scales.y.max = Math.max(4, d.max.global || 10);
                 chart.update('none');
                 var cacheEl = document.getElementById('statsCache');
