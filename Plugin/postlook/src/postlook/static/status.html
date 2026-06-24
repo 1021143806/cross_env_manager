@@ -48,8 +48,19 @@
             <aside class="sidebar" id="sidebar">
                 <div class="sidebar-panel" style="display:flex;flex-direction:column">
                     <div class="sb-section">
-                        <h4>文件浏览器</h4>
+                        <h4>操作</h4>
+                        <button class="kg-action-btn" onclick="checkServiceStatus()">🔄 刷新状态</button>
+                    </div>
+                    <div class="sb-section">
+                        <h4>目录</h4>
                         <div id="statusSidebar" class="sb-file-tree"></div>
+                    </div>
+                    <div class="sb-section">
+                        <h4>图例</h4>
+                        <div class="sb-legend">
+                            <div class="sb-legend-item"><span class="sb-legend-dot" style="background:#34d399"></span>目录存在</div>
+                            <div class="sb-legend-item"><span class="sb-legend-dot" style="background:#ef4444"></span>目录不存在</div>
+                        </div>
                     </div>
                 </div>
             </aside>
@@ -68,6 +79,8 @@
                         <canvas id="concurrencyChart" height="160"></canvas>
                     </div>
                 </section>
+
+                <!-- 服务状态卡片 -->
                 <section class="panel active">
                     <div class="glass-card" id="statusInfo">
                         <div class="status-loading"><div class="spinner"></div><p>正在检查服务状态...</p></div>
@@ -114,8 +127,7 @@
 
         function refresh() {
             fetch('/api/system/stats').then(function(r) { return r.json(); }).then(function(d) {
-                var labels = d.timestamps.map(formatTime);
-                chart.data.labels = labels;
+                chart.data.labels = d.timestamps.map(formatTime);
                 chart.data.datasets[0].data = d.query;
                 chart.data.datasets[1].data = d.kg;
                 chart.data.datasets[2].data = d.global;
