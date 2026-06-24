@@ -412,11 +412,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 fit: true,
                 padding: 60
             }).run();
-
-            // cose 完成后交错入场
-            setTimeout(function () {
-                if (cy && currentLayout === 'kg') _staggeredEntrance(cy);
-            }, 1200);
+            // 首次加载不跑入场动画，避免节点消失
         } else {
             cy.layout({
                 name: 'dagre',
@@ -717,7 +713,7 @@ document.addEventListener('DOMContentLoaded', function () {
             fit: true,
             padding: 60
         }).run();
-        setTimeout(function () { _staggeredEntrance(cy); }, 800);
+        setTimeout(function () { if (cy) _staggeredEntrance(cy); }, 1000);
     };
 
     var kgShowLogs = false;  // KG 默认隐藏日志文件节点
