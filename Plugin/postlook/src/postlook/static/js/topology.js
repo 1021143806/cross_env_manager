@@ -1,22 +1,14 @@
 /**
- * postlook · 拓扑图 — 多视图切换 (v0.10.0)
+ * postlook · 知识图谱 (v0.14.0)
  * 
- * 视图: 放射图 | 树形图 | 同心圆
- * 数据源: /api/topology-config → {nodes, edges}
- * 状态色: 🟢 running / ⬜ idle / ⚫ missing
+ * 布局: D3 forceSimulation（弹簧引力 + 磁铁斥力 + 水面漂浮）
+ * 数据源: /api/topology-kg → {nodes, edges}
  */
 
 var cy = null;
 var topoInited = false;
 var TOPO_DATA = null;
 var TOPO_LOADING = false;
-
-// ── 视图注册表 ──
-var LAYOUTS = {};
-var currentLayout = (function () {
-    try { return localStorage.getItem('topo-layout') || 'kg'; }
-    catch (e) { return 'kg'; }
-})();
 
 document.addEventListener('DOMContentLoaded', function () {
 
@@ -25,7 +17,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (TOPO_DATA) return callback(TOPO_DATA);
         if (TOPO_LOADING) { setTimeout(function () { loadTopoData(callback); }, 200); return; }
         TOPO_LOADING = true;
-        var url = currentLayout === 'kg' ? '/api/topology-kg' : '/api/topology-config';
+        var url = '/api/topology-kg';
         fetch(url).then(function (r) { return r.json(); }).then(function (data) {
             TOPO_DATA = { nodes: data.nodes || [], edges: data.edges || [] };
             callback(TOPO_DATA);
@@ -58,13 +50,11 @@ document.addEventListener('DOMContentLoaded', function () {
     function _initTopoWithData(container, data) {
         // 为每个节点添加 CSS class
         var elements = [];
-        var isKG = currentLayout === 'kg';
         (data.nodes || []).forEach(function (n) {
             var d = n.data || n;
             var classes = [d.type || 'service'];
             if (d.running) classes.push('running');
-            if (d.size_mb <= 0 && d.type === 'service') classes.push('empty');
-            if (isKG && d.type === 'error_query') classes.push('error');
+            if (d.type === 'error_query') classes.push('error');
 
             // 对数映射大小
             if (d.type === 'service') {
@@ -79,7 +69,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         (data.edges || []).forEach(function (e) {
             var d = e.data || e;
-            if (isKG && d.relation) {
+            if (d.relation) {
                 elements.push({ data: d, classes: d.relation });
             } else {
                 elements.push({ data: d });
@@ -251,55 +241,48 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('topoStatus').textContent =
             branchCount + ' 目录 · ' + svcCount + ' 服务' + (runningCount ? ' · ' + runningCount + ' 运行中' : '');
 
-        // 使用当前选择的布局
-        applyLayout(cy);
+        // 启动 D3 力仿真
+        _startKgSimulation(cy);
         initBreathing(cy);
 
         // ── 点击事件 ──
-        cy.on('tap', '.service', function (evt) {
-            if (currentLayout === 'kg') { showKgPanel(evt.target); }
-            else { showTopoDetail(evt.target); }
-        });
-        cy.on('tap', '.branch', function (evt) { toggleBranch(evt.target); });
-        cy.on('tap', '.server, .logfile, .query, .error_query', function (evt) { showKgPanel(evt.target); });
-        cy.on('tap', function (evt) { if (evt.target === cy) { closeTopoDetail(); closeKgPanel(); } });
+        cy.on('tap', 'node', function (evt) { showKgPanel(evt.target); });
+        cy.on('tap', function (evt) { if (evt.target === cy) closeKgPanel(); });
 
         // ── D3 拖拽：固定节点 + 加热仿真 → 水面涟漪 ──
-        if (currentLayout === 'kg') {
-            cy.on('grab', 'node', function (evt) {
-                if (!kgSimulation) return;
-                var n = evt.target;
-                var dn = kgSimulation.nodes().find(function (d) { return d.id === n.id(); });
-                if (dn) { dn.fx = dn.x; dn.fy = dn.y; }
-            });
-            cy.on('drag', 'node', function (evt) {
-                if (!kgSimulation) return;
-                var n = evt.target;
-                var dn = kgSimulation.nodes().find(function (d) { return d.id === n.id(); });
-                if (dn) {
-                    dn.fx = n.position('x');
-                    dn.fy = n.position('y');
-                    kgSimulation.alpha(0.25).restart();
-                }
-            });
-            cy.on('free', 'node', function (evt) {
-                if (!kgSimulation) return;
-                var n = evt.target;
-                var dn = kgSimulation.nodes().find(function (d) { return d.id === n.id(); });
-                if (dn) {
-                    dn.fx = null; dn.fy = null;
-                    dn.vx = 0; dn.vy = 0;
-                    kgSimulation.alpha(0.12).restart();
-                }
-            });
-        }
+        cy.on('grab', 'node', function (evt) {
+            if (!kgSimulation) return;
+            var n = evt.target;
+            var dn = kgSimulation.nodes().find(function (d) { return d.id === n.id(); });
+            if (dn) { dn.fx = dn.x; dn.fy = dn.y; }
+        });
+        cy.on('drag', 'node', function (evt) {
+            if (!kgSimulation) return;
+            var n = evt.target;
+            var dn = kgSimulation.nodes().find(function (d) { return d.id === n.id(); });
+            if (dn) {
+                dn.fx = n.position('x');
+                dn.fy = n.position('y');
+                kgSimulation.alpha(0.25).restart();
+            }
+        });
+        cy.on('free', 'node', function (evt) {
+            if (!kgSimulation) return;
+            var n = evt.target;
+            var dn = kgSimulation.nodes().find(function (d) { return d.id === n.id(); });
+            if (dn) {
+                dn.fx = null; dn.fy = null;
+                dn.vx = 0; dn.vy = 0;
+                kgSimulation.alpha(0.12).restart();
+            }
+        });
 
-        // ── 侧栏图层 ──
+        // ── 侧栏 ──
         renderLayerPanel(cy);
         renderViewButtons();
 
-        // KG 模式：默认隐藏日志文件节点（减少杂乱）
-        if (currentLayout === 'kg' && !kgShowLogs) {
+        // 默认隐藏日志文件节点（减少杂乱）
+        if (!kgShowLogs) {
             cy.nodes('.logfile').style('display', 'none');
             cy.edges('.produces').style('display', 'none');
         }
@@ -361,138 +344,14 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ════════════════════════════════════════════════════════════
-    //  视图注册 + 布局引擎（dagre / 放射 / D3）
+    //  侧栏按钮渲染
     // ════════════════════════════════════════════════════════════
 
-    LAYOUTS = {
-        horizontal: { name: '横向', icon: '⇢', engine: 'dagre', rankDir: 'LR', rankSep: 110, nodeSep: 38 },
-        vertical:   { name: '纵向', icon: '⇣', engine: 'dagre', rankDir: 'TB', rankSep: 90,  nodeSep: 34 },
-        radial:     { name: '放射', icon: '◎', engine: 'radial' },
-        kg:         { name: '图谱', icon: '◉', engine: 'kg' }
-    };
-
-    // ── 放射图（自适应半径 + 按子节点数比例分配角度）──
-    function _doRadialLayout(cy) {
-        var R1 = 150, R_STEP = 155, ARC_PER_CHILD = 55;
-        var FULL_CIRCLE = 2 * Math.PI, START_ANGLE = -Math.PI / 2;
-
-        function layoutSubtree(node, angleStart, angleEnd, radius) {
-            if (node.style('display') === 'none') return;
-            var angle = (angleStart + angleEnd) / 2;
-            node.position({ x: radius * Math.cos(angle), y: radius * Math.sin(angle) });
-            var children = [];
-            node.connectedEdges().forEach(function (e) {
-                if (e.style('display') === 'none') return;
-                if (e.source().id() !== node.id()) return;
-                var child = e.target();
-                if (child.id() === node.id()) return;
-                if (child.style('display') === 'none') return;
-                children.push(child);
-            });
-            if (children.length === 0) return;
-            var angleSpan = Math.abs(angleEnd - angleStart);
-            var arc = angleSpan * radius;
-            var neededArc = children.length * ARC_PER_CHILD;
-            var scale = Math.max(1, neededArc / Math.max(1, arc));
-            var childRadius = radius + Math.round(R_STEP * scale);
-            var angleStep = (angleEnd - angleStart) / children.length;
-            for (var i = 0; i < children.length; i++) {
-                layoutSubtree(children[i], angleStart + i * angleStep, angleStart + (i + 1) * angleStep, childRadius);
-            }
-        }
-        function countDescendants(node) {
-            var t = 0;
-            node.connectedEdges().forEach(function (e) {
-                if (e.style('display') === 'none') return;
-                if (e.source().id() !== node.id()) return;
-                var c = e.target();
-                if (c.style('display') === 'none') return;
-                t += 1 + countDescendants(c);
-            });
-            return t;
-        }
-        var root = cy.nodes('.root').first();
-        if (!root.length) return;
-        root.position({ x: 0, y: 0 });
-        var branches = [];
-        root.connectedEdges().forEach(function (e) {
-            if (e.style('display') === 'none') return;
-            if (e.source().id() !== root.id()) return;
-            var c = e.target();
-            if (c.style('display') === 'none') return;
-            branches.push(c);
-        });
-        if (branches.length === 0) return;
-        var total = 0, weights = branches.map(function (b) { var w = countDescendants(b) || 1; total += w; return { node: b, weight: w }; });
-        var a = START_ANGLE;
-        weights.forEach(function (bw) {
-            var sz = FULL_CIRCLE * bw.weight / total;
-            layoutSubtree(bw.node, a, a + sz, R1);
-            a += sz;
-        });
-        cy.layout({ name: 'preset', animate: false, fit: false }).run();
-        cy.fit(undefined, 60);
-    }
-
-    // ── 统一布局入口 ──
-    function applyLayout(cy) {
-        var cfg = LAYOUTS[currentLayout] || LAYOUTS['horizontal'];
-        if (cfg.engine === 'radial') {
-            _doRadialLayout(cy);
-        } else if (cfg.engine === 'kg') {
-            // D3 力仿真：水面漂浮 + 磁铁互斥 + 弹簧引力
-            _startKgSimulation(cy);
-        } else {
-            cy.layout({
-                name: 'dagre',
-                rankDir: cfg.rankDir,
-                rankSep: cfg.rankSep,
-                nodeSep: cfg.nodeSep,
-                edgeSep: 15,
-                ranker: cfg.ranker || 'network-simplex',
-                animate: true,
-                animationDuration: 500,
-                fit: true,
-                padding: 50
-            }).run();
-        }
-    }
-
-    window.switchLayout = function (name) {
-        if (!cy || !LAYOUTS[name]) return;
-        var wasKG = currentLayout === 'kg';
-        var nowKG = name === 'kg';
-        currentLayout = name;
-        try { localStorage.setItem('topo-layout', name); } catch (e) {}
-        
-        if (wasKG !== nowKG) {
-            // 数据源变了，重建
-            if (wasKG) stopKgSimulation();
-            TOPO_DATA = null;
-            if (cy) { cy.destroy(); cy = null; }
-            topoInited = false;
-            initTopology();
-        } else {
-            applyLayout(cy);
-        }
-        renderViewButtons();
-    };
-
     function renderViewButtons() {
-        var container = document.getElementById('viewSwitcher');
-        if (!container) return;
-        var html = '';
-        for (var key in LAYOUTS) {
-            var active = key === currentLayout ? ' active' : '';
-            html += '<button class="view-btn' + active + '" onclick="switchLayout(\'' + key + '\')" title="' + LAYOUTS[key].name + '">' +
-                LAYOUTS[key].icon + ' ' + LAYOUTS[key].name + '</button>';
-        }
-        container.innerHTML = html;
-        // 整理按钮 + 日志切换只在 KG 模式显示
         var tidyBtn = document.getElementById('tidyBtn');
         var logBtn = document.getElementById('toggleLogBtn');
-        if (tidyBtn) tidyBtn.style.display = currentLayout === 'kg' ? '' : 'none';
-        if (logBtn) logBtn.style.display = currentLayout === 'kg' ? '' : 'none';
+        if (tidyBtn) tidyBtn.style.display = '';
+        if (logBtn) { logBtn.style.display = ''; logBtn.innerHTML = kgShowLogs ? '📄 日志文件: 关' : '📄 日志文件: 开'; }
     }
 
     // ── 侧栏图层：目录分支列表 ──
@@ -531,7 +390,7 @@ document.addEventListener('DOMContentLoaded', function () {
             e.style('display', show ? 'element' : 'none');
         });
         // 重排布局
-        applyLayout(cy);
+        _startKgSimulation(cy);
     };
 
     // ── 呼吸灯：运行中的服务节点柔光脉冲 ──
@@ -734,7 +593,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     window.tidyUpKG = function () {
-        if (!cy || currentLayout !== 'kg') return;
+        if (!cy) return;
         stopKgSimulation();
         _startKgSimulation(cy);
     };
@@ -742,7 +601,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var kgShowLogs = false;  // KG 默认隐藏日志文件节点
 
     window.toggleLogNodes = function () {
-        if (!cy || currentLayout !== 'kg') return;
+        if (!cy) return;
         kgShowLogs = !kgShowLogs;
         var btn = document.getElementById('toggleLogBtn');
         if (btn) btn.innerHTML = kgShowLogs ? '📄 日志文件: 关' : '📄 日志文件: 开';
