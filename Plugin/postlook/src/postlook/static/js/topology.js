@@ -264,71 +264,33 @@ document.addEventListener('DOMContentLoaded', function () {
         cy.on('tap', '.server, .logfile, .query, .error_query', function (evt) { showKgPanel(evt.target); });
         cy.on('tap', function (evt) { if (evt.target === cy) { closeTopoDetail(); closeKgPanel(); } });
 
-        // ── 拖拽物理：关联节点橡皮筋跟随 + 弹簧回弹 ──
+        // ── D3 拖拽：固定节点 + 加热仿真 → 水面涟漪 ──
         if (currentLayout === 'kg') {
-            var dragSnapshots = {};  // 记录拖拽前所有关联节点位置
-            var dragMoved = {};
-            
             cy.on('grab', 'node', function (evt) {
+                if (!kgSimulation) return;
                 var n = evt.target;
-                dragMoved[n.id()] = false;
-                // 快照：当前节点 + 所有关联节点的位置
-                var snap = {};
-                snap[n.id()] = { x: n.position('x'), y: n.position('y') };
-                n.connectedEdges().forEach(function (e) {
-                    var other = e.source().id() === n.id() ? e.target() : e.source();
-                    snap[other.id()] = { x: other.position('x'), y: other.position('y') };
-                });
-                dragSnapshots[n.id()] = snap;
+                var dn = kgSimulation.nodes().find(function (d) { return d.id === n.id(); });
+                if (dn) { dn.fx = dn.x; dn.fy = dn.y; }
             });
-            
             cy.on('drag', 'node', function (evt) {
+                if (!kgSimulation) return;
                 var n = evt.target;
-                dragMoved[n.id()] = true;
-                var np = n.position();
-                // 关联节点平滑跟随（力度随距离衰减）
-                n.connectedEdges().forEach(function (e) {
-                    var other = e.source().id() === n.id() ? e.target() : e.source();
-                    var op = other.position();
-                    var dx = np.x - op.x, dy = np.y - op.y;
-                    var dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                    var pull = Math.min(0.35, 40 / (dist + 20));
-                    other.position({ x: op.x + dx * pull, y: op.y + dy * pull });
-                });
-            });
-            
-            cy.on('free', 'node', function (evt) {
-                var n = evt.target;
-                if (!dragMoved[n.id()]) { delete dragSnapshots[n.id()]; return; }
-                
-                // 弹簧回弹：拖拽节点弹回原位
-                var snap = dragSnapshots[n.id()];
-                var orig = snap[n.id()];
-                if (orig) {
-                    n.animate({
-                        position: orig
-                    }, {
-                        duration: 600,
-                        easing: 'spring(200, 15)'
-                    });
+                var dn = kgSimulation.nodes().find(function (d) { return d.id === n.id(); });
+                if (dn) {
+                    dn.fx = n.position('x');
+                    dn.fy = n.position('y');
+                    kgSimulation.alpha(0.25).restart();
                 }
-                
-                // 关联节点也弹回原位
-                n.connectedEdges().forEach(function (e) {
-                    var other = e.source().id() === n.id() ? e.target() : e.source();
-                    var oPos = snap[other.id()];
-                    if (oPos) {
-                        other.animate({
-                            position: oPos
-                        }, {
-                            duration: 500,
-                            easing: 'ease-out'
-                        });
-                    }
-                });
-                
-                delete dragSnapshots[n.id()];
-                delete dragMoved[n.id()];
+            });
+            cy.on('free', 'node', function (evt) {
+                if (!kgSimulation) return;
+                var n = evt.target;
+                var dn = kgSimulation.nodes().find(function (d) { return d.id === n.id(); });
+                if (dn) {
+                    dn.fx = null; dn.fy = null;
+                    dn.vx = 0; dn.vy = 0;
+                    kgSimulation.alpha(0.12).restart();
+                }
             });
         }
 
@@ -353,7 +315,53 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ════════════════════════════════════════════════════════════
-    //  布局引擎：dagre（平的）+ 放射（圆的）
+    //  D3 力仿真引擎（KG 视图专用）
+    // ════════════════════════════════════════════════════════════
+
+    var kgSimulation = null;
+
+    function _startKgSimulation(cy) {
+        stopKgSimulation();
+
+        // 从 Cytoscape 提取节点和边数据
+        var nodes = [];
+        cy.nodes().forEach(function (n) {
+            if (n.style('display') === 'none') return;
+            var p = n.position();
+            nodes.push({ id: n.id(), x: p.x || 0, y: p.y || 0 });
+        });
+        var edges = [];
+        cy.edges().forEach(function (e) {
+            if (e.style('display') === 'none') return;
+            edges.push({ source: e.source().id(), target: e.target().id() });
+        });
+
+        kgSimulation = d3.forceSimulation(nodes)
+            .force('link', d3.forceLink(edges).id(function (d) { return d.id; })
+                .distance(70).strength(0.25))
+            .force('charge', d3.forceManyBody().strength(-200))
+            .force('center', d3.forceCenter())
+            .alphaDecay(0.012)        // 慢衰减 → 水面漂浮停缓
+            .velocityDecay(0.45)      // 摩擦力
+            .on('tick', function () {
+                if (!cy || cy.destroyed()) return;
+                var positions = {};
+                nodes.forEach(function (d) { positions[d.id] = { x: d.x, y: d.y }; });
+                cy.nodes().positions(function (n) {
+                    return positions[n.id()] || n.position();
+                });
+            });
+
+        kgSimulation.alpha(0.4);    // 初始能量
+        cy.fit(undefined, 60);
+    }
+
+    function stopKgSimulation() {
+        if (kgSimulation) { kgSimulation.stop(); kgSimulation = null; }
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  视图注册 + 布局引擎（dagre / 放射 / D3）
     // ════════════════════════════════════════════════════════════
 
     LAYOUTS = {
@@ -432,21 +440,8 @@ document.addEventListener('DOMContentLoaded', function () {
         if (cfg.engine === 'radial') {
             _doRadialLayout(cy);
         } else if (cfg.engine === 'kg') {
-            // 图谱用 cose 力导向，强斥力 + 自动互斥
-            cy.layout({
-                name: 'cose',
-                nodeRepulsion: 12000,    // 强斥力，不同分支自动分离
-                nodeOverlap: 18,         // 最小间距，防重叠
-                idealEdgeLength: 90,
-                gravity: 0.5,            // 适度向心，不太散
-                numIter: 2500,
-                coolingFactor: 0.92,     // 慢冷却 → 更充分展开
-                animate: true,
-                animationDuration: 800,
-                fit: true,
-                padding: 60
-            }).run();
-            // 首次加载不跑入场动画，避免节点消失
+            // D3 力仿真：水面漂浮 + 磁铁互斥 + 弹簧引力
+            _startKgSimulation(cy);
         } else {
             cy.layout({
                 name: 'dagre',
@@ -472,6 +467,7 @@ document.addEventListener('DOMContentLoaded', function () {
         
         if (wasKG !== nowKG) {
             // 数据源变了，重建
+            if (wasKG) stopKgSimulation();
             TOPO_DATA = null;
             if (cy) { cy.destroy(); cy = null; }
             topoInited = false;
@@ -734,20 +730,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     window.tidyUpKG = function () {
         if (!cy || currentLayout !== 'kg') return;
-        cy.layout({
-            name: 'cose',
-            nodeRepulsion: 12000,
-            nodeOverlap: 18,
-            idealEdgeLength: 90,
-            gravity: 0.5,
-            numIter: 2500,
-            coolingFactor: 0.92,
-            animate: true,
-            animationDuration: 600,
-            fit: true,
-            padding: 60
-        }).run();
-        setTimeout(function () { if (cy) _staggeredEntrance(cy); }, 1000);
+        stopKgSimulation();
+        _startKgSimulation(cy);
     };
 
     var kgShowLogs = false;  // KG 默认隐藏日志文件节点
