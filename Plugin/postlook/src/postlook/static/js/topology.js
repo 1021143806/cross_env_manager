@@ -14,8 +14,8 @@ var TOPO_LOADING = false;
 // ── 视图注册表 ──
 var LAYOUTS = {};
 var currentLayout = (function () {
-    try { return localStorage.getItem('topo-layout') || 'horizontal'; }
-    catch (e) { return 'horizontal'; }
+    try { return localStorage.getItem('topo-layout') || 'kg'; }
+    catch (e) { return 'kg'; }
 })();
 
 document.addEventListener('DOMContentLoaded', function () {
