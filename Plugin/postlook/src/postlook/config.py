@@ -1075,6 +1075,9 @@ def build_knowledge_graph() -> Dict[str, Any]:
     # ── 6. 叠加中文元数据 ──
     _overlay_service_meta(nodes)
     
+    # ── 7. 服务节点大小 = 子日志总量 ──
+    _compute_service_sizes(nodes, edges)
+    
     return {"nodes": nodes, "edges": edges}
 
 
@@ -1111,6 +1114,31 @@ def _overlay_service_meta(nodes: list):
             n["desc"] = m["desc"]
             n["tags"] = m.get("tags", [])
             n["deprecated"] = m.get("deprecated", False)
+
+
+def _compute_service_sizes(nodes: list, edges: list):
+    """服务节点 size_mb = 所有 produces 子日志的大小之和"""
+    # 构建 size 索引：logfile_id → size_mb
+    log_sizes: Dict[str, float] = {}
+    for n in nodes:
+        if n.get("type") == "logfile":
+            log_sizes[n["id"]] = n.get("size_mb", 0)
+
+    if not log_sizes:
+        return
+
+    # 累加每个服务的 produces 子日志大小
+    svc_totals: Dict[str, float] = {}
+    for e in edges:
+        if e.get("relation") == "produces":
+            svc = e["source"]
+            lf = e["target"]
+            svc_totals[svc] = svc_totals.get(svc, 0) + log_sizes.get(lf, 0)
+
+    # 回填 service 节点
+    for n in nodes:
+        if n.get("type") == "service" and n["id"] in svc_totals:
+            n["size_mb"] = round(svc_totals[n["id"]], 1)
 
 
 # ============================================================
