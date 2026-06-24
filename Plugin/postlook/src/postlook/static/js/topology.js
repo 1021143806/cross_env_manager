@@ -152,16 +152,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
                 }
             ],
-            layout: {
-                name: 'breadthfirst',
-                roots: '[id = "root"]',
-                avoidOverlap: true,
-                nodeDimensionsIncludeLabels: true,
-                spacingFactor: 1.35,
-                animate: true,
-                animationDuration: 600,
-                maximal: true
-            },
+            // 不传 layout，手动控制定位
             wheelSensitivity: 0.3,
             userZoomingEnabled: true,
             userPanningEnabled: true,
@@ -178,22 +169,12 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('topoStatus').textContent =
             branchCount + ' 目录 · ' + svcCount + ' 服务' + (runningCount ? ' · ' + runningCount + ' 运行中' : '');
 
-        // 布局完成后：旋转90度变成左→右思维导图
-        cy.one('layoutstop', function () {
-            // 将 top→bottom 树旋转为 left→right
-            var nodes = cy.nodes();
-            var positions = {};
-            nodes.forEach(function (n) {
-                var p = n.position();
-                positions[n.id()] = { x: p.y, y: p.x };
-            });
-            // 应用旋转后的位置
-            nodes.positions(function (n) {
-                return positions[n.id()] || n.position();
-            });
-            cy.fit(undefined, 80);
-            initEdgePulses(cy);
-        });
+        // 手动计算思维导图布局：根(左) → 分支(中) → 服务(右)
+        _doTreeLayout(cy);
+        // 通知 Cytoscape 布局完成（锁定位置，防止漂移）
+        cy.layout({ name: 'preset', animate: false }).run();
+        cy.fit(undefined, 80);
+        initEdgePulses(cy);
 
         // ── 点击事件 ──
         cy.on('tap', '.service', function (evt) { showTopoDetail(evt.target); });
@@ -210,6 +191,67 @@ document.addEventListener('DOMContentLoaded', function () {
                 '<div class="sb-legend-item"><span class="sb-legend-dot" style="background:#475569"></span>服务节点</div>' +
                 '<div class="sb-legend-item"><span class="sb-legend-dot" style="background:#475569;border:1px dashed #64748b"></span>无数据</div>';
         }
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  手动思维导图布局：根左 → 分支中 → 服务右
+    // ════════════════════════════════════════════════════════════
+
+    function _doTreeLayout(cy) {
+        var GAP_X = 180;       // 层间距（水平）
+        var GAP_Y = 38;        // 同行节点间距（垂直）
+        var BRANCH_GAP = 60;   // 分支组之间的额外间距
+        
+        // 1. 收集分支节点
+        var branches = cy.nodes('.branch');
+        var root = cy.getElementById('root');
+        
+        // 2. 根节点位置
+        root.position({ x: 0, y: 0 });
+        
+        // 3. 计算每个分支及其子节点的位置
+        var totalHeight = 0;
+        var branchLayouts = [];  // [{branch, children, height}]
+        
+        branches.forEach(function (branch) {
+            var bid = branch.id();
+            // 找到该分支下的所有服务节点
+            var children = [];
+            branch.connectedEdges().forEach(function (e) {
+                var src = e.source().id(), tgt = e.target().id();
+                if (src === bid) {
+                    children.push(e.target());
+                }
+            });
+            var h = Math.max(1, children.length) * GAP_Y;
+            branchLayouts.push({ branch: branch, children: children, height: h });
+            totalHeight += h;
+        });
+        
+        // 分支之间有额外间距
+        totalHeight += (branchLayouts.length - 1) * BRANCH_GAP;
+        
+        // 4. 从垂直中心开始放置分支
+        var startY = -totalHeight / 2;
+        var currentY = startY;
+        
+        branchLayouts.forEach(function (bl) {
+            var branch = bl.branch;
+            var children = bl.children;
+            var groupH = bl.height;
+            var branchY = currentY + groupH / 2;
+            
+            // 分支节点位置
+            branch.position({ x: GAP_X, y: branchY });
+            
+            // 子节点位置
+            var childStartY = currentY;
+            children.forEach(function (child, i) {
+                child.position({ x: GAP_X * 2, y: childStartY + i * GAP_Y + GAP_Y / 2 });
+            });
+            
+            currentY += groupH + BRANCH_GAP;
+        });
     }
 
     // ── 侧栏图层：目录分支列表 ──
