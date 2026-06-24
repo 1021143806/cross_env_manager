@@ -61,6 +61,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 d.weight = d.size_mb > 0
                     ? Math.round(Math.max(18, Math.min(50, 18 + Math.log2(d.size_mb + 0.05) * 8)))
                     : 22;
+                if (d.deprecated) classes.push('deprecated');
             } else if (d.type === 'logfile') {
                 d.weight = Math.round(Math.max(14, Math.min(32, 14 + Math.log2((d.size_mb || 0.1) + 0.05) * 6)));
             }
@@ -633,7 +634,9 @@ document.addEventListener('DOMContentLoaded', function () {
         var nodeId = node.id();
         var nodeLabel = node.data('label') || nodeId;
         var nodeType = node.data('type') || 'service';
-        title.innerHTML = nodeLabel + ' <span style="font-size:0.6rem;opacity:0.6">' + nodeType + '</span>';
+        var deprecated = node.data('deprecated');
+        var statusHtml = deprecated ? ' <span style="color:#ef4444;font-size:0.55rem">⚠ 已停用</span>' : '';
+        title.innerHTML = nodeLabel + ' <span style="font-size:0.6rem;opacity:0.6">' + nodeType + '</span>' + statusHtml;
 
         // 收集所有关联的三元组
         var triples = [];
@@ -661,7 +664,21 @@ document.addEventListener('DOMContentLoaded', function () {
         if (triples.length === 0) {
             body.innerHTML = jumpHtml || '<div style="padding:12px;color:var(--text-tertiary);font-size:0.75rem">无关联关系</div>';
         } else {
-            var html = jumpHtml + '<div class="kg-triple-list">';
+            var html = jumpHtml;
+            // 中文元数据卡片
+            var desc = node.data('desc') || '';
+            var tags = node.data('tags') || [];
+            if (desc || tags.length) {
+                html += '<div class="kg-meta-card">';
+                if (desc) html += '<div class="kg-meta-desc">' + escapeHtml(desc) + '</div>';
+                if (tags.length) {
+                    html += '<div class="kg-meta-tags">';
+                    tags.forEach(function(t) { html += '<span class="kg-tag">' + escapeHtml(t) + '</span>'; });
+                    html += '</div>';
+                }
+                html += '</div>';
+            }
+            html += '<div class="kg-triple-list">';
             triples.forEach(function (t) {
                 var relClass = 'kg-rel ' + t.relation;
                 html += '<div class="kg-triple-row" onclick="cy.getElementById(\'' + t.targetId + '\').select()">';

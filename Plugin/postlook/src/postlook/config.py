@@ -1072,7 +1072,45 @@ def build_knowledge_graph() -> Dict[str, Any]:
                               path=str(lf), size_mb=size_mb)
                     _add_edge(svc_id, lf_id, "produces")
     
+    # ── 6. 叠加中文元数据 ──
+    _overlay_service_meta(nodes)
+    
     return {"nodes": nodes, "edges": edges}
+
+
+def _load_service_meta() -> Dict[str, Dict[str, Any]]:
+    """加载 services.toml 中的服务中文元数据"""
+    meta_path = PROJECT_ROOT / "config" / "services.toml"
+    if not meta_path.exists():
+        return {}
+    try:
+        cfg = _load_toml_file(meta_path)
+        result = {}
+        for svc in cfg.get("service", []):
+            sid = svc.get("id", "").lower().replace(" ", "_")
+            if sid:
+                result[sid] = {
+                    "name": svc.get("name", ""),
+                    "desc": svc.get("desc", ""),
+                    "tags": svc.get("tags", []),
+                    "deprecated": svc.get("deprecated", False),
+                }
+        return result
+    except Exception:
+        return {}
+
+
+def _overlay_service_meta(nodes: list):
+    """将中文元数据覆盖到 KG 节点上"""
+    meta = _load_service_meta()
+    for n in nodes:
+        sid = n.get("id", "")
+        if sid in meta:
+            m = meta[sid]
+            n["label"] = m["name"] or n["label"]
+            n["desc"] = m["desc"]
+            n["tags"] = m.get("tags", [])
+            n["deprecated"] = m.get("deprecated", False)
 
 
 # ============================================================
