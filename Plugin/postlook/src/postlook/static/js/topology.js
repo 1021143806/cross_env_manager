@@ -399,29 +399,45 @@ document.addEventListener('DOMContentLoaded', function () {
         _startKgSimulation(cy);
     };
 
-    // ── 呼吸灯：边框扩张 + 背景明暗 ──
+    // ── 呼吸灯：内部亮度呼吸 + 边缘透光变色 ──
     function initBreathing(cy) {
-        cy.nodes('.service.running').forEach(function (node, i) {
+        cy.nodes('.service.running').forEach(function (node) {
             var deprecated = node.data('deprecated');
-            var color = deprecated ? '#ef4444' : '#22c55e';
-            var dur = deprecated ? 6000 : 4000;
-            node.style('border-color', color);
-            node.style('background-color', color);
+            // 暗态 → 亮态 颜色对
+            var c = deprecated
+                ? { bgLow: '#7f1d1d', bgHigh: '#fca5a5', bdLow: '#991b1b', bdHigh: '#fecaca' }
+                : { bgLow: '#14532d', bgHigh: '#86efac', bdLow: '#166534', bdHigh: '#bbf7d0' };
+            // 初始化
+            node.style('border-color', c.bdLow);
 
-            function breathe(expand) {
+            var inhaleD = 1600, holdD = 300, exhaleD = 2500;
+
+            function inhale() {
                 node.animate({
                     style: {
-                        'border-width': expand ? 5 : 2,
-                        'border-opacity': expand ? 0.9 : 0.4,
-                        'background-opacity': expand ? 0.35 : 0.15
+                        'background-color': c.bgHigh, 'background-opacity': 0.5,
+                        'border-color': c.bdHigh, 'border-opacity': 0.85,
+                        'border-width': 2.5
                     }
-                }, {
-                    duration: dur * (expand ? 0.45 : 0.55),
-                    easing: expand ? 'ease-in' : 'ease-out',
-                    complete: function () { breathe(!expand); }
-                });
+                }, { duration: inhaleD, easing: 'ease-in', complete: hold });
             }
-            setTimeout(function () { breathe(true); }, Math.random() * 1500);
+            function hold() {
+                node.animate({
+                    style: {
+                        'background-opacity': 0.5, 'border-opacity': 0.85, 'border-width': 2.5
+                    }
+                }, { duration: holdD, easing: 'linear', complete: exhale });
+            }
+            function exhale() {
+                node.animate({
+                    style: {
+                        'background-color': '#334155', 'background-opacity': 0.2,
+                        'border-color': c.bdLow, 'border-opacity': 0.4,
+                        'border-width': 2
+                    }
+                }, { duration: exhaleD, easing: 'ease-out', complete: inhale });
+            }
+            setTimeout(inhale, Math.random() * 1500);
         });
     }
 
