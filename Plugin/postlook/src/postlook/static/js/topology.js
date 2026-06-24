@@ -137,16 +137,6 @@ document.addEventListener('DOMContentLoaded', function () {
                         'curve-style': 'haystack',
                         'opacity': 0.5
                     }
-                },
-                // 脉冲光点
-                {
-                    selector: '.pulse-dot',
-                    style: {
-                        'shape': 'ellipse', 'width': 5, 'height': 5,
-                        'background-opacity': 0.9, 'border-width': 0,
-                        'underlay-opacity': 0.4, 'underlay-padding': 3,
-                        'pointer-events': 'none'
-                    }
                 }
             ],
             // 不传 layout，手动控制定位
@@ -166,9 +156,9 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('topoStatus').textContent =
             branchCount + ' 目录 · ' + svcCount + ' 服务' + (runningCount ? ' · ' + runningCount + ' 运行中' : '');
 
-        // 手动计算思维导图布局：递归，不限深度
+        // 手动计算放射状布局
         _doTreeLayout(cy);
-        initEdgePulses(cy);
+        initBreathing(cy);
 
         // ── 点击事件 ──
         cy.on('tap', '.service', function (evt) { showTopoDetail(evt.target); });
@@ -303,7 +293,32 @@ document.addEventListener('DOMContentLoaded', function () {
         _doTreeLayout(cy);
     };
 
-    // ── 连线脉冲动画 ──
+    // ── 呼吸灯：运行中的服务节点柔光脉冲 ──
+    function initBreathing(cy) {
+        cy.nodes('.service.running').forEach(function (node) {
+            var expanding = true;
+            function breathe() {
+                node.animate({
+                    style: {
+                        'shadow-opacity': expanding ? 0.5 : 0.12,
+                        'shadow-blur': expanding ? 16 : 6,
+                        'border-width': expanding ? 3 : 2
+                    }
+                }, {
+                    duration: 2200,
+                    easing: 'ease-in-out',
+                    complete: function () {
+                        expanding = !expanding;
+                        breathe();
+                    }
+                });
+            }
+            // 随机起始相位，避免所有节点同步闪烁
+            setTimeout(breathe, Math.random() * 1500);
+        });
+    }
+
+    // ── 连线脉冲动画（已弃用，保留备用）──
     function initEdgePulses(cy) {
         cy.edges().forEach(function (edge) {
             var src = edge.source(), tgt = edge.target();
