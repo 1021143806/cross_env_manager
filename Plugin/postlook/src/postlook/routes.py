@@ -343,6 +343,19 @@ async def get_topology_config():
     return _get_topo()
 
 
+@router.get("/api/topology-kg")
+async def get_knowledge_graph():
+    """获取知识图谱数据（多类型节点 + 多关系边）"""
+    from .config import build_knowledge_graph
+    try:
+        return build_knowledge_graph()
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] kg: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"知识图谱构建失败: {e}")
+
+
 @router.get("/api/topology/discover")
 async def discover_topology_services():
     """自动发现可加入拓扑的服务节点

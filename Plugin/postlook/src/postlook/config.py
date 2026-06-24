@@ -889,6 +889,169 @@ def get_topology_config() -> Dict[str, Any]:
 
 
 # ============================================================
+# 知识图谱 (v0.12.0)
+# ============================================================
+
+def _load_date_queries() -> List[Dict[str, Any]]:
+    """加载所有 date 快捷查询配置"""
+    queries = []
+    date_dir = PROJECT_ROOT / "config" / "date"
+    if not date_dir.exists():
+        return queries
+    for f in sorted(date_dir.glob("*.toml")):
+        try:
+            data = _load_toml_file(f)
+            q = data.get("query", data)
+            if q.get("name"):
+                queries.append({
+                    "name": q.get("name", f.stem),
+                    "folder": q.get("folder", ""),
+                    "pattern": q.get("pattern", ""),
+                    "keyword": q.get("keyword", ""),
+                    "desc": q.get("desc", ""),
+                })
+        except Exception:
+            pass
+    return queries
+
+
+def _infer_service_from_path(log_dir: str) -> Optional[str]:
+    """从日志路径推断所属服务名"""
+    if not log_dir:
+        return None
+    # /main/app/gateway/logs → gateway
+    # /main/server/nacos/logs → nacos
+    # /main/server/mysql → mysql
+    # /var/log → system
+    parts = log_dir.rstrip("/").split("/")
+    if "/main/app/" in log_dir or "/main/server/" in log_dir:
+        try:
+            idx = parts.index("app") if "app" in parts else parts.index("server")
+            if idx + 1 < len(parts):
+                return parts[idx + 1]
+        except ValueError:
+            pass
+    if "/var/log" in log_dir:
+        return "system"
+    return None
+
+
+def build_knowledge_graph() -> Dict[str, Any]:
+    """构建知识图谱：服务→日志→错误查询 多关系网络
+    
+    节点类型: server / service / logfile / query
+    边类型:   runs_on / produces / has_query
+    """
+    import socket
+    
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
+    added_ids: set = set()
+    
+    def _add_node(nid: str, label: str, ntype: str, **kwargs):
+        if nid in added_ids:
+            return
+        added_ids.add(nid)
+        n = {"id": nid, "label": label, "type": ntype}
+        n.update(kwargs)
+        nodes.append(n)
+    
+    def _add_edge(src: str, tgt: str, relation: str):
+        edges.append({"source": src, "target": tgt, "relation": relation})
+    
+    # ── 1. 服务器根节点 ──
+    hostname = socket.gethostname()
+    _add_node("server", hostname, "server")
+    
+    # ── 2. supervisor 运行中服务 ──
+    sup_running = {p["name"]: p for p in _parse_supervisor_status()}
+    
+    # ── 3. 从 root_dirs 扫描服务 + 日志文件 ──
+    for root_dir in ROOT_DIRS:
+        rp = Path(root_dir)
+        svc_name = _infer_service_from_path(root_dir)
+        
+        if svc_name:
+            svc_id = svc_name.lower().replace(" ", "_")
+            running = svc_name.lower() in sup_running or svc_name in sup_running
+            
+            if rp.exists():
+                # 找日志文件
+                log_files = sorted(
+                    [f for f in rp.iterdir() if f.is_file() and not f.name.startswith(".")],
+                    key=lambda f: f.stat().st_mtime, reverse=True
+                ) if rp.is_dir() else []
+                
+                for lf in log_files[:3]:  # 每个服务最多3个日志节点
+                    lf_id = f"{svc_id}_lf_{lf.name.replace('.', '_')}"
+                    size_mb = round(lf.stat().st_size / (1024 * 1024), 1)
+                    _add_node(lf_id, lf.name, "logfile",
+                              path=str(lf), size_mb=size_mb)
+                    _add_edge(svc_id, lf_id, "produces")
+            
+            _add_node(svc_id, _fmt_name(svc_name), "service",
+                      running=running, log_dir=root_dir)
+            _add_edge(svc_id, "server", "runs_on")
+    
+    # ── 4. date 快捷查询 → 映射到对应服务 ──
+    queries = _load_date_queries()
+    for q in queries:
+        svc = _infer_service_from_path(q["folder"])
+        if not svc:
+            continue
+        svc_id = svc.lower().replace(" ", "_")
+        q_id = f"{svc_id}_q_{q['name'].replace(' ', '_')}"
+        
+        # 是否有错误关键词
+        has_error = bool(q.get("keyword") and any(
+            kw in q["keyword"].lower() for kw in ["error", "exception", "fail", "oom", "kill"]
+        ))
+        qtype = "error_query" if has_error else "query"
+        
+        _add_node(q_id, q["name"], qtype,
+                  keyword=q.get("keyword", ""),
+                  folder=q.get("folder", ""),
+                  pattern=q.get("pattern", ""),
+                  desc=q.get("desc", ""))
+        
+        # 确保服务节点存在
+        if svc_id not in added_ids:
+            running = svc.lower() in sup_running
+            _add_node(svc_id, _fmt_name(svc), "service",
+                      running=running, log_dir=q["folder"])
+            _add_edge(svc_id, "server", "runs_on")
+        
+        _add_edge(svc_id, q_id, "has_query")
+    
+    # ── 5. 额外：扫描 /main/app 和 /main/server 下未覆盖的服务 ──
+    extra = _scan_app_dirs()
+    for entry in extra:
+        svc_name = entry["name"]
+        svc_id = svc_name.lower().replace(" ", "_")
+        if svc_id in added_ids:
+            continue
+        running = svc_name.lower() in sup_running
+        log_dir = entry["log_dir"]
+        
+        _add_node(svc_id, _fmt_name(svc_name), "service",
+                  running=running, log_dir=log_dir)
+        _add_edge(svc_id, "server", "runs_on")
+        
+        # 找日志文件
+        lp = Path(log_dir)
+        if lp.exists() and lp.is_dir():
+            for lf in sorted(lp.iterdir(), key=lambda f: f.stat().st_mtime, reverse=True)[:2]:
+                if lf.is_file() and not lf.name.startswith("."):
+                    lf_id = f"{svc_id}_lf_{lf.name.replace('.', '_')}"
+                    size_mb = round(lf.stat().st_size / (1024 * 1024), 1)
+                    _add_node(lf_id, lf.name, "logfile",
+                              path=str(lf), size_mb=size_mb)
+                    _add_edge(svc_id, lf_id, "produces")
+    
+    return {"nodes": nodes, "edges": edges}
+
+
+# ============================================================
 # 拓扑自动发现 (v0.7.0) — 保留向后兼容
 # ============================================================
 

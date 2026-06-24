@@ -25,7 +25,8 @@ document.addEventListener('DOMContentLoaded', function () {
         if (TOPO_DATA) return callback(TOPO_DATA);
         if (TOPO_LOADING) { setTimeout(function () { loadTopoData(callback); }, 200); return; }
         TOPO_LOADING = true;
-        fetch('/api/topology-config').then(function (r) { return r.json(); }).then(function (data) {
+        var url = currentLayout === 'kg' ? '/api/topology-kg' : '/api/topology-config';
+        fetch(url).then(function (r) { return r.json(); }).then(function (data) {
             TOPO_DATA = { nodes: data.nodes || [], edges: data.edges || [] };
             callback(TOPO_DATA);
         }).catch(function () {
@@ -55,25 +56,34 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ── 渲染拓扑图 ──
     function _initTopoWithData(container, data) {
-        // 为每个节点添加 CSS class: type + 状态
+        // 为每个节点添加 CSS class
         var elements = [];
+        var isKG = currentLayout === 'kg';
         (data.nodes || []).forEach(function (n) {
             var d = n.data || n;
             var classes = [d.type || 'service'];
             if (d.running) classes.push('running');
             if (d.size_mb <= 0 && d.type === 'service') classes.push('empty');
+            if (isKG && d.type === 'error_query') classes.push('error');
 
-            // 对数映射日志大小 → 节点尺寸（18~50px）
+            // 对数映射大小
             if (d.type === 'service') {
                 d.weight = d.size_mb > 0
                     ? Math.round(Math.max(18, Math.min(50, 18 + Math.log2(d.size_mb + 0.05) * 8)))
                     : 22;
+            } else if (d.type === 'logfile') {
+                d.weight = Math.round(Math.max(14, Math.min(32, 14 + Math.log2((d.size_mb || 0.1) + 0.05) * 6)));
             }
 
             elements.push({ data: d, classes: classes.join(' ') });
         });
         (data.edges || []).forEach(function (e) {
-            elements.push({ data: e.data || e });
+            var d = e.data || e;
+            if (isKG && d.relation) {
+                elements.push({ data: d, classes: d.relation });
+            } else {
+                elements.push({ data: d });
+            }
         });
 
         cy = cytoscape({
@@ -144,7 +154,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     selector: '.service:selected',
                     style: { 'border-width': 3, 'border-color': '#f8fafc' }
                 },
-                // 边 — 直线，思维导图风格
+                // 边 — haystack 基础
                 {
                     selector: 'edge',
                     style: {
@@ -152,6 +162,62 @@ document.addEventListener('DOMContentLoaded', function () {
                         'line-color': 'rgba(129,140,248,0.3)',
                         'curve-style': 'haystack',
                         'opacity': 0.5
+                    }
+                },
+                // 知识图谱边颜色
+                {
+                    selector: '.produces',
+                    style: { 'line-color': 'rgba(148,163,184,0.35)', 'width': 1.2 }
+                },
+                {
+                    selector: '.has_query',
+                    style: { 'line-color': 'rgba(251,191,36,0.4)', 'width': 2, 'line-style': 'dashed' }
+                },
+                {
+                    selector: '.runs_on',
+                    style: { 'line-color': 'rgba(129,140,248,0.3)', 'width': 1 }
+                },
+                // 服务器节点
+                {
+                    selector: '.server',
+                    style: {
+                        'shape': 'round-rectangle', 'width': 100, 'height': 36,
+                        'background-color': '#818cf8', 'background-opacity': 0.2,
+                        'border-width': 2.5, 'border-color': '#818cf8',
+                        'label': 'data(label)', 'color': '#e0e0f0',
+                        'font-size': '12px', 'font-weight': 'bold',
+                        'text-valign': 'center', 'text-halign': 'center'
+                    }
+                },
+                // 日志文件节点
+                {
+                    selector: '.logfile',
+                    style: {
+                        'shape': 'rectangle', 'width': 'data(weight)', 'height': 'data(weight)',
+                        'background-color': '#64748b', 'background-opacity': 0.3,
+                        'border-width': 1, 'border-color': '#94a3b8',
+                        'label': 'data(label)', 'color': '#c0c0d0',
+                        'font-size': '8px', 'text-valign': 'center', 'text-halign': 'center',
+                        'text-wrap': 'wrap', 'text-max-width': '55px'
+                    }
+                },
+                // 查询/错误查询节点
+                {
+                    selector: '.query, .error_query',
+                    style: {
+                        'shape': 'triangle', 'width': 20, 'height': 20,
+                        'background-color': '#fbbf24', 'background-opacity': 0.25,
+                        'border-width': 1.5, 'border-color': '#fbbf24',
+                        'label': 'data(label)', 'color': '#fbbf24',
+                        'font-size': '7px', 'text-valign': 'bottom', 'text-halign': 'center',
+                        'text-margin-y': 4, 'text-wrap': 'wrap', 'text-max-width': '70px'
+                    }
+                },
+                {
+                    selector: '.error_query',
+                    style: {
+                        'background-color': '#ef4444', 'background-opacity': 0.3,
+                        'border-color': '#ef4444', 'color': '#fca5a5'
                     }
                 }
             ],
@@ -177,9 +243,13 @@ document.addEventListener('DOMContentLoaded', function () {
         initBreathing(cy);
 
         // ── 点击事件 ──
-        cy.on('tap', '.service', function (evt) { showTopoDetail(evt.target); });
+        cy.on('tap', '.service', function (evt) {
+            if (currentLayout === 'kg') { showKgPanel(evt.target); }
+            else { showTopoDetail(evt.target); }
+        });
         cy.on('tap', '.branch', function (evt) { toggleBranch(evt.target); });
-        cy.on('tap', function (evt) { if (evt.target === cy) closeTopoDetail(); });
+        cy.on('tap', '.server, .logfile, .query, .error_query', function (evt) { showKgPanel(evt.target); });
+        cy.on('tap', function (evt) { if (evt.target === cy) { closeTopoDetail(); closeKgPanel(); } });
 
         // ── 侧栏图层 ──
         renderLayerPanel(cy);
@@ -201,7 +271,8 @@ document.addEventListener('DOMContentLoaded', function () {
     LAYOUTS = {
         horizontal: { name: '横向', icon: '⇢', engine: 'dagre', rankDir: 'LR', rankSep: 110, nodeSep: 38 },
         vertical:   { name: '纵向', icon: '⇣', engine: 'dagre', rankDir: 'TB', rankSep: 90,  nodeSep: 34 },
-        radial:     { name: '放射', icon: '◎', engine: 'radial' }
+        radial:     { name: '放射', icon: '◎', engine: 'radial' },
+        kg:         { name: '图谱', icon: '◉', engine: 'kg' }
     };
 
     // ── 放射图（自适应半径 + 按子节点数比例分配角度）──
@@ -272,6 +343,19 @@ document.addEventListener('DOMContentLoaded', function () {
         var cfg = LAYOUTS[currentLayout] || LAYOUTS['horizontal'];
         if (cfg.engine === 'radial') {
             _doRadialLayout(cy);
+        } else if (cfg.engine === 'kg') {
+            // 图谱用 cose 力导向布局
+            cy.layout({
+                name: 'cose',
+                nodeRepulsion: 6000,
+                idealEdgeLength: 120,
+                gravity: 0.3,
+                numIter: 2000,
+                animate: true,
+                animationDuration: 800,
+                fit: true,
+                padding: 50
+            }).run();
         } else {
             cy.layout({
                 name: 'dagre',
@@ -290,9 +374,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
     window.switchLayout = function (name) {
         if (!cy || !LAYOUTS[name]) return;
+        var wasKG = currentLayout === 'kg';
+        var nowKG = name === 'kg';
         currentLayout = name;
         try { localStorage.setItem('topo-layout', name); } catch (e) {}
-        applyLayout(cy);
+        
+        if (wasKG !== nowKG) {
+            // 数据源变了，重建
+            TOPO_DATA = null;
+            if (cy) { cy.destroy(); cy = null; }
+            topoInited = false;
+            initTopology();
+        } else {
+            applyLayout(cy);
+        }
         renderViewButtons();
     };
 
@@ -497,6 +592,65 @@ document.addEventListener('DOMContentLoaded', function () {
 
     window.closeTopoDetail = function () { var el = document.getElementById('topoDetail'); if (el) el.style.display = 'none'; };
     window.viewTopoLog = function (path) { window.open('logs.html?folder=' + encodeURIComponent(decodeURIComponent(path))); };
+
+    // ════════════════════════════════════════════════════════════
+    //  知识图谱三元组面板
+    // ════════════════════════════════════════════════════════════
+
+    window.showKgPanel = function (node) {
+        if (!cy) return;
+        var el = document.getElementById('kgPanel');
+        var title = document.getElementById('kgPanelTitle');
+        var body = document.getElementById('kgPanelBody');
+        if (!el || !title || !body) return;
+
+        var nodeId = node.id();
+        var nodeLabel = node.data('label') || nodeId;
+        var nodeType = node.data('type') || 'service';
+        title.innerHTML = nodeLabel + ' <span style="font-size:0.6rem;opacity:0.6">' + nodeType + '</span>';
+
+        // 收集所有关联的三元组
+        var triples = [];
+        cy.edges().forEach(function (e) {
+            var src = e.source().id(), tgt = e.target().id();
+            var rel = e.data('relation') || 'connected';
+            if (src === nodeId) {
+                var t = cy.getElementById(tgt);
+                triples.push({ dir: '→', source: nodeLabel, relation: rel, target: t.data('label') || tgt, targetId: tgt });
+            } else if (tgt === nodeId) {
+                var s = cy.getElementById(src);
+                triples.push({ dir: '←', source: s.data('label') || src, relation: rel, target: nodeLabel, targetId: src });
+            }
+        });
+
+        if (triples.length === 0) {
+            body.innerHTML = '<div style="padding:12px;color:var(--text-tertiary);font-size:0.75rem">无关联关系</div>';
+        } else {
+            var html = '<div class="kg-triple-list">';
+            triples.forEach(function (t) {
+                var relClass = 'kg-rel ' + t.relation;
+                html += '<div class="kg-triple-row" onclick="cy.getElementById(\'' + t.targetId + '\').select()">';
+                if (t.dir === '→') {
+                    html += '<span class="kg-node">' + escapeHtml(t.source) + '</span>';
+                    html += '<span class="' + relClass + '">' + t.relation + '</span>';
+                    html += '<span class="kg-node kg-target">' + escapeHtml(t.target) + '</span>';
+                } else {
+                    html += '<span class="kg-node">' + escapeHtml(t.source) + '</span>';
+                    html += '<span class="' + relClass + '">' + t.relation + '</span>';
+                    html += '<span class="kg-node kg-target">' + escapeHtml(t.target) + '</span>';
+                }
+                html += '</div>';
+            });
+            html += '</div>';
+            body.innerHTML = html;
+        }
+        el.style.display = 'flex';
+    };
+
+    window.closeKgPanel = function () {
+        var el = document.getElementById('kgPanel');
+        if (el) el.style.display = 'none';
+    };
 
     // ════════════════════════════════════════════════════════════
     //  自动发现服务 (v0.7.0) — 保留
