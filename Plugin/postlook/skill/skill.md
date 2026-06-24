@@ -3,7 +3,7 @@
 ## 项目概述
 **postlook** — 轻量、安全的日志 HTTP 查询服务。通过 POST 请求在指定文件夹内按文件名、关键字、行号范围等条件查询日志，支持 Web UI、配置热更新、路径白名单安全机制。
 
-当前版本：v0.4.0
+当前版本：v0.13.0
 
 ## 技术栈
 | 层级 | 选型 | 说明 |
@@ -12,7 +12,8 @@
 | Web 框架 | FastAPI + Uvicorn | 异步高性能 |
 | 数据校验 | Pydantic v2 | Request/Response 模型 |
 | 配置解析 | tomli (Python <3.11) / tomllib (3.11+) | TOML 格式 |
-| 前端 | 原生 HTML/CSS/JS | 无框架依赖，Mac 暗黑风格 SPA |
+| 前端 | 原生 HTML/CSS/JS + Cytoscape/D3/Dagre | 拓扑图多视图引擎 |
+| 布局引擎 | dagre 分层 / D3 力仿真 / 手写放射 | 4 视图切换，全部离线 |
 | 部署 | Supervisor + 离线 pip 包 | 支持 CentOS 7 离线部署 |
 
 ## 项目结构
@@ -30,16 +31,21 @@ Plugin/postlook/
 │       ├── logs.html           # 日志查询
 │       ├── config.html         # 配置管理
 │       ├── status.html         # 服务状态
-│       ├── topology.html       # 拓扑图
+│       ├── topology.html       # 拓扑图（4视图切换）
 │       ├── debug.html          # 报文调试 (v0.4.0)
 │       ├── app.js              # 旧版前端逻辑
-│       └── js/                 # 模块化 JS
-│           ├── common.js       # 公共（主题/SVG/工具）
-│           ├── logs.js         # 日志查询
-│           ├── config.js       # 配置管理
-│           ├── status.js       # 服务状态
-│           ├── topology.js     # 拓扑图
-│           └── debug.js        # 报文调试 (v0.4.0)
+│       ├── js/                 # 模块化 JS
+│       │   ├── common.js       # 公共（主题/SVG/工具）
+│       │   ├── logs.js         # 日志查询
+│       │   ├── config.js       # 配置管理
+│       │   ├── status.js       # 服务状态
+│       │   ├── topology.js     # 拓扑多视图引擎 (~1000行)
+│       │   └── debug.js        # 报文调试 (v0.4.0)
+│       └── lib/                # 离线前端依赖 (v0.10.0+)
+│           ├── cytoscape.min.js   # 图形渲染引擎 (358KB)
+│           ├── dagre.min.js       # 分层布局引擎 (278KB)
+│           ├── cytoscape-dagre.js # dagre→Cytoscape (13KB)
+│           └── d3.v7.min.js       # 力仿真引擎 (274KB)
 ├── config/                     # 配置文件
 │   ├── env.toml                # 运行配置（.gitignore）
 │   └── template/env.toml       # 配置模板
@@ -94,6 +100,11 @@ Plugin/postlook/
 | GET | `/api/health` | 健康检查 | `{status, version}` |
 | GET | `/api/help` | 接口文档与使用说明 | 全量 endpoint 详情 |
 | GET | `/docs` | Swagger UI 交互式文档 |
+| — | — | **拓扑/图谱 (v0.10.0+)** | — |
+| GET | `/api/topology-config` | 文件树拓扑（横向/纵向/放射视图） | `{nodes[], edges[]}` |
+| GET | `/api/topology-kg` | 知识图谱（图谱视图 + D3力仿真） | `{nodes[], edges[]}`, 多类型节点+关系边 |
+| GET | `/api/topology/discover` | 自动发现新服务（supervisor+目录） | `{candidates[], existing_ids[]}` |
+| POST | `/api/topology/merge` | 合并选中服务到拓扑配置 | `{status, added, skipped}` |
 | — | — | **报文调试 (v0.4.0)** | — |
 | POST | `/api/debug/test-connection` | Ping + TCP 端口检测 | `{ping, port}` |
 | GET | `/api/debug/messages` | 获取报文分组数据 | `{groups[], count}` |
@@ -241,7 +252,64 @@ sudo bash deploy/deploy.sh
 7. **前端 SPA 无依赖**: 纯原生 JS，不依赖 React/Vue/jQuery，无构建步骤
 8. **关键字搜索上限**: 500 行，防大日志 OOM
 
+## 拓扑图 · 技术架构 (v0.10.0~v0.13.0)
+
+### 视图切换
+
+4 种视图一键切换，底层数据统一：
+
+```
+LAYOUTS = {
+  horizontal:  { engine: 'dagre',  rankDir: 'LR' }   // 横向分层
+  vertical:    { engine: 'dagre',  rankDir: 'TB' }   // 纵向分层
+  radial:      { engine: 'radial', 手写递归 }        // 360°扇形
+  kg:          { engine: 'kg',     D3力仿真 }         // 知识图谱
+}
+```
+
+### 数据源
+
+| API | 视图 | 数据内容 |
+|-----|------|---------|
+| `/api/topology-config` | 横向/纵向/放射 | 文件树: root→branch→service |
+| `/api/topology-kg` | 图谱 | 知识图谱: server/branch/service/logfile/query/error_query + produces/has_query/belongs_to/runs_on 边 |
+
+### D3 力仿真参数（图谱视图, v0.13.0）
+
+```
+d3.forceSimulation(nodes)
+  .force('link',    d3.forceLink(edges)   .distance(70)  .strength(0.25))   // 弹簧引力
+  .force('charge',  d3.forceManyBody()    .strength(-200))                   // 磁铁斥力
+  .force('center',  d3.forceCenter())                                         // 向心力
+  .alphaDecay(0.012)    // 慢衰减 → "水面漂浮停缓"效果
+  .velocityDecay(0.45)  // 摩擦力
+
+拖拽: grab→固定节点, drag→更新位置+加热(alpha=0.25), free→释放+惯性漂移
+```
+
+### 前端依赖（全部本地离线）
+
+| 文件 | 大小 | 用途 |
+|------|------|------|
+| `cytoscape.min.js` | 358KB | 图形渲染: 样式/选中/缩放/平移 |
+| `dagre.min.js` | 278KB | 分层布局: 自动间距/无重叠 |
+| `cytoscape-dagre.js` | 13KB | dagre 适配 Cytoscape |
+| `d3.v7.min.js` | 274KB | 力仿真: 持续物理模拟 |
+| `topology.js` | ~1000行 | 多视图调度 + 布局引擎切换 + 交互 |
+
+### 复用指南
+
+要将拓扑图移植到其他项目：
+
+1. **数据层**: 实现 `build_topology_tree()` 和 `build_knowledge_graph()` 返回 `{nodes[], edges[]}` 格式
+2. **后端**: 挂载两个 GET API（`/api/topology-config` + `/api/topology-kg`）
+3. **前端**: 复制 `topology.html` + `topology.js` + `style.css` 拓扑部分
+4. **依赖**: 复制 `lib/` 下 4 个 JS 文件
+5. **调整**: 修改 `LAYOUTS` 对象 + 节点样式 CSS 选择器即可适配
+
 ## ds 说
+- **v0.13.0 拓扑图**: 4 视图切换（dagre横向/纵向 + 手写放射 + D3力仿真图谱）。D3 仿真参数 alphaDecay=0.012 实现"水面漂浮"停缓效果，拖拽时固定节点+加热仿真(alpha=0.25)产生涟漪扩散。所有前端依赖均在 lib/ 下离线可用。
+- **拓扑移植**: 只需实现两个后端 API（返回统一 `{nodes[], edges[]}` 格式）即可复用整个拓扑前端。LAYOUTS 对象定义视图列表，节点样式通过 CSS class 映射。
 - vendor_packages 需要 git 跟踪（离线部署必需），已从 .gitignore 中移除
 - vendor_packages 按 Python ABI 分层: `common/`（纯Python共享）、`cp39/`、`cp311/`
 - 唯一 ABI 专用包为 `pydantic_core`，其他均为 `py3-none-any.whl`

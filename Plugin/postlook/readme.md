@@ -24,6 +24,13 @@
 | v0.4.0 | 2025-06 | 规则引擎 + 自定义着色/注解 + 拓扑/服务状态 |
 | v0.5.0 | 2026-06 | 报文调试页面 + 下载接口 |
 | **v0.6.0** | **2026-06** | **快捷查询保存 (date-queries) + 搜索高亮 + 架构分层重构** |
+| v0.7.0 | 2026-06 | 拓扑自动发现（supervisor + /main 扫描） |
+| v0.8.x | 2026-06 | concentric→breadthfirst→preset 布局演进 |
+| v0.9.x | 2026-06 | 放射状思维导图 + 呼吸灯动画 |
+| **v0.10.x** | **2026-06** | **多视图切换（横向/纵向/放射/图谱）+ 节点尺寸自适应** |
+| v0.11.0 | 2026-06 | dagre 布局引擎集成（替代手写布局） |
+| v0.12.0 | 2026-06 | 知识图谱视图 + 多类型节点 + 三元组面板 |
+| **v0.13.0** | **2026-06** | **D3 力仿真引擎（水面漂浮拖拽 + 磁铁互斥）** |
 
 ## Web 前端
 
@@ -32,7 +39,7 @@
 | 日志查询 | `/logs.html` | 关键字搜索/实时滚动/文件分组/高亮/规则着色/快捷查询 |
 | 配置管理 | `/config.html` | TOML 编辑器 + 在线热更新 |
 | 服务状态 | `/status.html` | 在线状态检测 + 白名单目录文件浏览器 |
-| 拓扑 | `/topology.html` | 拓扑分类/服务节点可视化 |
+| 拓扑 | `/topology.html` | 多视图拓扑图（横向/纵向/放射/图谱） |
 | 报文调试 | `/debug.html` | TCP 连接调试 + 报文收发 |
 
 ### 快捷查询 (v0.6.0)
@@ -56,6 +63,64 @@
 
 34 条内置规则（错误/异常/超时/电梯/调度等），可通过配置管理页面编辑。
 
+### 拓扑图 · 多视图引擎 (v0.10.0+)
+
+拓扑图支持 4 种视图一键切换，底层数据为同一份文件树/知识图谱结构：
+
+```
+┌───────────────┬──────────────────┬─────────────────────┐
+│ 视图           │ 引擎              │ 布局算法              │
+├───────────────┼──────────────────┼─────────────────────┤
+│ ⇢ 横向         │ dagre (284KB)    │ 分层有向图 rankDir=LR │
+│ ⇣ 纵向         │ dagre            │ 分层有向图 rankDir=TB │
+│ ◎ 放射         │ 手写递归算法      │ 比例扇形 + 自适应半径  │
+│ ◉ 图谱         │ D3 (274KB)       │ forceSimulation 连续仿真│
+└───────────────┴──────────────────┴─────────────────────┘
+```
+
+#### 数据流
+
+```
+config/app.toml (root_dirs)
+        │
+        ▼
+  config.py
+  ├─ build_topology_tree()  → /api/topology-config → 横向/纵向/放射
+  └─ build_knowledge_graph() → /api/topology-kg     → 图谱(D3)
+  　　　　　　　　　　　　　　　　├─ 服务节点(圆)
+  　　　　　　　　　　　　　　　　├─ 日志节点(小圆)
+  　　　　　　　　　　　　　　　　├─ 错误查询(红圆, 来自 date/*.toml)
+  　　　　　　　　　　　　　　　　└─ 多关系边: produces/has_query/runs_on/belongs_to
+```
+
+#### D3 力仿真引擎 (v0.13.0, 图谱视图)
+
+```
+d3.forceSimulation()
+  ├─ forceLink(spring)    距离=70, 强度=0.25  → 连线节点弹簧引力
+  ├─ forceManyBody(charge) 强度=-200           → 全局节点磁铁斥力
+  ├─ forceCenter()                              → 向心力防飘出
+  ├─ alphaDecay(0.012)                          → 水面漂浮停缓
+  └─ velocityDecay(0.45)                        → 摩擦阻尼
+
+拖拽物理:
+  grab → 固定节点(fx,fy)
+  drag → 更新固定点 + 加热仿真(alpha=0.25) → 涟漪扩散
+  free → 释放节点 + 惯性漂移 → 缓慢停下
+```
+
+#### 前端依赖
+
+| 文件 | 大小 | 用途 |
+|------|------|------|
+| `lib/cytoscape.min.js` | 358KB | 图形渲染 + 交互（pan/zoom/click） |
+| `lib/dagre.min.js` | 278KB | 分层布局引擎（横向/纵向视图） |
+| `lib/cytoscape-dagre.js` | 13KB | dagre → Cytoscape 适配器 |
+| `lib/d3.v7.min.js` | 274KB | 力仿真引擎（图谱视图） |
+| `js/topology.js` | ~1000行 | 4 视图切换 + 布局调度 + 交互逻辑 |
+
+所有依赖均为本地文件，离线部署可用。
+
 ## API 接口
 
 | 方法 | 路径 | 说明 |
@@ -74,6 +139,11 @@
 | GET | `/api/health` | 健康检查 |
 | GET | `/api/help` | 接口文档和使用说明 |
 | GET | `/docs` | Swagger UI 交互式文档 |
+| — | — | **拓扑 (v0.10.0+)** | — |
+| GET | `/api/topology-config` | 文件树拓扑数据 → 横向/纵向/放射视图 |
+| GET | `/api/topology-kg` | 知识图谱数据 → 图谱视图（多类型节点+关系边） |
+| GET | `/api/topology/discover` | 自动发现新服务（supervisor + 目录扫描） |
+| POST | `/api/topology/merge` | 合并选中服务到拓扑配置 |
 
 ### POST /api/logs 参数
 
@@ -150,8 +220,13 @@ postlook/
 │           ├── logs.js            # 日志查询页面逻辑
 │           ├── config.js          # 配置管理页面逻辑
 │           ├── status.js          # 服务状态页面逻辑
-│           ├── topology.js        # 拓扑页面逻辑
+│           ├── topology.js        # 拓扑多视图引擎 + D3/Dagre/Cytoscape
 │           └── debug.js           # 调试页面逻辑
+│       └── lib/                    # 离线前端依赖
+│           ├── cytoscape.min.js   # 图形渲染引擎 (358KB)
+│           ├── dagre.min.js       # 分层布局引擎 (278KB)
+│           ├── cytoscape-dagre.js # dagre→Cytoscape (13KB)
+│           └── d3.v7.min.js       # 力仿真引擎 (274KB)
 ├── test/                          # 测试
 ├── doc/api/                       # API 文档
 ├── logs/                          # 日志（进.gitignore）
