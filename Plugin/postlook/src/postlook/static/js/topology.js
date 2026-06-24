@@ -264,9 +264,50 @@ document.addEventListener('DOMContentLoaded', function () {
         cy.on('tap', '.server, .logfile, .query, .error_query', function (evt) { showKgPanel(evt.target); });
         cy.on('tap', function (evt) { if (evt.target === cy) { closeTopoDetail(); closeKgPanel(); } });
 
+        // ── 拖拽物理：关联节点弹性跟随 + 松手回弹 ──
+        if (currentLayout === 'kg') {
+            var dragOrigins = {};
+            cy.on('grab', 'node', function (evt) {
+                var n = evt.target;
+                dragOrigins[n.id()] = { x: n.position('x'), y: n.position('y') };
+            });
+            cy.on('drag', 'node', function (evt) {
+                var n = evt.target, np = n.position();
+                // 关联节点橡皮筋跟随
+                n.connectedEdges().forEach(function (e) {
+                    var other = e.source().id() === n.id() ? e.target() : e.source();
+                    var op = other.position();
+                    var dx = np.x - op.x, dy = np.y - op.y;
+                    var dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                    var pull = Math.min(0.3, 30 / dist);
+                    other.position({ x: op.x + dx * pull, y: op.y + dy * pull });
+                });
+            });
+            cy.on('free', 'node', function (evt) {
+                // 松手后轻微弹性布局（从当前位置起算，不跳回原点）
+                cy.layout({
+                    name: 'cose',
+                    randomize: false,
+                    nodeRepulsion: 5000,
+                    idealEdgeLength: 90,
+                    numIter: 600,
+                    animate: true,
+                    animationDuration: 500,
+                    fit: false
+                }).run();
+            });
+        }
+
         // ── 侧栏图层 ──
         renderLayerPanel(cy);
         renderViewButtons();
+
+        // KG 模式：默认隐藏日志文件节点（减少杂乱）
+        if (currentLayout === 'kg' && !kgShowLogs) {
+            cy.nodes('.logfile').style('display', 'none');
+            cy.edges('.produces').style('display', 'none');
+        }
+
         // ── 侧栏图例 ──
         var legendDiv = document.querySelector('.sb-legend');
         if (legendDiv) {
@@ -357,18 +398,25 @@ document.addEventListener('DOMContentLoaded', function () {
         if (cfg.engine === 'radial') {
             _doRadialLayout(cy);
         } else if (cfg.engine === 'kg') {
-            // 图谱用 cose 力导向，适合多关系网络
+            // 图谱用 cose 力导向，强斥力 + 自动互斥
             cy.layout({
                 name: 'cose',
-                nodeRepulsion: 8000,
-                idealEdgeLength: 100,
-                gravity: 0.4,
-                numIter: 2000,
+                nodeRepulsion: 12000,    // 强斥力，不同分支自动分离
+                nodeOverlap: 18,         // 最小间距，防重叠
+                idealEdgeLength: 90,
+                gravity: 0.5,            // 适度向心，不太散
+                numIter: 2500,
+                coolingFactor: 0.92,     // 慢冷却 → 更充分展开
                 animate: true,
                 animationDuration: 800,
                 fit: true,
                 padding: 60
             }).run();
+
+            // cose 动画后交错入场（用延迟替代 layoutstop 避免竞态）
+            setTimeout(function () {
+                _staggeredEntrance(cy);
+            }, 1000);
         } else {
             cy.layout({
                 name: 'dagre',
@@ -414,6 +462,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 LAYOUTS[key].icon + ' ' + LAYOUTS[key].name + '</button>';
         }
         container.innerHTML = html;
+        // 整理按钮 + 日志切换只在 KG 模式显示
+        var tidyBtn = document.getElementById('tidyBtn');
+        var logBtn = document.getElementById('toggleLogBtn');
+        if (tidyBtn) tidyBtn.style.display = currentLayout === 'kg' ? '' : 'none';
+        if (logBtn) logBtn.style.display = currentLayout === 'kg' ? '' : 'none';
     }
 
     // ── 侧栏图层：目录分支列表 ──
@@ -607,8 +660,85 @@ document.addEventListener('DOMContentLoaded', function () {
     window.viewTopoLog = function (path) { window.open('logs.html?folder=' + encodeURIComponent(decodeURIComponent(path))); };
 
     // ════════════════════════════════════════════════════════════
-    //  知识图谱三元组面板
+    //  交错入场动画 + 自动互斥
     // ════════════════════════════════════════════════════════════
+
+    function _staggeredEntrance(cy) {
+        // BFS 计算深度
+        var depths = {};
+        var roots = cy.nodes().filter(function (n) {
+            return n.incomers('node').length === 0;
+        });
+        var q = [];
+        roots.forEach(function (r) { q.push({ id: r.id(), d: 0 }); });
+        while (q.length) {
+            var cur = q.shift();
+            if (cur.id in depths) continue;
+            depths[cur.id] = cur.d;
+            var node = cy.getElementById(cur.id);
+            if (node.length) {
+                node.outgoers('node').forEach(function (child) {
+                    q.push({ id: child.id(), d: cur.d + 1 });
+                });
+            }
+        }
+
+        var maxDepth = Math.max(0, ...Object.values(depths));
+        cy.nodes().forEach(function (n) {
+            var d = depths[n.id()] || 0;
+            n.style('opacity', 0);
+            n.animate({
+                style: { 'opacity': 1 }
+            }, {
+                duration: 400,
+                delay: d * 100,
+                easing: 'ease-out'
+            });
+        });
+    }
+
+    window.tidyUpKG = function () {
+        if (!cy || currentLayout !== 'kg') return;
+        cy.layout({
+            name: 'cose',
+            nodeRepulsion: 12000,
+            nodeOverlap: 18,
+            idealEdgeLength: 90,
+            gravity: 0.5,
+            numIter: 2500,
+            coolingFactor: 0.92,
+            animate: true,
+            animationDuration: 600,
+            fit: true,
+            padding: 60
+        }).run();
+        setTimeout(function () { _staggeredEntrance(cy); }, 800);
+    };
+
+    var kgShowLogs = false;  // KG 默认隐藏日志文件节点
+
+    window.toggleLogNodes = function () {
+        if (!cy || currentLayout !== 'kg') return;
+        kgShowLogs = !kgShowLogs;
+        var btn = document.getElementById('toggleLogBtn');
+        if (btn) btn.innerHTML = kgShowLogs ? '📄 日志文件: 关' : '📄 日志文件: 开';
+        cy.nodes('.logfile').forEach(function (n) {
+            n.style('display', kgShowLogs ? 'element' : 'none');
+        });
+        cy.edges('.produces').forEach(function (e) {
+            e.style('display', kgShowLogs ? 'element' : 'none');
+        });
+        // 隐藏后重排
+        if (!kgShowLogs) {
+            cy.layout({
+                name: 'cose',
+                nodeRepulsion: 10000, nodeOverlap: 20,
+                idealEdgeLength: 100, gravity: 0.5,
+                numIter: 1500, animate: true,
+                animationDuration: 400, fit: true, padding: 60
+            }).run();
+        }
+    };
 
     window.showKgPanel = function (node) {
         if (!cy) return;
