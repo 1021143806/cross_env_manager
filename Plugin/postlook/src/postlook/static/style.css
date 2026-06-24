@@ -1439,21 +1439,24 @@ input:focus, select:focus, textarea:focus {
    ============================================================ */
 
 .topo-jump-link {
-    display: block;
-    padding: 8px 12px;
-    margin-bottom: 8px;
-    background: var(--accent);
-    background-opacity: 0.1;
-    border: 1px solid var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 12px;
+    margin-bottom: 10px;
+    background: rgba(79, 143, 247, 0.08);
+    border: 1px solid rgba(79, 143, 247, 0.25);
     border-radius: 8px;
     color: var(--accent);
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     font-weight: 500;
     text-decoration: none;
-    text-align: center;
-    transition: all 0.2s;
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1.2);
 }
 .topo-jump-link:hover {
-    background: var(--accent);
+    background: rgba(79, 143, 247, 0.18);
+    border-color: var(--accent);
     color: #fff;
+    box-shadow: 0 2px 12px rgba(79, 143, 247, 0.2);
 }
