@@ -200,7 +200,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function _doRadialLayout(cy) {
         var R1 = 150;          // 第一层半径（分支节点）
-        var R_STEP = 140;      // 每深入一层增加半径
+        var R_STEP = 155;      // 每深入一层增加半径
         var FULL_CIRCLE = 2 * Math.PI;
         var START_ANGLE = -Math.PI / 2;  // 从顶部开始
 
@@ -276,8 +276,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // ════════════════════════════════════════════════════════════
 
     function _doHorizontalTreeLayout(cy) {
-        var LEVEL_GAP = 180;
-        var NODE_GAP = 36;
+        var LEVEL_GAP = 190;
+        var NODE_GAP = 52;   // 适配最大 50px 节点
 
         function layoutSubtree(node, x, startY) {
             if (node.style('display') === 'none') return 0;
