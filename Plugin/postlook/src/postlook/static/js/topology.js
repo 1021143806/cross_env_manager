@@ -264,44 +264,71 @@ document.addEventListener('DOMContentLoaded', function () {
         cy.on('tap', '.server, .logfile, .query, .error_query', function (evt) { showKgPanel(evt.target); });
         cy.on('tap', function (evt) { if (evt.target === cy) { closeTopoDetail(); closeKgPanel(); } });
 
-        // ── 拖拽物理：关联节点弹性跟随 + 松手回弹（仅真实拖动时触发）──
+        // ── 拖拽物理：关联节点橡皮筋跟随 + 弹簧回弹 ──
         if (currentLayout === 'kg') {
-            var dragOrigins = {}, dragMoved = {};
+            var dragSnapshots = {};  // 记录拖拽前所有关联节点位置
+            var dragMoved = {};
+            
             cy.on('grab', 'node', function (evt) {
                 var n = evt.target;
-                dragOrigins[n.id()] = { x: n.position('x'), y: n.position('y') };
                 dragMoved[n.id()] = false;
+                // 快照：当前节点 + 所有关联节点的位置
+                var snap = {};
+                snap[n.id()] = { x: n.position('x'), y: n.position('y') };
+                n.connectedEdges().forEach(function (e) {
+                    var other = e.source().id() === n.id() ? e.target() : e.source();
+                    snap[other.id()] = { x: other.position('x'), y: other.position('y') };
+                });
+                dragSnapshots[n.id()] = snap;
             });
+            
             cy.on('drag', 'node', function (evt) {
                 var n = evt.target;
                 dragMoved[n.id()] = true;
                 var np = n.position();
-                // 关联节点橡皮筋跟随
+                // 关联节点平滑跟随（力度随距离衰减）
                 n.connectedEdges().forEach(function (e) {
                     var other = e.source().id() === n.id() ? e.target() : e.source();
                     var op = other.position();
                     var dx = np.x - op.x, dy = np.y - op.y;
                     var dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                    var pull = Math.min(0.3, 30 / dist);
+                    var pull = Math.min(0.35, 40 / (dist + 20));
                     other.position({ x: op.x + dx * pull, y: op.y + dy * pull });
                 });
             });
+            
             cy.on('free', 'node', function (evt) {
                 var n = evt.target;
-                // 只有真正拖动了（>5px）才触发回弹重排
-                if (!dragMoved[n.id()]) return;
-                cy.layout({
-                    name: 'cose',
-                    randomize: false,
-                    nodeRepulsion: 5000,
-                    idealEdgeLength: 90,
-                    numIter: 600,
-                    animate: true,
-                    animationDuration: 500,
-                    fit: false
-                }).run();
+                if (!dragMoved[n.id()]) { delete dragSnapshots[n.id()]; return; }
+                
+                // 弹簧回弹：拖拽节点弹回原位
+                var snap = dragSnapshots[n.id()];
+                var orig = snap[n.id()];
+                if (orig) {
+                    n.animate({
+                        position: orig
+                    }, {
+                        duration: 600,
+                        easing: 'spring(200, 15)'
+                    });
+                }
+                
+                // 关联节点也弹回原位
+                n.connectedEdges().forEach(function (e) {
+                    var other = e.source().id() === n.id() ? e.target() : e.source();
+                    var oPos = snap[other.id()];
+                    if (oPos) {
+                        other.animate({
+                            position: oPos
+                        }, {
+                            duration: 500,
+                            easing: 'ease-out'
+                        });
+                    }
+                });
+                
+                delete dragSnapshots[n.id()];
                 delete dragMoved[n.id()];
-                delete dragOrigins[n.id()];
             });
         }
 
