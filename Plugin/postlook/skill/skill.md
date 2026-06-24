@@ -333,3 +333,9 @@ d3.forceSimulation(nodes)
 - 连接配置 `config/debug.toml` 在 .gitignore 中，首次从 `config/template/debug.toml` 模板复制
 - 发送模式为一连接一断，不保持长连接；前后端均有 500ms 防抖
 - 预留 seq/delay_ms 字段于 messages.toml，为后续循环发送做准备
+- **v0.16.0 services.toml 中文元数据**: 拓扑图节点显示中文名 + 描述 + 标签。文件位于 `config/services.toml`，模板在 `config/template/services.toml`。
+- **services.toml 热更新到远端**: 两种方式——
+  1. CEM 增量升级: `python3 scripts/build_upgrade.py --server http://IP:5000 --upload --from <commit> --notes "更新services.toml"`
+     适用于已部署的服务器，增量包只含变更文件，自动重启 postlook
+  2. 直接 POST 配置: `curl -X POST http://IP:5011/api/config -H "Content-Type: application/json" -d '{"content":"...toml文本..."}'`
+     适用于 postlook 独立部署（无 CEM），写 app.toml 即可，services.toml 由 KG API 每次请求时重新加载无需重启
