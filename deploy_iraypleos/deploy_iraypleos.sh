@@ -1,6 +1,7 @@
 #!/bin/bash
-# 简化的Python 3.9.9离线部署脚本
-# 假设vendor_packages3.9目录已经是Python 3.9完全兼容版本
+# Python 3.9 离线部署脚本（自动检测 + 自动安装）
+# 自动检测系统是否有 Python 3.9，没有则从预编译包安装到 /main/app/python39/
+# vendor_packages3.9 目录为 Python 3.9 编译版，需要 Python 3.9 解释器
 
 set -e
 
@@ -24,6 +25,42 @@ cd "$PROJECT_DIR"
 if [ ! -f "app.py" ]; then
     echo "错误: 未找到app.py文件，请确保脚本在正确的位置运行"
     exit 1
+fi
+
+# ======================================================
+# 检查并准备 Python 3.9 解释器
+# 优先级：本地安装 > 系统自带 > 自动解压安装
+# ======================================================
+PYTHON39_INSTALL="/main/app/python39"
+PYTHON39_BIN="$PYTHON39_INSTALL/bin/python3.9"
+PYTHON39_SRC="$DEPLOY_DIR/../Plugin/postlook/deploy/platform/centos7/rpms/python39_build.tar.gz"
+
+if [ -f "$PYTHON39_BIN" ]; then
+    echo "🔍 Python 3.9 本地安装: $PYTHON39_BIN"
+    PYTHON39_VERSION=$("$PYTHON39_BIN" --version 2>&1)
+    echo "   $PYTHON39_VERSION"
+elif [ -f "/usr/bin/python3.9" ]; then
+    PYTHON39_BIN="/usr/bin/python3.9"
+    echo "🔍 使用系统 Python 3.9: $PYTHON39_BIN"
+    PYTHON39_VERSION=$("$PYTHON39_BIN" --version 2>&1)
+    echo "   $PYTHON39_VERSION"
+else
+    echo "🔧 未检测到 Python 3.9，开始自动安装..."
+    echo "   系统Python: $(python3 --version 2>&1)"
+    if [ ! -f "$PYTHON39_SRC" ]; then
+        echo "   ❌ 找不到预编译包: $PYTHON39_SRC"
+        echo "   提示: 请将 python39_build.tar.gz 放到 Plugin/postlook/deploy/platform/centos7/rpms/ 目录"
+        exit 1
+    fi
+    echo "   解压预编译包到 $PYTHON39_INSTALL ..."
+    mkdir -p "$PYTHON39_INSTALL"
+    tar xzf "$PYTHON39_SRC" -C "$PYTHON39_INSTALL" --strip-components=1
+    if [ ! -f "$PYTHON39_BIN" ]; then
+        echo "   ❌ Python 3.9 安装失败"
+        exit 1
+    fi
+    PYTHON39_VERSION=$("$PYTHON39_BIN" --version 2>&1)
+    echo "   ✅ Python 3.9 安装完成: $PYTHON39_VERSION"
 fi
 
 echo "1. 检查环境..."
@@ -65,9 +102,9 @@ for pkg in "${KEY_PACKAGES[@]}"; do
 done
 
 echo ""
-echo "3. 清理并创建虚拟环境..."
+echo "3. 清理并创建虚拟环境 (Python 3.9)..."
 rm -rf venv 2>/dev/null || true
-python3 -m venv venv
+"$PYTHON39_BIN" -m venv venv
 
 if [ ! -f "venv/bin/python" ]; then
     echo "   ❌ 虚拟环境创建失败"
@@ -157,7 +194,15 @@ test_import_simple cryptography
 
 echo ""
 echo "8. 配置Supervisor..."
-SUPERVISOR_CONF="/main/server/supervisor/cross_env_manager.conf"
+# 自动选择配置路径：优先 conf.d/，否则放在父目录
+SUPERVISOR_BASE="/main/server/supervisor"
+if [ -d "$SUPERVISOR_BASE/conf.d" ]; then
+    SUPERVISOR_CONF="$SUPERVISOR_BASE/conf.d/cross_env_manager.conf"
+    echo "   检测到 conf.d/ 目录，配置将创建至: $SUPERVISOR_CONF"
+else
+    SUPERVISOR_CONF="$SUPERVISOR_BASE/cross_env_manager.conf"
+    echo "   未检测到 conf.d/，配置将创建至: $SUPERVISOR_CONF"
+fi
 LOG_DIR="/main/app/cross_env_manager/logs"
 #本地测试/main/app/toolsForPersonal/projects/agv_system/app/cross_env_manager/logs
 

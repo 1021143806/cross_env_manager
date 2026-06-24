@@ -36,7 +36,7 @@ deploy_iraypleos/
 | **幂等部署** | 脚本可反复执行，先清理旧 venv 再重建，不依赖环境状态 |
 | **版本锁定** | `requirements_py39_fixed.txt` 精确锁死版本号，杜绝意外升级 |
 | **自动兼容处理** | 自动检测并修复 `mysql.connector` → `PyMySQL` 的引用替换 |
-| **Supervisor 集成** | 配置 `/main/server/supervisor/cross_env_manager.conf`，支持进程保活 |
+| **Supervisor 集成** | 配置 `/main/server/supervisor/cross_env_manager.conf`，需在 `/etc/supervisord.conf` 的 `[include]` 中**单行**添加该文件路径（多行 `files =` 会被覆盖） |
 
 ## 部署流程
 
