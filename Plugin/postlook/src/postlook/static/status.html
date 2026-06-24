@@ -148,7 +148,6 @@
                 chart.data.datasets[0].data = q;
                 chart.data.datasets[1].data = k;
                 chart.data.datasets[2].data = g;
-                chart.options.scales.y.max = Math.max(4, d.max.global || 10);
                 chart.update('none');
                 var cacheEl = document.getElementById('statsCache');
                 if (cacheEl) cacheEl.textContent = '缓存命中: ' + (d.cache_hits || 0);
