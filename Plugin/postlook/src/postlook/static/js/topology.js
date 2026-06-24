@@ -353,18 +353,17 @@ document.addEventListener('DOMContentLoaded', function () {
         if (cfg.engine === 'radial') {
             _doRadialLayout(cy);
         } else if (cfg.engine === 'kg') {
-            // 图谱用 dagre，层级分明不混乱
+            // 图谱用 cose 力导向，适合多关系网络
             cy.layout({
-                name: 'dagre',
-                rankDir: 'LR',
-                rankSep: 80,
-                nodeSep: 20,
-                edgeSep: 10,
-                ranker: 'network-simplex',
+                name: 'cose',
+                nodeRepulsion: 8000,
+                idealEdgeLength: 100,
+                gravity: 0.4,
+                numIter: 2000,
                 animate: true,
-                animationDuration: 600,
+                animationDuration: 800,
                 fit: true,
-                padding: 50
+                padding: 60
             }).run();
         } else {
             cy.layout({
