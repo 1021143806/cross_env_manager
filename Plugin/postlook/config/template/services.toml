@@ -1,0 +1,196 @@
+# postlook · 服务中文元数据
+# 拓扑图加载后自动合并到 KG 节点，显示中文名 + 描述 + 标签
+# 热更新：修改后调用 POST /api/config 即时生效
+
+[[service]]
+id = "gateway"
+name = "网关服务"
+desc = "AGV 任务下发网关，含 Nacos 配置"
+tags = ["核心"]
+deprecated = false
+
+[[service]]
+id = "ics"
+name = "ICS 选点/库位状态"
+desc = "库位状态选点，任务下发。2.17定制：机台满辊筒不动，通过2.17转发继续任务"
+tags = ["核心", "定制"]
+deprecated = false
+
+[[service]]
+id = "rdms-proxy-charge"
+name = "充电桩代理（R1CS）"
+desc = "用于解决充电桩离线问题，部署到模块使用3012端口。现已更换充电桩板，按正常使用"
+tags = ["定制", "已停用"]
+deprecated = true
+
+[[service]]
+id = "fywds"
+name = "跨环境定制（富阳）"
+desc = "跨环境定制模块"
+tags = ["定制"]
+deprecated = false
+
+[[service]]
+id = "fy-xfj"
+name = "跨环境定制（富阳-小风机）"
+desc = "跨环境定制模块"
+tags = ["定制"]
+deprecated = false
+
+[[service]]
+id = "wds-save1"
+name = "跨环境调空车定制（WDS）"
+desc = "2.17定制，控制跨环境设备数量，自动调车，主控位于2.32。基于缓存实时检查设备数量调车"
+tags = ["定制", "已停用"]
+deprecated = true
+
+[[service]]
+id = "wds"
+name = "调车模块（WDS）"
+desc = "定制模块，2.40调车模块"
+tags = ["定制", "已停用"]
+deprecated = true
+
+[[service]]
+id = "ics-device"
+name = "ICS 设备接入"
+desc = "含 sps、wca、camera 模块。库位传感器、呼叫器、智能相机"
+tags = ["第三方设备"]
+
+[[service]]
+id = "wca"
+name = "WCA 呼叫器模块2"
+desc = "呼叫器模块2"
+tags = ["呼叫器"]
+
+[[service]]
+id = "lige"
+name = "里格呼叫器"
+desc = "里格呼叫器模块"
+tags = ["呼叫器"]
+
+[[service]]
+id = "haofancis"
+name = "浩方呼叫器（HaoFanCis）"
+desc = "浩方呼叫器模块"
+tags = ["呼叫器"]
+
+[[service]]
+id = "wdcs"
+name = "电梯门禁接入（WDCS）"
+desc = "电梯门禁接入，定制修改优化"
+tags = ["定制"]
+
+[[service]]
+id = "dhc2_3_b2"
+name = "NOC 上报定制"
+desc = "NOC 上报定制，上层系统定制接口 A2-2"
+tags = ["定制"]
+
+[[service]]
+id = "wds-pcba"
+name = "智能相机定制（WDS-PCBA）"
+desc = "2.31智能相机定制，A1-2电装工厂"
+tags = ["定制"]
+
+[[service]]
+id = "hoist"
+name = "提升机定制"
+desc = "2.19提升机定制模块 A2-1"
+tags = ["定制"]
+
+[[service]]
+id = "tps"
+name = "任务管理服务（TPS）"
+desc = "任务管理服务"
+tags = ["核心"]
+
+[[service]]
+id = "rdms"
+name = "设备管理服务（RDMS）"
+desc = "设备管理服务"
+tags = ["核心"]
+
+[[service]]
+id = "rdms-proxy"
+name = "设备代理服务（RDMS-Proxy）"
+desc = "设备代理服务"
+tags = ["核心"]
+
+[[service]]
+id = "bms"
+name = "基础管理服务（BMS）"
+desc = "基础管理服务"
+tags = ["核心"]
+
+[[service]]
+id = "gws"
+name = "鉴权中心（ZUUL/GWS）"
+desc = "鉴权中心"
+tags = ["核心"]
+
+[[service]]
+id = "sps"
+name = "传感器模块（SPS）"
+desc = "传感器模块"
+tags = ["核心"]
+
+[[service]]
+id = "camera"
+name = "智能相机模块"
+desc = "智能相机模块"
+tags = ["第三方设备"]
+
+[[service]]
+id = "revent"
+name = "模拟电梯模块（Revent）"
+desc = "模拟电梯模块"
+tags = ["核心"]
+
+[[service]]
+id = "rtpsa"
+name = "算法分配库（RTPS-A）"
+desc = "算法分配库"
+tags = ["核心"]
+
+[[service]]
+id = "rtpsp"
+name = "算法规划库（RTPS-P）"
+desc = "算法规划库，查看算法版本"
+tags = ["核心"]
+
+[[service]]
+id = "accesscontrol"
+name = "门禁模块"
+desc = "门禁模块（需 wdcs）"
+tags = ["核心"]
+
+[[service]]
+id = "pss-proxy"
+name = "PSS 代理"
+desc = "TPS 与 RTPS 接口透传"
+tags = ["核心"]
+
+[[service]]
+id = "rtps"
+name = "RTPS 路径规划"
+desc = "路径规划服务"
+tags = ["核心"]
+
+[[service]]
+id = "ilcs"
+name = "三色灯模块（ILCS）"
+desc = "三色灯模块"
+tags = ["核心"]
+
+[[service]]
+id = "rcs-business"
+name = "RCS 业务模块"
+desc = "RCS 业务模块"
+tags = ["核心"]
+
+[[service]]
+id = "light"
+name = "模拟电梯（Light）"
+desc = "模拟电梯模块"
+tags = ["核心"]
