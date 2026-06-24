@@ -841,7 +841,7 @@
             // 防抖：1秒内只能触发一次
             const now = Date.now();
             if (now - chartLastLoadTime < CHART_DEBOUNCE_MS) {
-                alert('⚠️ 请勿频繁刷新，1秒内只能刷新一次');
+                // 防抖：静默跳过，避免页面跳转过来自动查询时弹窗
                 return;
             }
             chartLastLoadTime = now;

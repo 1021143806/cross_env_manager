@@ -793,6 +793,10 @@ def resend_cross_task(sub_order_id, order_id, task_seq, server_ip="10.68.2.32"):
                         "cancel_url": cancel_url
                     }
             
+            # 等待2秒，确保 ICS 服务端完成取消处理后再修改数据库状态
+            # 避免改状态5的速度快于远端取消处理速度
+            _time.sleep(2)
+            
             # ========== 步骤6: 预占设备（第二次，确保预占状态） ==========
             if server_ip_for_op and device_code and area_id:
                 preempt_body["lastUpdateTime"] = int(_time.time() * 1000)
@@ -1124,6 +1128,10 @@ def resend_cross_task_stream(sub_order_id, order_id, task_seq, server_ip="10.68.
                 yield _yield_step(5, "取消任务", "ok", round((_time.time() - t0) * 1000, 1),
                     detail={"note": "跳过：缺少 server_ip"})
             
+            # 等待2秒，确保 ICS 服务端完成取消处理后再修改数据库状态
+            # 避免改状态5的速度快于远端取消处理速度（静默等待，不推送 SSE 步骤）
+            _time.sleep(2)
+            
             # ========== 步骤6: 预占设备（第二次） ==========
             t0 = _time.time()
             yield _yield_step(6, "预占设备（第二次）", "running")
@@ -1166,7 +1174,8 @@ def resend_cross_task_stream(sub_order_id, order_id, task_seq, server_ip="10.68.
                     f"无法解析 sub_order_id: {current_sub_order_id}")
                 yield _yield_done(False, "生成新子任务ID失败", round((_time.time() - total_t0) * 1000, 1))
                 return
-            yield _yield_step(7, "生成新子任务ID", "ok", round((_time.time() - t0) * 1000, 1))
+            yield _yield_step(7, "生成新子任务ID", "ok", round((_time.time() - t0) * 1000, 1),
+                detail={"新子任务ID": new_sub_order_id, "原子任务ID": current_sub_order_id})
             
             # ========== 步骤8: 修改数据库状态 ==========
             t0 = _time.time()
