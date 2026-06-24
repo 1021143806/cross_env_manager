@@ -264,15 +264,18 @@ document.addEventListener('DOMContentLoaded', function () {
         cy.on('tap', '.server, .logfile, .query, .error_query', function (evt) { showKgPanel(evt.target); });
         cy.on('tap', function (evt) { if (evt.target === cy) { closeTopoDetail(); closeKgPanel(); } });
 
-        // ── 拖拽物理：关联节点弹性跟随 + 松手回弹 ──
+        // ── 拖拽物理：关联节点弹性跟随 + 松手回弹（仅真实拖动时触发）──
         if (currentLayout === 'kg') {
-            var dragOrigins = {};
+            var dragOrigins = {}, dragMoved = {};
             cy.on('grab', 'node', function (evt) {
                 var n = evt.target;
                 dragOrigins[n.id()] = { x: n.position('x'), y: n.position('y') };
+                dragMoved[n.id()] = false;
             });
             cy.on('drag', 'node', function (evt) {
-                var n = evt.target, np = n.position();
+                var n = evt.target;
+                dragMoved[n.id()] = true;
+                var np = n.position();
                 // 关联节点橡皮筋跟随
                 n.connectedEdges().forEach(function (e) {
                     var other = e.source().id() === n.id() ? e.target() : e.source();
@@ -284,7 +287,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             });
             cy.on('free', 'node', function (evt) {
-                // 松手后轻微弹性布局（从当前位置起算，不跳回原点）
+                var n = evt.target;
+                // 只有真正拖动了（>5px）才触发回弹重排
+                if (!dragMoved[n.id()]) return;
                 cy.layout({
                     name: 'cose',
                     randomize: false,
@@ -295,6 +300,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     animationDuration: 500,
                     fit: false
                 }).run();
+                delete dragMoved[n.id()];
+                delete dragOrigins[n.id()];
             });
         }
 
