@@ -177,6 +177,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     selector: '.runs_on',
                     style: { 'line-color': 'rgba(129,140,248,0.3)', 'width': 1 }
                 },
+                {
+                    selector: '.belongs_to',
+                    style: { 'line-color': 'rgba(129,140,248,0.2)', 'width': 1, 'line-style': 'dashed' }
+                },
                 // 服务器节点 — 大圆紫
                 {
                     selector: '.server',

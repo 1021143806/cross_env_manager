@@ -939,8 +939,8 @@ def _infer_service_from_path(log_dir: str) -> Optional[str]:
 def build_knowledge_graph() -> Dict[str, Any]:
     """构建知识图谱：服务→日志→错误查询 多关系网络
     
-    节点类型: server / service / logfile / query
-    边类型:   runs_on / produces / has_query
+    节点类型: server / branch / service / logfile / query
+    边类型:   runs_on(branch→server) / belongs_to(service→branch) / produces / has_query
     """
     import socket
     
@@ -958,6 +958,30 @@ def build_knowledge_graph() -> Dict[str, Any]:
     
     def _add_edge(src: str, tgt: str, relation: str):
         edges.append({"source": src, "target": tgt, "relation": relation})
+    
+    def _branch_for_path(path: str) -> tuple:
+        """根据路径推断所属分支 (branch_id, branch_label)"""
+        if "/main/app/" in path:
+            return ("branch_main_app", "/main/app")
+        if "/main/server/" in path:
+            return ("branch_main_server", "/main/server")
+        if "/var/log" in path:
+            return ("branch_var_log", "/var/log")
+        if "/main/log/app" in path:
+            return ("branch_main_log_app", "/main/log/app")
+        return (None, None)
+    
+    def _connect_service_to_branch(svc_id: str, log_dir: str):
+        """将服务连接到对应的分支节点，分支再连到服务器"""
+        bid, blabel = _branch_for_path(log_dir)
+        if bid:
+            is_new_branch = bid not in added_ids
+            _add_node(bid, blabel, "branch")
+            _add_edge(svc_id, bid, "belongs_to")
+            if is_new_branch:
+                _add_edge(bid, "server", "runs_on")
+        else:
+            _add_edge(svc_id, "server", "runs_on")
     
     # ── 1. 服务器根节点 ──
     hostname = socket.gethostname()
@@ -991,7 +1015,7 @@ def build_knowledge_graph() -> Dict[str, Any]:
             
             _add_node(svc_id, _fmt_name(svc_name), "service",
                       running=running, log_dir=root_dir)
-            _add_edge(svc_id, "server", "runs_on")
+            _connect_service_to_branch(svc_id, root_dir)
     
     # ── 4. date 快捷查询 → 映射到对应服务 ──
     queries = _load_date_queries()
@@ -1019,7 +1043,7 @@ def build_knowledge_graph() -> Dict[str, Any]:
             running = svc.lower() in sup_running
             _add_node(svc_id, _fmt_name(svc), "service",
                       running=running, log_dir=q["folder"])
-            _add_edge(svc_id, "server", "runs_on")
+            _connect_service_to_branch(svc_id, q["folder"])
         
         _add_edge(svc_id, q_id, "has_query")
     
@@ -1035,7 +1059,7 @@ def build_knowledge_graph() -> Dict[str, Any]:
         
         _add_node(svc_id, _fmt_name(svc_name), "service",
                   running=running, log_dir=log_dir)
-        _add_edge(svc_id, "server", "runs_on")
+        _connect_service_to_branch(svc_id, log_dir)
         
         # 找日志文件
         lp = Path(log_dir)
