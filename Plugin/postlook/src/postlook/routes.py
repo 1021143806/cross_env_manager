@@ -373,6 +373,46 @@ async def self_logs(lines: int = 100, keyword: str = None):
     }
 
 
+@router.get("/api/download")
+async def download_file(path: str = Query(..., description="要下载的文件绝对路径（必须在白名单内）")):
+    """
+    下载日志文件。
+    仅允许下载日志类文件（.log/.out/.txt/.gz 等），
+    禁止下载脚本、配置、证书、可执行文件等非日志文件。
+    拓扑图发现的项目目录自动放行。
+    """
+    # 先在白名单中查找
+    try:
+        resolved = resolve_folder(path, app_config.ROOT_DIRS)
+    except PermissionError:
+        # 回退：拓扑扫描发现的项目目录也放行
+        resolved = _resolve_with_topo_dirs(path)
+        if resolved is None:
+            raise HTTPException(status_code=403, detail=f"目录不在白名单内: {path}")
+
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail=f"文件不存在: {path}")
+    if not resolved.is_file():
+        raise HTTPException(status_code=400, detail=f"路径不是文件: {path}")
+
+    # 安全：扩展名白名单校验
+    if not is_allowed_download(resolved):
+        raise HTTPException(
+            status_code=403,
+            detail=f"文件类型不允许下载 (仅允许日志类文件): {resolved.name}"
+        )
+
+    # 安全：文件大小上限
+    file_size = resolved.stat().st_size
+    max_size = app_config.MAX_DOWNLOAD_SIZE
+    if file_size > max_size:
+        size_mb = file_size / (1024 * 1024)
+        limit_mb = max_size / (1024 * 1024)
+        raise HTTPException(
+            status_code=413,
+            detail=f"文件过大 ({size_mb:.1f}MB)，超过下载上限 {limit_mb:.0f}MB"
+        )
+
     # 流式返回 — 用 generator 严格截断到 stat 快照大小
     # 避免 h11 的 "Too much data for declared Content-Length" 错误
     # （日志文件正在写入时，sendfile 可能发送超出 Content-Length 的数据）
