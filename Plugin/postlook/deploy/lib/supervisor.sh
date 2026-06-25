@@ -135,11 +135,13 @@ configure_supervisor() {
     if [ "${RELOAD_MODE:-false}" = "true" ]; then
         UVICORN_CMD="$UVICORN_CMD --reload"
     fi
-    # SSL 自签证书（如果存在）
-    local SSL_DIR="$(dirname "$(dirname "$(dirname "$DEPLOY_ROOT")")")/ssl"
+    # SSL 自签证书（默认启用，如果存在则自动追加）
+    local SSL_DIR="$PROJECT_ROOT/ssl"
     if [ -f "$SSL_DIR/cert.pem" ] && [ -f "$SSL_DIR/key.pem" ]; then
         UVICORN_CMD="$UVICORN_CMD --ssl-keyfile $SSL_DIR/key.pem --ssl-certfile $SSL_DIR/cert.pem"
-        log_info "已启用 HTTPS（自签证书）"
+        log_info "已启用 HTTPS: $SSL_DIR"
+    else
+        log_warn "SSL 证书不存在 ($SSL_DIR)，将以 HTTP 模式运行"
     fi
     log_info "启动命令: $UVICORN_CMD"
 
