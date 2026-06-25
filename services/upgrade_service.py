@@ -609,29 +609,48 @@ def _update_postlook_supervisor_ssl():
     """更新 postlook supervisor 配置以启用 HTTPS（自签证书）
     在 trigger_restart 前调用，确保 supervisor 配置与 cert 文件同步
     """
-    import shutil
+    import shutil, glob as _glob
+    
     ssl_dir = os.path.join(BASE_DIR, 'Plugin', 'postlook', 'ssl')
     keyfile = os.path.join(ssl_dir, 'key.pem')
     certfile = os.path.join(ssl_dir, 'cert.pem')
     
     if not os.path.isfile(keyfile) or not os.path.isfile(certfile):
-        print(f"[Upgrade] SSL cert 不存在，跳过 HTTPS 配置")
+        print(f"[Upgrade] SSL cert 不存在 ({ssl_dir})，跳过 HTTPS 配置")
         return {'status': 'skip', 'detail': 'cert files not found'}
     
-    # 查找 supervisor 配置文件
+    # 查找 supervisor 配置文件（多种路径 + glob 搜索）
     config_paths = [
         '/main/server/supervisor/conf.d/postlook.conf',
         '/main/app/supervisor/conf.d/postlook.conf',
+        '/etc/supervisor/conf.d/postlook.conf',
+        '/etc/supervisord.d/postlook.conf',
     ]
+    # glob 搜索兜底
+    for pattern in ['/main/**/supervisor*/conf.d/postlook.conf', '/etc/**/postlook.conf']:
+        try:
+            matches = _glob.glob(pattern, recursive=True)
+            config_paths.extend(matches)
+        except Exception:
+            pass
+    
     config_path = None
     for p in config_paths:
         if os.path.exists(p):
             config_path = p
+            print(f"[Upgrade] 找到 supervisor 配置: {config_path}")
             break
     
     if not config_path:
-        print(f"[Upgrade] 未找到 postlook supervisor 配置")
-        return {'status': 'skip', 'detail': 'config not found'}
+        # 最后尝试: supervisorctl 查配置路径
+        try:
+            r = subprocess.run(['supervisorctl', 'status', 'postlook'], 
+                             timeout=5, capture_output=True, text=True)
+            print(f"[Upgrade] supervisorctl status: {r.stdout.strip()[:200]}")
+        except Exception:
+            pass
+        print(f"[Upgrade] 未找到 postlook supervisor 配置，已尝试: {config_paths[:5]}")
+        return {'status': 'skip', 'detail': f'config not found, tried: {config_paths[:4]}'}
     
     with open(config_path, 'r') as f:
         content = f.read()
@@ -641,22 +660,17 @@ def _update_postlook_supervisor_ssl():
         print(f"[Upgrade] SSL 已配置，跳过")
         return {'status': 'skip', 'detail': 'already configured'}
     
-    # 插入 SSL 参数（匹配 uvicorn 命令尾部）
+    # 插入 SSL 参数
     ssl_params = f' --ssl-keyfile {keyfile} --ssl-certfile {certfile}'
     
     # 尝试多种模式匹配
-    patterns = [
-        '--host 0.0.0.0 --port 5011',
-        '--host 0.0.0.0',
-    ]
     new_content = content
-    for pat in patterns:
-        if pat in content:
-            new_content = content.replace(pat, pat + ssl_params)
-            break
-    
-    if new_content == content:
-        # 尝试在行尾追加（command= 那行）
+    if '--port 5011' in content and '--ssl-keyfile' not in content:
+        new_content = content.replace('--port 5011', '--port 5011' + ssl_params)
+    elif '--host 0.0.0.0' in content and '--ssl-keyfile' not in content:
+        new_content = content.replace('--host 0.0.0.0', '--host 0.0.0.0' + ssl_params)
+    else:
+        # 尝试在 command= 行尾追加
         lines = content.split('\n')
         new_lines = []
         for line in lines:
@@ -665,28 +679,29 @@ def _update_postlook_supervisor_ssl():
             new_lines.append(line)
         new_content = '\n'.join(new_lines)
     
-    if new_content != content:
-        # 备份
-        shutil.copy2(config_path, config_path + '.bak')
-        with open(config_path, 'w') as f:
-            f.write(new_content)
-        print(f"[Upgrade] supervisor 配置已更新: {config_path}")
-        print(f"[Upgrade] 新增 SSL 参数: {ssl_params}")
-        
-        # reload supervisor 配置
-        import subprocess as _sp
-        for sctl in ['/usr/local/bin/supervisorctl', '/usr/bin/supervisorctl', 'supervisorctl']:
-            try:
-                _sp.run([sctl, 'reread'], timeout=10, capture_output=True)
-                _sp.run([sctl, 'update', 'postlook'], timeout=10, capture_output=True)
-                print(f"[Upgrade] supervisorctl reread+update OK (via {sctl})")
-                break
-            except Exception:
-                continue
-        
-        return {'status': 'ok', 'detail': 'SSL configured'}
+    if new_content == content:
+        print(f"[Upgrade] 无法匹配 supervisor 配置模式，内容前200字符: {content[:200]}")
+        return {'status': 'skip', 'detail': 'no matching pattern in config'}
     
-    return {'status': 'skip', 'detail': 'no matching pattern'}
+    # 备份
+    shutil.copy2(config_path, config_path + '.bak')
+    with open(config_path, 'w') as f:
+        f.write(new_content)
+    print(f"[Upgrade] supervisor 配置已更新: {config_path}")
+    print(f"[Upgrade] 新增: {ssl_params}")
+    
+    # reload supervisor 配置
+    import subprocess as _sp
+    for sctl in ['/usr/local/bin/supervisorctl', '/usr/bin/supervisorctl', 'supervisorctl']:
+        try:
+            _sp.run([sctl, 'reread'], timeout=10, capture_output=True)
+            _sp.run([sctl, 'update', 'postlook'], timeout=10, capture_output=True)
+            print(f"[Upgrade] supervisorctl reread+update OK (via {sctl})")
+            break
+        except Exception as e:
+            print(f"[Upgrade] {sctl} error: {e}")
+    
+    return {'status': 'ok', 'detail': 'SSL configured'}
 
 
 def trigger_restart(delay: int = 3):

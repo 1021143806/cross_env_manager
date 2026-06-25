@@ -125,6 +125,14 @@ def api_upgrade():
     result = svc['do_upgrade'](tmp_path, remark=remark)
 
     if result['success']:
+        # 同步更新 postlook supervisor 配置（HTTPS 自签证书）
+        try:
+            from services.upgrade_service import _update_postlook_supervisor_ssl
+            ssl_result = _update_postlook_supervisor_ssl()
+            print(f"[Upgrade] SSL supervisor update: {ssl_result}")
+        except Exception as e:
+            print(f"[Upgrade] SSL supervisor update error: {e}")
+        
         # 延迟重启
         svc['trigger_restart'](delay=3)
         resp = {
