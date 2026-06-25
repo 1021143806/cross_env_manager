@@ -10,6 +10,16 @@ readonly KEY_PACKAGES=("fastapi" "uvicorn" "pydantic" "starlette" "anyio" "pydan
 install_deps() {
     step "4" "检查离线依赖包"
 
+    local VENV_PATH="$PROJECT_DIR/${VENV_DIR:-venv}"
+
+    # 如果依赖已安装，跳过
+    if [ -f "$VENV_PATH/bin/python" ]; then
+        if "$VENV_PATH/bin/python" -c "import fastapi,uvicorn" 2>/dev/null; then
+            log_ok "依赖已安装，跳过离线安装"
+            return 0
+        fi
+    fi
+
     local VENDOR_BASE="$PROJECT_DIR/${VENDOR_DIR:-deploy/vendor_packages}"
     local VENDOR_COMMON="$VENDOR_BASE/common"
     local VENDOR_ABI="$VENDOR_BASE/${PYTHON_ABI}"

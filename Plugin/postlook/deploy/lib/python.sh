@@ -86,8 +86,15 @@ create_venv() {
         die "VENV_DIR 未配置，拒绝删除操作"
     fi
 
-    # 先删除旧 venv（使用安全函数）
+    # 如果 venv 已存在且包含有效的 python，跳过创建
+    if [ -d "$VENV_PATH" ] && [ -f "$VENV_PATH/bin/python" ] && [ -f "$VENV_PATH/bin/pip" ]; then
+        log_ok "虚拟环境已存在: $VENV_PATH，跳过创建"
+        return 0
+    fi
+
+    # 先删除旧的无效 venv（使用安全函数）
     if [ -d "$VENV_PATH" ]; then
+        log_warn "虚拟环境不完整（缺少 python/pip），重建..."
         _safe_rm_dir "$VENV_PATH" "旧虚拟环境"
     fi
 
