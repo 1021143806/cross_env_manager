@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # 应用版本号
-APP_VERSION = '2.6.2'
+APP_VERSION = '2.7.0'
 
 # Python 3.9兼容性修改：使用pymysql替代mysql.connector
 import pymysql
@@ -31,40 +31,63 @@ import logging
 from flask import template_rendered
 from functools import wraps
 
-# 导入查询功能模块
-try:
-    from modules.query import (
-        task_query,
-        device_validation,
-        cross_model_query,
-        join_point_query,
-        shelf_model_query,
-        shelf_query,
-        agv_status,
-        join_qr_node_query,
-        task_query_extended,
-        device_validation_extended
-    )
-    QUERY_MODULES_AVAILABLE = True
-except ImportError as e:
-    print(f"警告: 查询功能模块导入失败: {e}")
-    print("查询功能将不可用")
-    QUERY_MODULES_AVAILABLE = False
-    # 创建空模块占位符
-    class EmptyModule:
-        def __getattr__(self, name):
-            return lambda *args, **kwargs: None
-    task_query = EmptyModule()
-    device_validation = EmptyModule()
-    cross_model_query = EmptyModule()
-    join_point_query = EmptyModule()
-    shelf_model_query = EmptyModule()
-    shelf_query = EmptyModule()
-    agv_status = EmptyModule()
-    join_qr_node_query = EmptyModule()
-    task_query_extended = EmptyModule()
-    device_validation_extended = EmptyModule()
-    task_query_extended = EmptyModule()
+# 导入查询功能模块（根据模块开关决定是否加载）
+# 创建空占位符，关闭模块时各函数返回 None
+class _EmptyModule:
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+
+task_query = _EmptyModule()
+device_validation = _EmptyModule()
+cross_model_query = _EmptyModule()
+join_point_query = _EmptyModule()
+shelf_model_query = _EmptyModule()
+shelf_query = _EmptyModule()
+agv_status = _EmptyModule()
+join_qr_node_query = _EmptyModule()
+task_query_extended = _EmptyModule()
+device_validation_extended = _EmptyModule()
+
+QUERY_MODULES_AVAILABLE = False
+
+def _init_query_modules():
+    """根据模块开关初始化查询模块（在配置加载后调用）"""
+    global QUERY_MODULES_AVAILABLE, task_query, device_validation, cross_model_query
+    global join_point_query, shelf_model_query, shelf_query, agv_status
+    global join_qr_node_query, task_query_extended, device_validation_extended
+
+    if not MODULES.get('query', True):
+        print("[模块] query 已禁用，查询 API 将返回空结果")
+        return
+
+    try:
+        from modules.query import (
+            task_query as _tq,
+            device_validation as _dv,
+            cross_model_query as _cmq,
+            join_point_query as _jpq,
+            shelf_model_query as _smq,
+            shelf_query as _sq,
+            agv_status as _as,
+            join_qr_node_query as _jqnq,
+            task_query_extended as _tqe,
+            device_validation_extended as _dve,
+        )
+        QUERY_MODULES_AVAILABLE = True
+        task_query = _tq
+        device_validation = _dv
+        cross_model_query = _cmq
+        join_point_query = _jpq
+        shelf_model_query = _smq
+        shelf_query = _sq
+        agv_status = _as
+        join_qr_node_query = _jqnq
+        task_query_extended = _tqe
+        device_validation_extended = _dve
+        print("[模块] query 模块已加载")
+    except ImportError as e:
+        print(f"警告: 查询功能模块导入失败: {e}")
+        print("查询功能将不可用")
 
 # 尝试导入tomli（Python 3.11+内置tomllib，低版本使用tomli）
 try:
@@ -157,6 +180,17 @@ args = parse_arguments()
 # 加载配置
 config = load_config(args.config)
 
+# ── 模块开关配置 ──
+_modules_config = config.get('modules', {})
+MODULES = {
+    'config_module': _modules_config.get('config_module', True),
+    'dispatch': _modules_config.get('dispatch', True),
+    'task': _modules_config.get('task', True),
+    'query': _modules_config.get('query', True),
+    'postlook': _modules_config.get('postlook', True),
+}
+print(f"[模块] 配置: {', '.join(f'{k}={v}' for k, v in sorted(MODULES.items()))}")
+
 # 解析实际使用的配置文件路径（供 SystemConfigService 使用）
 _config_file_path = args.config
 if not _config_file_path:
@@ -182,9 +216,50 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 # 支持 JSON 响应中的中文
 app.json.ensure_ascii = False
 
+# ── 模块开关中间件：拦截已关闭模块的路由访问 ──
+# 注意：部分模块路由在 app.py 中通过 @app.route 注册，无法条件跳过。
+# 此中间件在请求到达路由处理函数前拦截，返回 404。
+_MODULE_ROUTE_PREFIXES = {
+    # prefix → module_key
+    '/dispatch': 'dispatch',
+    '/api/dispatch': 'dispatch',
+    '/addtask': 'task',
+    '/api/task': 'task',
+    '/query': 'query',
+    '/api/query': 'query',
+    '/postlook': 'postlook',
+    '/api/postlook': 'postlook',
+    '/search': 'config_module',
+    '/template': 'config_module',
+    '/edit': 'config_module',
+    '/copy': 'config_module',
+    '/api/template': 'config_module',
+    '/api/search_suggestions': 'config_module',
+    '/join_qr_nodes': 'config_module',
+    '/api/join_qr_nodes': 'config_module',
+    '/custom_table': 'config_module',
+    '/api/custom_table': 'config_module',
+    '/pair': 'config_module',
+    '/api/pair': 'config_module',
+    '/api/stats': 'config_module',  # stats API is in config module
+}
+
+
+@app.before_request
+def _block_disabled_modules():
+    """如果请求路径属于已关闭的模块，返回 404"""
+    if request.endpoint == 'static':
+        return
+    path = request.path
+    for prefix, module_key in _MODULE_ROUTE_PREFIXES.items():
+        if path.startswith(prefix):
+            if not MODULES.get(module_key, True):
+                from flask import abort
+                abort(404)
+
 @app.context_processor
 def inject_version():
-    return {'app_version': APP_VERSION}
+    return {'app_version': APP_VERSION, 'modules': MODULES}
 
 # tracemalloc.start() 已移除 — 参见 app.py 顶部注释
 
@@ -2578,12 +2653,17 @@ if __name__ == '__main__':
     # ========================================================================
     try:
         from routes import register_blueprints
-        register_blueprints(app)
+        register_blueprints(app, modules=MODULES)
         print(f"[启动] 蓝图路由已注册")
     except Exception as e:
         import traceback
         print(f"[启动] 警告: 蓝图注册失败，使用原有路由: {e}")
         traceback.print_exc()
+
+    # ========================================================================
+    # 根据模块开关初始化
+    # ========================================================================
+    _init_query_modules()
     
     # ========================================================================
     # 同步配置：JSON 源 → JS 兼容文件
@@ -2608,24 +2688,24 @@ if __name__ == '__main__':
         print(f"[启动] 警告: 缓存初始化失败: {e}")
     
     # ========================================================================
-    # 启动自恢复后台线程
+    # 启动自恢复后台线程（dispatch 模块）
     # ========================================================================
-    try:
-        from routes.dispatch_routes import _start_self_heal_thread
-        _start_self_heal_thread()
-        print(f"[启动] 自恢复后台线程已启动")
-    except Exception as e:
-        print(f"[启动] 警告: 自恢复线程启动失败: {e}")
-    
-    # ========================================================================
-    # 启动定时轮询调度后台线程
-    # ========================================================================
-    try:
-        from routes.dispatch_routes import _start_poll_dispatch_thread
-        _start_poll_dispatch_thread()
-        print(f"[启动] 定时轮询调度后台线程已启动")
-    except Exception as e:
-        print(f"[启动] 警告: 定时轮询调度线程启动失败: {e}")
+    if MODULES.get('dispatch', True):
+        try:
+            from routes.dispatch_routes import _start_self_heal_thread
+            _start_self_heal_thread()
+            print(f"[启动] 自恢复后台线程已启动")
+        except Exception as e:
+            print(f"[启动] 警告: 自恢复线程启动失败: {e}")
+
+        try:
+            from routes.dispatch_routes import _start_poll_dispatch_thread
+            _start_poll_dispatch_thread()
+            print(f"[启动] 定时轮询调度后台线程已启动")
+        except Exception as e:
+            print(f"[启动] 警告: 定时轮询调度线程启动失败: {e}")
+    else:
+        print(f"[模块] dispatch 已禁用，跳过调度后台线程")
     
     # 获取Flask运行参数（命令行参数优先，然后是配置，最后是环境变量）
     # 注意：配置文件使用小写字段名（如 host, port），环境变量使用大写（如 FLASK_HOST, FLASK_PORT）

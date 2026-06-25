@@ -19,7 +19,7 @@
         (function(){
             // --- 模块 ---
             var path = window.location.pathname;
-            var mod = 'config';
+            var mod = 'system';
             if (path.indexOf('/dispatch') === 0) mod = 'dispatch';
             else if (path.indexOf('/addtask') === 0) mod = 'task';
             else if (path.indexOf('/query') === 0) mod = 'query';
@@ -28,6 +28,10 @@
                      path.indexOf('/platform-switch') === 0 || path.indexOf('/docs') === 0 ||
                      path.indexOf('/system/config') === 0 || path.indexOf('/config-editor') === 0 ||
                      path.indexOf('/system/upgrade') === 0 || path.indexOf('/system/plugins') === 0) mod = 'system';
+            else if (path === '/' || path.indexOf('/pair') === 0 || path.indexOf('/template') === 0 ||
+                     path.indexOf('/search') === 0 || path.indexOf('/edit') === 0 ||
+                     path.indexOf('/copy') === 0 || path.indexOf('/custom_table') === 0 ||
+                     path.indexOf('/join_qr_nodes') === 0) mod = 'config';
             document.documentElement.setAttribute('data-module', mod);
 
             // --- 主题（从 localStorage 读取，默认 dark）---
@@ -472,24 +476,34 @@
             </ul>
 
             <div class="module-tabs" id="topbarTabs">
+                {% if modules.config_module %}
                 <a class="module-tab" data-module="config" href="/">
                     <i class="bi bi-diagram-3"></i><span>跨环境配置</span>
                 </a>
+                {% endif %}
+                {% if modules.dispatch %}
                 <a class="module-tab" data-module="dispatch" href="/dispatch">
                     <i class="bi bi-truck"></i><span>调车调度</span>
                 </a>
+                {% endif %}
+                {% if modules.task %}
                 <a class="module-tab" data-module="task" href="/addtask">
                     <i class="bi bi-send"></i><span>任务下发</span>
                 </a>
+                {% endif %}
+                {% if modules.query %}
                 <a class="module-tab" data-module="query" href="/query">
                     <i class="bi bi-search"></i><span>任务查询</span>
                 </a>
+                {% endif %}
                 <a class="module-tab" data-module="system" href="/monitor">
                     <i class="bi bi-gear"></i><span>系统管理</span>
                 </a>
+                {% if modules.postlook %}
                 <a class="module-tab" data-module="postlook" href="/postlook">
                     <i class="bi bi-binoculars"></i><span>日志查看</span>
                 </a>
+                {% endif %}
             </div>
 
             <!-- 右侧：用户信息等 -->
@@ -531,6 +545,7 @@
             <nav class="mt-2">
 
                 <!-- ===== 跨环境配置 ===== -->
+                {% if modules.config_module %}
                 <ul class="nav sidebar-menu flex-column" data-sidebar-module="config" data-lte-toggle="treeview">
                     <li class="nav-header">配置管理</li>
                     <li class="nav-item"><a href="/" class="nav-link" data-nav="home"><i class="nav-icon bi bi-grid-1x2"></i><p>配置总览</p></a></li>
@@ -542,8 +557,10 @@
                     <li class="nav-header">帮助</li>
                     <li class="nav-item"><a href="/docs/module/template" class="nav-link" data-nav="help"><i class="nav-icon bi bi-question-circle"></i><p>配置帮助</p></a></li>
                 </ul>
+                {% endif %}
 
                 <!-- ===== 调车调度 ===== -->
+                {% if modules.dispatch %}
                 <ul class="nav sidebar-menu flex-column" data-sidebar-module="dispatch" data-lte-toggle="treeview">
                     <li class="nav-header">调车控制</li>
                     <li class="nav-item"><a href="/dispatch" class="nav-link" data-nav="dispatch-dashboard"><i class="nav-icon bi bi-speedometer2"></i><p>调车看板</p></a></li>
@@ -565,8 +582,10 @@
                     <li class="nav-item"><a href="/dispatch/test" class="nav-link" data-nav="dispatch-test"><i class="nav-icon bi bi-joystick"></i><p>自动驾驶测试</p></a></li>
                     <li class="nav-item"><a href="/docs/module/dispatch" class="nav-link" data-nav="help"><i class="nav-icon bi bi-question-circle"></i><p>调车帮助</p></a></li>
                 </ul>
+                {% endif %}
 
                 <!-- ===== 任务下发 ===== -->
+                {% if modules.task %}
                 <ul class="nav sidebar-menu flex-column" data-sidebar-module="task" data-lte-toggle="treeview">
                     <li class="nav-header">任务操作</li>
                     <li class="nav-item"><a href="/addtask" class="nav-link" data-nav="addtask"><i class="nav-icon bi bi-send-check"></i><p>任务下发</p></a></li>
@@ -578,8 +597,10 @@
                     <li class="nav-header">帮助</li>
                     <li class="nav-item"><a href="/addtask/help" class="nav-link" data-nav="help"><i class="nav-icon bi bi-question-circle"></i><p>下发帮助</p></a></li>
                 </ul>
+                {% endif %}
 
                 <!-- ===== 任务查询 ===== -->
+                {% if modules.query %}
                 <ul class="nav sidebar-menu flex-column" data-sidebar-module="query" data-lte-toggle="treeview">
                     <li class="nav-header">查询功能</li>
                     <li class="nav-item"><a href="/query" class="nav-link" data-nav="query-home"><i class="nav-icon bi bi-search"></i><p>统一查询</p></a></li>
@@ -588,6 +609,7 @@
                     <li class="nav-header">帮助</li>
                     <li class="nav-item"><a href="/query/help" class="nav-link" data-nav="help"><i class="nav-icon bi bi-question-circle"></i><p>查询帮助</p></a></li>
                 </ul>
+                {% endif %}
 
                 <!-- ===== 系统管理 ===== -->
                 <ul class="nav sidebar-menu flex-column" data-sidebar-module="system" data-lte-toggle="treeview">
@@ -604,6 +626,7 @@
                 </ul>
 
                 <!-- ===== 日志查看 (Postlook) ===== -->
+                {% if modules.postlook %}
                 <ul class="nav sidebar-menu flex-column" data-sidebar-module="postlook">
                     <li class="nav-header">日志查看</li>
                     <li class="nav-item"><a class="nav-link active" data-nav="postlook-logs" href="/postlook#logs"><i class="nav-icon bi bi-file-text"></i><p>日志查询</p></a></li>
@@ -611,6 +634,7 @@
                     <li class="nav-item"><a class="nav-link" data-nav="postlook-status" href="/postlook#status"><i class="nav-icon bi bi-activity"></i><p>服务状态</p></a></li>
                     <li class="nav-item"><a class="nav-link" data-nav="postlook-topology" href="/postlook#topology"><i class="nav-icon bi bi-diagram-3"></i><p>拓扑</p></a></li>
                 </ul>
+                {% endif %}
 
             </nav>
         </div>
@@ -738,29 +762,45 @@
         const sidebarModules = document.querySelectorAll('[data-sidebar-module]');
 
         // 根据当前 URL 确定活跃模块
-        let activeModule = 'config';
+        let activeModule = 'system';  // 默认系统管理
         if (path.startsWith('/dispatch')) activeModule = 'dispatch';
         else if (path.startsWith('/addtask')) activeModule = 'task';
         else if (path.startsWith('/query')) activeModule = 'query';
-        else if (path.startsWith('/monitor') || path.startsWith('/stats') ||
-                 path.startsWith('/platform-switch') || path.startsWith('/docs') ||
-                 path.startsWith('/system/config') || path.startsWith('/config-editor') ||
-                 path.startsWith('/system/upgrade')) activeModule = 'system';
         else if (path.startsWith('/postlook')) activeModule = 'postlook';
         else if (path.startsWith('/pair') || path.startsWith('/template/device-sync') ||
                  path.startsWith('/custom_table') || path.startsWith('/search') ||
                  path.startsWith('/template') || path.startsWith('/edit') ||
-                 path.startsWith('/copy') || path === '/') activeModule = 'config';
+                 path.startsWith('/copy') || path.startsWith('/join_qr_nodes') ||
+                 path === '/') activeModule = 'config';
 
         // 激活顶部 Tab
         topbarTabs.forEach(t => {
             t.classList.toggle('active', t.dataset.module === activeModule);
         });
 
-        // 显示对应侧边栏
+        // 显示对应侧边栏（如果存在）
+        let shown = false;
         sidebarModules.forEach(s => {
-            s.style.display = s.dataset.sidebarModule === activeModule ? '' : 'none';
+            if (s.dataset.sidebarModule === activeModule) {
+                s.style.display = '';
+                shown = true;
+            }
         });
+        // 如果目标模块的侧边栏不存在（已关闭），回退显示系统管理侧边栏
+        if (!shown) {
+            sidebarModules.forEach(s => {
+                if (s.dataset.sidebarModule === 'system') {
+                    s.style.display = '';
+                }
+            });
+            // 修正顶栏激活为 system
+            topbarTabs.forEach(t => {
+                if (t.dataset.module !== 'system') t.classList.remove('active');
+                else t.classList.add('active');
+            });
+            // 修正页面 data-module
+            document.documentElement.setAttribute('data-module', 'system');
+        }
 
         // 根据当前 URL 激活侧边栏菜单项（含 hash 支持）
         function updateSidebarActive() {
