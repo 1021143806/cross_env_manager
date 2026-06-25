@@ -25,19 +25,19 @@ def register_blueprints(app, modules=None):
         return modules.get(key, default)
 
     # ── 系统管理（始终启用） ──
-    from routes.stats_routes import stats_bp
     from routes.system_routes import system_bp
     from routes.docs_routes import docs_bp
     from routes.monitor_routes import monitor_bp
     from routes.platform_switch_routes import platform_switch_bp
     from routes.system_upgrade_routes import upgrade_bp
 
-    # ── 跨环境配置 ──
+    # ── 跨环境配置（含数据统计，因为统计的是配置相关的模板/服务器数据）──
     if _enabled("config_module"):
         from routes.template_routes import template_bp
         from routes.join_qr_routes import join_qr_bp
         from routes.custom_table_routes import custom_table_bp
         from routes.config_routes import config_bp
+        from routes.stats_routes import stats_bp
 
     # ── 调车调度 ──
     if _enabled("dispatch"):
@@ -49,7 +49,6 @@ def register_blueprints(app, modules=None):
 
     # 注册：始终启用
     app.register_blueprint(auth_bp)
-    app.register_blueprint(stats_bp)
     app.register_blueprint(system_bp)
     app.register_blueprint(docs_bp)
     app.register_blueprint(monitor_bp)
@@ -62,7 +61,8 @@ def register_blueprints(app, modules=None):
         app.register_blueprint(join_qr_bp)
         app.register_blueprint(custom_table_bp)
         app.register_blueprint(config_bp)
-        print("[Routes] config_module 已注册")
+        app.register_blueprint(stats_bp)
+        print("[Routes] config_module 已注册 (含数据统计)")
 
     if _enabled("dispatch"):
         app.register_blueprint(dispatch_bp)

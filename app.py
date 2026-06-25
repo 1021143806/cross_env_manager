@@ -241,7 +241,8 @@ _MODULE_ROUTE_PREFIXES = {
     '/api/custom_table': 'config_module',
     '/pair': 'config_module',
     '/api/pair': 'config_module',
-    '/api/stats': 'config_module',  # stats API is in config module
+    '/stats': 'config_module',
+    '/api/stats': 'config_module',
 }
 
 

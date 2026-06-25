@@ -28,10 +28,14 @@
                      path.indexOf('/platform-switch') === 0 || path.indexOf('/docs') === 0 ||
                      path.indexOf('/system/config') === 0 || path.indexOf('/config-editor') === 0 ||
                      path.indexOf('/system/upgrade') === 0 || path.indexOf('/system/plugins') === 0) mod = 'system';
+            else if (path.indexOf('/monitor') === 0 ||
+                     path.indexOf('/platform-switch') === 0 || path.indexOf('/docs') === 0 ||
+                     path.indexOf('/system/config') === 0 || path.indexOf('/config-editor') === 0 ||
+                     path.indexOf('/system/upgrade') === 0 || path.indexOf('/system/plugins') === 0) mod = 'system';
             else if (path === '/' || path.indexOf('/pair') === 0 || path.indexOf('/template') === 0 ||
                      path.indexOf('/search') === 0 || path.indexOf('/edit') === 0 ||
                      path.indexOf('/copy') === 0 || path.indexOf('/custom_table') === 0 ||
-                     path.indexOf('/join_qr_nodes') === 0) mod = 'config';
+                     path.indexOf('/join_qr_nodes') === 0 || path.indexOf('/stats') === 0) mod = 'config';
             document.documentElement.setAttribute('data-module', mod);
 
             // --- 主题（从 localStorage 读取，默认 dark）---
@@ -553,6 +557,7 @@
                     <li class="nav-item"><a href="/pair/list" class="nav-link" data-nav="join-qr"><i class="nav-icon bi bi-signpost"></i><p>交接点配置</p></a></li>
                     <li class="nav-item"><a href="/template/device-sync" class="nav-link" data-nav="device-sync"><i class="nav-icon bi bi-arrow-left-right"></i><p>设备同步</p></a></li>
                     <li class="nav-item"><a href="/custom_table" class="nav-link" data-nav="custom-table"><i class="nav-icon bi bi-table"></i><p>定制表编辑</p></a></li>
+                    <li class="nav-item"><a href="/stats" class="nav-link" data-nav="stats"><i class="nav-icon bi bi-graph-up"></i><p>数据统计</p></a></li>
 
                     <li class="nav-header">帮助</li>
                     <li class="nav-item"><a href="/docs/module/template" class="nav-link" data-nav="help"><i class="nav-icon bi bi-question-circle"></i><p>配置帮助</p></a></li>
@@ -616,7 +621,6 @@
                     <li class="nav-header">系统</li>
                     <li class="nav-item"><a href="/system/config" class="nav-link" data-nav="system-config"><i class="nav-icon bi bi-gear-wide-connected"></i><p>系统配置</p></a></li>
                     <li class="nav-item"><a href="/monitor" class="nav-link" data-nav="monitor"><i class="nav-icon bi bi-activity"></i><p>系统监控</p></a></li>
-                    <li class="nav-item"><a href="/stats" class="nav-link" data-nav="stats"><i class="nav-icon bi bi-graph-up"></i><p>数据统计</p></a></li>
                     <li class="nav-item"><a href="/platform-switch" class="nav-link" data-nav="platform-switch"><i class="nav-icon bi bi-hdd-network"></i><p>平台切换</p></a></li>
                     <li class="nav-item"><a href="/system/upgrade" class="nav-link" data-nav="system-upgrade"><i class="nav-icon bi bi-cloud-upload"></i><p>升级管理</p></a></li>
                     <li class="nav-item"><a href="/system/plugins" class="nav-link" data-nav="system-plugins"><i class="nav-icon bi bi-puzzle"></i><p>插件管理</p></a></li>
@@ -771,7 +775,7 @@
                  path.startsWith('/custom_table') || path.startsWith('/search') ||
                  path.startsWith('/template') || path.startsWith('/edit') ||
                  path.startsWith('/copy') || path.startsWith('/join_qr_nodes') ||
-                 path === '/') activeModule = 'config';
+                 path.startsWith('/stats') || path === '/') activeModule = 'config';
 
         // 激活顶部 Tab
         topbarTabs.forEach(t => {
