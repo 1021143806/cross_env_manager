@@ -119,9 +119,12 @@
             <h3 class="mb-1"><i class="bi bi-gear-wide-connected text-info"></i> CEM 系统配置</h3>
             <p class="text-muted small mb-0">管理系统级配置参数 — 修改后立即生效，建议先创建备份</p>
         </div>
-        <div id="save-global-btn" style="display:none;">
+        <div id="save-global-btn" style="display:flex;gap:0.5rem;">
             <button class="btn btn-primary btn-sm" onclick="saveFormConfig()">
                 <i class="bi bi-check-circle me-1"></i>保存配置
+            </button>
+            <button class="btn btn-outline-warning btn-sm" onclick="restartCEM()">
+                <i class="bi bi-arrow-repeat me-1"></i>重启服务
             </button>
         </div>
     </div>
@@ -568,9 +571,29 @@ async function loadSystemInfo() {
 // ========== 状态提示 ==========
 function showStatus(msg, type) {
     const el = document.getElementById('syscfg-status');
-    const cls = type === 'success' ? 'alert-success' : type === 'danger' ? 'alert-danger' : 'alert-info';
+    const cls = type === 'success' ? 'alert-success' : type === 'danger' ? 'alert-danger' : type === 'warning' ? 'alert-warning' : 'alert-info';
     el.innerHTML = `<div class="alert ${cls} alert-dismissible fade show py-2">${msg}<button type="button" class="btn-close" data-bs-dismiss="alert" style="font-size:0.75rem;"></button></div>`;
-    setTimeout(() => { el.innerHTML = ''; }, 5000);
+    setTimeout(() => { el.innerHTML = ''; }, 8000);
+}
+
+// ========== 重启服务 ==========
+async function restartCEM() {
+    if (!confirm('确认重启 CEM 服务？\n\n当前页面将在 5 秒后自动刷新。')) return;
+    try {
+        showStatus('⏳ 正在发送重启指令...', 'warning');
+        const res = await fetch('/api/system/restart', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            showStatus('✅ ' + data.message + '，页面即将刷新...', 'success');
+            setTimeout(() => { location.reload(); }, 5000);
+        } else {
+            showStatus('❌ ' + (data.error || '重启失败'), 'danger');
+        }
+    } catch(e) {
+        // 重启后连接断开是正常的，等待后刷新
+        showStatus('⏳ 服务正在重启，页面即将刷新...', 'success');
+        setTimeout(() => { location.reload(); }, 5000);
+    }
 }
 
 // ========== 初始化 ==========

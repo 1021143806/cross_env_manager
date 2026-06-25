@@ -216,3 +216,27 @@ def api_switch_db():
 def test_version_tree():
     """测试版本历史树状图页面"""
     return render_template('test_version_tree.html')
+
+
+# ========== 系统重启 ==========
+
+@system_bp.route('/api/system/restart', methods=['POST'])
+@login_required
+@admin_required
+def api_restart_cem():
+    """重启 CEM 服务（通过 supervisorctl，延迟 2 秒确保响应返回）"""
+    import threading
+    import subprocess as sp
+    import time as _time
+
+    def _do_restart():
+        _time.sleep(2)
+        for sctl in ['/usr/local/bin/supervisorctl', '/usr/bin/supervisorctl', 'supervisorctl']:
+            try:
+                sp.run([sctl, 'restart', 'cross_env_manager'], timeout=10, capture_output=True)
+                break
+            except Exception:
+                continue
+
+    threading.Thread(target=_do_restart, daemon=True).start()
+    return jsonify({'success': True, 'message': 'CEM 服务将在 2 秒后重启'})
