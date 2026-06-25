@@ -53,6 +53,19 @@ def health_check():
     return '1000', 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
 
+@system_bp.route('/')
+@login_required
+def index_fallback():
+    """首页路由 — config_module 开启时显示配置总览，关闭时跳转系统配置"""
+    try:
+        import app as _app_mod
+        if _app_mod.MODULES.get('config_module', False):
+            return render_template('index.html')
+    except Exception:
+        pass
+    return redirect(url_for('system.system_config_page'))
+
+
 @system_bp.route('/system/config')
 @login_required
 def system_config_page():
