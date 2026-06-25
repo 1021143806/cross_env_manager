@@ -145,6 +145,13 @@ class SystemConfigService:
                 'login_username': 'admin',
                 'login_password': 'admin123456',
             },
+            'modules': {
+                'config_module': False,
+                'dispatch': False,
+                'task': False,
+                'query': False,
+                'postlook': False,
+            },
         }
 
     def _write_toml(self, config: dict):
@@ -155,13 +162,14 @@ class SystemConfigService:
             f.write(toml_str)
 
     @staticmethod
-    def _dict_to_toml(d, prefix=''):
+    def _dict_to_toml(d, prefix='', is_first=True):
         """将 dict 序列化为 TOML 格式"""
         lines = []
         for key, value in d.items():
             if isinstance(value, dict):
-                lines.append(f'\n[{prefix}{key}]' if prefix else f'[{key}]')
-                lines.append(SystemConfigService._dict_to_toml(value, prefix=f'{prefix}{key}.'))
+                sep = '' if is_first else '\n'
+                lines.append(f'{sep}[{prefix}{key}]' if prefix else f'{sep}[{key}]')
+                lines.append(SystemConfigService._dict_to_toml(value, prefix=f'{prefix}{key}.', is_first=False))
             elif isinstance(value, bool):
                 lines.append(f'{key} = {"true" if value else "false"}')
             elif isinstance(value, int):

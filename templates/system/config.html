@@ -233,6 +233,19 @@
                 </div>
             </div>
         </div>
+
+        <!-- 模块开关 -->
+        <div class="cfg-section">
+            <div class="section-header">
+                <span><i class="bi bi-toggles text-success me-2"></i>模块开关</span>
+                <small class="text-muted">关闭的模块不加载蓝图/路由/后台线程，需重启生效</small>
+            </div>
+            <div class="section-body">
+                <div class="row g-2" id="module-toggles">
+                    <div class="col-12"><small class="text-muted">加载中...</small></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- ============ Tab 2: 源文件编辑 ============ -->
@@ -327,9 +340,42 @@ async function loadFormConfig() {
         document.getElementById('cfg-flask-debug').checked = !!fl.debug;
         document.getElementById('cfg-login-user').value = fl.login_username || 'admin';
         document.getElementById('cfg-login-password').value = fl.login_password || '';
+        loadModuleToggles(c.modules || {});
     } catch(e) {
         showStatus('加载失败: ' + e.message, 'danger');
     }
+}
+
+// ========== 模块开关渲染 ==========
+const MODULE_DEFS = [
+    { key: 'config_module', name: '跨环境配置', icon: 'bi-diagram-3', desc: '交接点配置、定制表编辑、模板管理' },
+    { key: 'dispatch',  name: '调车调度', icon: 'bi-truck', desc: '调车看板、配置、自愈检查、定时轮询' },
+    { key: 'task',      name: '任务下发', icon: 'bi-send', desc: '任务下发、下发配置、配置版本管理' },
+    { key: 'query',     name: '任务查询', icon: 'bi-search', desc: '统一查询、跨环境任务浏览' },
+    { key: 'postlook',  name: '日志查看', icon: 'bi-binoculars', desc: 'Postlook 日志服务嵌入' },
+];
+
+function loadModuleToggles(modules) {
+    const el = document.getElementById('module-toggles');
+    el.innerHTML = MODULE_DEFS.map(m => {
+        const on = modules[m.key] === true;
+        return `<div class="col-12">
+            <div class="d-flex align-items-center justify-content-between p-2 rounded"
+                 style="border:1px solid var(--border-light);background:var(--bg-card-hover);">
+                <div class="d-flex align-items-center gap-3">
+                    <i class="bi ${m.icon} ${on ? 'text-success' : 'text-muted'}" style="font-size:1.2rem;"></i>
+                    <div>
+                        <span style="font-weight:600;font-size:0.88rem;color:var(--text-primary);">${m.name}</span>
+                        <small class="text-muted d-block" style="font-size:0.72rem;">${m.desc}</small>
+                    </div>
+                </div>
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input module-toggle" type="checkbox" data-key="${m.key}" ${on ? 'checked' : ''}
+                           style="cursor:pointer;transform:scale(1.3);">
+                </div>
+            </div>
+        </div>`;
+    }).join('');
 }
 
 async function saveFormConfig() {
@@ -349,8 +395,14 @@ async function saveFormConfig() {
             debug: document.getElementById('cfg-flask-debug').checked,
             login_username: document.getElementById('cfg-login-user').value,
             login_password: document.getElementById('cfg-login-password').value,
-        }
+        },
     };
+    // 收集模块开关
+    const modules = {};
+    document.querySelectorAll('.module-toggle').forEach(toggle => {
+        modules[toggle.dataset.key] = toggle.checked;
+    });
+    config.modules = modules;
     try {
         const res = await fetch('/api/system/config', {
             method: 'POST',
