@@ -437,8 +437,9 @@ def _get_postlook_stats():
     version = '-'
     try:
         import urllib.request
-        req = urllib.request.Request('http://127.0.0.1:5011/api/health')
-        resp = urllib.request.urlopen(req, timeout=3)
+        import ssl as _ssl3
+        req = urllib.request.Request('https://127.0.0.1:5011/api/health')
+        resp = urllib.request.urlopen(req, timeout=3, context=_ssl3._create_unverified_context())
         data = json.loads(resp.read().decode())
         health = 'ok' if data.get('status') == 'ok' else 'error'
         version = data.get('version', '-')

@@ -135,6 +135,12 @@ configure_supervisor() {
     if [ "${RELOAD_MODE:-false}" = "true" ]; then
         UVICORN_CMD="$UVICORN_CMD --reload"
     fi
+    # SSL 自签证书（如果存在）
+    local SSL_DIR="$(dirname "$(dirname "$(dirname "$DEPLOY_ROOT")")")/ssl"
+    if [ -f "$SSL_DIR/cert.pem" ] && [ -f "$SSL_DIR/key.pem" ]; then
+        UVICORN_CMD="$UVICORN_CMD --ssl-keyfile $SSL_DIR/key.pem --ssl-certfile $SSL_DIR/cert.pem"
+        log_info "已启用 HTTPS（自签证书）"
+    fi
     log_info "启动命令: $UVICORN_CMD"
 
     # 备份已有配置（防止误覆盖其他服务）

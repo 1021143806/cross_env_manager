@@ -269,20 +269,22 @@ def restart_postlook():
 def api_plugins_status():
     """获取所有插件运行状态"""
     import urllib.request
+    import ssl as _ssl
+    _ctx = _ssl._create_unverified_context()
     plugins = []
 
     # Postlook 健康检查
     postlook_status = {
         'name': 'Postlook',
         'key': 'postlook',
-        'url': 'http://127.0.0.1:5011',
+        'url': 'https://127.0.0.1:5011',
         'status': 'stopped',
         'version': '-',
         'uptime': '-',
     }
     try:
-        req = urllib.request.Request('http://127.0.0.1:5011/api/health', method='GET')
-        with urllib.request.urlopen(req, timeout=3) as resp:
+        req = urllib.request.Request('https://127.0.0.1:5011/api/health', method='GET')
+        with urllib.request.urlopen(req, timeout=3, context=_ctx) as resp:
             data = resp.read().decode()
             import json
             health = json.loads(data)
@@ -294,8 +296,8 @@ def api_plugins_status():
     # 尝试获取 Postlook 版本（如果 health 没有）
     if postlook_status['version'] == '-':
         try:
-            req = urllib.request.Request('http://127.0.0.1:5011/api/help', method='GET')
-            with urllib.request.urlopen(req, timeout=3) as resp:
+            req = urllib.request.Request('https://127.0.0.1:5011/api/help', method='GET')
+            with urllib.request.urlopen(req, timeout=3, context=_ctx) as resp:
                 data = json.loads(resp.read().decode())
                 postlook_status['version'] = data.get('version', '-')
         except Exception:
@@ -316,16 +318,17 @@ def api_plugins_status():
 def api_postlook_logs():
     """代理获取 Postlook 自身日志"""
     import urllib.request
+    import ssl as _ssl2
     lines = request.args.get('lines', 100, type=int)
     keyword = request.args.get('keyword', '')
 
-    url = f'http://127.0.0.1:5011/api/logs/self?lines={lines}'
+    url = f'https://127.0.0.1:5011/api/logs/self?lines={lines}'
     if keyword:
         url += f'&keyword={keyword}'
 
     try:
         req = urllib.request.Request(url, method='GET')
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=10, context=_ssl2._create_unverified_context()) as resp:
             data = resp.read().decode()
             import json
             return jsonify({'success': True, 'data': json.loads(data)})

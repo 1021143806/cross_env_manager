@@ -69,7 +69,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function getFrameUrl(server, page) {
-        return 'http://' + server + '/' + page + '?embed=1&v={{ app_version }}';
+        // 自动检测当前页面协议，同协议加载 iframe
+        var proto = location.protocol;  // 'http:' or 'https:'
+        return proto + '//' + server + '/' + page + '?embed=1&v={{ app_version }}';
     }
 
     function loadFrame(server, page) {

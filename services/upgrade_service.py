@@ -605,12 +605,98 @@ def _install_postlook_deps():
         return {'status': 'fail', 'detail': msg}
 
 
+def _update_postlook_supervisor_ssl():
+    """更新 postlook supervisor 配置以启用 HTTPS（自签证书）
+    在 trigger_restart 前调用，确保 supervisor 配置与 cert 文件同步
+    """
+    import shutil
+    ssl_dir = os.path.join(BASE_DIR, 'Plugin', 'postlook', 'ssl')
+    keyfile = os.path.join(ssl_dir, 'key.pem')
+    certfile = os.path.join(ssl_dir, 'cert.pem')
+    
+    if not os.path.isfile(keyfile) or not os.path.isfile(certfile):
+        print(f"[Upgrade] SSL cert 不存在，跳过 HTTPS 配置")
+        return {'status': 'skip', 'detail': 'cert files not found'}
+    
+    # 查找 supervisor 配置文件
+    config_paths = [
+        '/main/server/supervisor/conf.d/postlook.conf',
+        '/main/app/supervisor/conf.d/postlook.conf',
+    ]
+    config_path = None
+    for p in config_paths:
+        if os.path.exists(p):
+            config_path = p
+            break
+    
+    if not config_path:
+        print(f"[Upgrade] 未找到 postlook supervisor 配置")
+        return {'status': 'skip', 'detail': 'config not found'}
+    
+    with open(config_path, 'r') as f:
+        content = f.read()
+    
+    # 已配置 SSL 则跳过
+    if '--ssl-keyfile' in content:
+        print(f"[Upgrade] SSL 已配置，跳过")
+        return {'status': 'skip', 'detail': 'already configured'}
+    
+    # 插入 SSL 参数（匹配 uvicorn 命令尾部）
+    ssl_params = f' --ssl-keyfile {keyfile} --ssl-certfile {certfile}'
+    
+    # 尝试多种模式匹配
+    patterns = [
+        '--host 0.0.0.0 --port 5011',
+        '--host 0.0.0.0',
+    ]
+    new_content = content
+    for pat in patterns:
+        if pat in content:
+            new_content = content.replace(pat, pat + ssl_params)
+            break
+    
+    if new_content == content:
+        # 尝试在行尾追加（command= 那行）
+        lines = content.split('\n')
+        new_lines = []
+        for line in lines:
+            if line.startswith('command=') and 'uvicorn' in line and '--ssl-keyfile' not in line:
+                line = line.rstrip() + ssl_params
+            new_lines.append(line)
+        new_content = '\n'.join(new_lines)
+    
+    if new_content != content:
+        # 备份
+        shutil.copy2(config_path, config_path + '.bak')
+        with open(config_path, 'w') as f:
+            f.write(new_content)
+        print(f"[Upgrade] supervisor 配置已更新: {config_path}")
+        print(f"[Upgrade] 新增 SSL 参数: {ssl_params}")
+        
+        # reload supervisor 配置
+        import subprocess as _sp
+        for sctl in ['/usr/local/bin/supervisorctl', '/usr/bin/supervisorctl', 'supervisorctl']:
+            try:
+                _sp.run([sctl, 'reread'], timeout=10, capture_output=True)
+                _sp.run([sctl, 'update', 'postlook'], timeout=10, capture_output=True)
+                print(f"[Upgrade] supervisorctl reread+update OK (via {sctl})")
+                break
+            except Exception:
+                continue
+        
+        return {'status': 'ok', 'detail': 'SSL configured'}
+    
+    return {'status': 'skip', 'detail': 'no matching pattern'}
+
+
 def trigger_restart(delay: int = 3):
     """延迟触发重启（后台线程），多路径兜底"""
     def _restart():
         time.sleep(delay)
         # 0. 安装 postlook 依赖（升级代码后必须补齐依赖，否则启动崩溃）
         _install_postlook_deps()
+        # 0.5 配置 postlook HTTPS（自签证书）
+        _update_postlook_supervisor_ssl()
         # 1. 先重启 postlook（不依赖 CEM 进程存活）
         for sctl in ['/usr/local/bin/supervisorctl', '/usr/bin/supervisorctl', 'supervisorctl']:
             try:
@@ -627,12 +713,14 @@ def trigger_restart(delay: int = 3):
                 break
             except Exception:
                 continue
-        # 3. 兜底：通过 HTTP 触发 Postlook 自重启
+        # 3. 兜底：通过 HTTPS 触发 Postlook 自重启
         try:
             import urllib.request
-            req = urllib.request.Request('http://127.0.0.1:5011/api/system/reload', method='POST')
-            urllib.request.urlopen(req, timeout=5)
-            print("[Upgrade] Postlook HTTP reload triggered")
+            import ssl as _ssl
+            ctx = _ssl._create_unverified_context()
+            req = urllib.request.Request('https://127.0.0.1:5011/api/system/reload', method='POST')
+            urllib.request.urlopen(req, timeout=5, context=ctx)
+            print("[Upgrade] Postlook HTTPS reload triggered")
         except Exception:
             pass
         # 4. 最终兜底：pkill Postlook
