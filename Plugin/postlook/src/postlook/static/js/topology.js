@@ -545,7 +545,7 @@ document.addEventListener('DOMContentLoaded', function () {
             html += '<div style="font-weight:600;font-size:0.8rem">最新预览</div>';
             html += '<div class="log-preview" id="topoLogPreview">加载中...</div>';
             html += '<div style="margin-top:10px;display:flex;gap:6px">';
-            if (logFile && logDir) html += '<a class="file-actions" style="padding:4px 12px;display:inline-block;text-decoration:none" href="/api/download?path=' + encodeURIComponent(logDir + '/' + logFile) + '" download>⬇ 下载</a>';
+            if (logFile && logDir) html += '<button class="file-actions" style="padding:4px 12px" onclick="window.open(\'/api/download?path=' + encodeURIComponent(logDir + '/' + logFile) + '\')">⬇ 下载</button>';
             html += '<button class="file-actions" style="padding:4px 12px" onclick="closeTopoDetail()">关闭</button></div>';
             body.innerHTML = html;
 
@@ -561,7 +561,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             if (d.path === logDir || d.path.indexOf(logDir + '/') === 0) {
                                 for (var j = 0; j < Math.min(d.files.length, 10); j++) {
                                     var f = d.files[j];
-                                    items += '<div class="file-row"><span class="file-name" title="' + f.path + '">' + f.name + '</span><span class="file-size">' + formatBytes(f.size) + '</span><div class="file-actions"><a href="/api/download?path=' + encodeURIComponent(f.path) + '" download>⬇</a><button onclick="viewTopoLog(\'' + encodeURIComponent(f.path) + '\')">👁</button></div></div>';
+                                    items += '<div class="file-row"><span class="file-name" title="' + f.path + '">' + f.name + '</span><span class="file-size">' + formatBytes(f.size) + '</span><div class="file-actions"><button onclick="window.open(\'/api/download?path=' + encodeURIComponent(f.path) + '\')">⬇</button><button onclick="viewTopoLog(\'' + encodeURIComponent(f.path) + '\')">👁</button></div></div>';
                                 }
                                 break;
                             }
@@ -735,7 +735,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 html += '<div class="kg-download-row">';
                 html += '<span class="kg-file-name" title="' + escapeHtml(dp.path) + '">📄 ' + escapeHtml(dp.label) + '</span>';
                 if (dp.size) html += '<span class="kg-file-size">' + dp.size.toFixed(1) + ' MB</span>';
-                html += '<a class="kg-dl-btn" href="/api/download?path=' + encodeURIComponent(dp.path) + '" download title="下载">⬇</a>';
+                html += '<button class="kg-dl-btn" onclick="window.open(\'/api/download?path=' + encodeURIComponent(dp.path) + '\')" title="下载">⬇</button>';
                 html += '<button class="kg-dl-btn" onclick="window.open(\'logs.html?folder=' + encodeURIComponent(dp.path) + '\')" title="查看">👁</button>';
                 html += '</div>';
             });
