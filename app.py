@@ -243,6 +243,8 @@ _MODULE_ROUTE_PREFIXES = {
     '/api/pair': 'config_module',
     '/stats': 'config_module',
     '/api/stats': 'config_module',
+    '/platform-switch': 'config_module',
+    '/api/platform-switch': 'config_module',
 }
 
 
