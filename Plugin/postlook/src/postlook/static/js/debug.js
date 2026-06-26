@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return h + ':' + m + ':' + s + '.' + ms;
     }
 
-    function addLog(dir, label, hexStr, elapsedMs) {
+    function addLog(dir, label, hexStr, elapsedMs, textStr) {
         var showTs = elOptTimestamp.checked;
         var showHex = elLogHexToggle.checked;
         var entry = document.createElement('div');
@@ -85,7 +85,11 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         if (hexStr && showHex) {
-            parts.push('<br><span style="padding-left:20px;opacity:0.8">' + escapeHtml(hexStr) + '</span>');
+            parts.push('<br><span style="padding-left:20px;opacity:0.8;word-break:break-all;">' + escapeHtml(hexStr) + '</span>');
+        }
+        // 显示可读文本版本（接收时如果存在）
+        if (dir === 'recv' && textStr) {
+            parts.push('<br><span style="padding-left:20px;color:var(--accent);font-weight:500;">' + escapeHtml(textStr) + '</span>');
         }
 
         entry.innerHTML = parts.join('');
@@ -257,7 +261,7 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .then(function (data) {
             if (data.received_hex) {
-                addLog('recv', '', data.received_hex, data.total_ms);
+                addLog('recv', '', data.received_hex, data.total_ms, data.received_text);
             } else {
                 addLog('recv', '(无响应)', null, data.total_ms);
             }

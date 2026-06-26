@@ -210,6 +210,14 @@ def send_hex_message(
             received = sock.recv(recv_buffer)
             result["received_bytes"] = len(received)
             result["received_hex"] = " ".join(f"{b:02X}" for b in received)
+            # 解码为文本（ASCII/UTF-8，忽略不可打印字符）
+            try:
+                text = received.decode("utf-8", errors="replace")
+                # 只保留可打印 ASCII + 中文
+                text = "".join(c if c.isprintable() or ord(c) > 127 else "." for c in text)
+                result["received_text"] = text
+            except Exception:
+                result["received_text"] = None
         except socket.timeout:
             result["received_bytes"] = 0
             result["received_hex"] = None
