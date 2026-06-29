@@ -77,10 +77,22 @@ def system_config_page():
 @login_required
 @admin_required
 def api_get_system_config():
-    """获取系统配置（JSON）"""
+    """获取系统配置（JSON），模块开关缺失时自动注入运行时实际状态"""
+    config = _get_sys_config().get_config()
+    # 如果 env.toml 中没有 [modules] 段（首次部署/旧版升级），
+    # 从 app.MODULES 注入运行时实际值（全 true），避免 UI 误显示全关
+    if 'modules' not in config:
+        try:
+            import app as _app
+            config['modules'] = dict(_app.MODULES)
+        except Exception:
+            config['modules'] = {
+                'config_module': True, 'dispatch': True,
+                'task': True, 'query': True, 'postlook': True,
+            }
     return jsonify({
         'success': True,
-        'config': _get_sys_config().get_config(),
+        'config': config,
     })
 
 
