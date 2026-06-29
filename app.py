@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # 应用版本号
-APP_VERSION = '2.7.0'
+APP_VERSION = '2.7.1'
 
 # Python 3.9兼容性修改：使用pymysql替代mysql.connector
 import pymysql
@@ -262,7 +262,38 @@ def _block_disabled_modules():
 
 @app.context_processor
 def inject_version():
-    return {'app_version': APP_VERSION, 'modules': MODULES}
+    """注入版本号、模块开关、当前活跃模块（供 base.html 侧栏 / CSS 同步使用）"""
+    from flask import request
+    path = request.path
+
+    # ── 服务端路径→模块映射（唯一来源，前端不再重复维护）──
+    current_module = 'system'
+    if path.startswith('/dispatch'):
+        current_module = 'dispatch'
+    elif path.startswith('/addtask'):
+        current_module = 'task'
+    elif path.startswith('/query'):
+        current_module = 'query'
+    elif path.startswith('/postlook'):
+        current_module = 'postlook'
+    elif (path == '/'
+          or path.startswith('/pair')
+          or path.startswith('/template')
+          or path.startswith('/search')
+          or path.startswith('/edit')
+          or path.startswith('/copy')
+          or path.startswith('/custom_table')
+          or path.startswith('/join_qr_nodes')
+          or path.startswith('/stats')
+          or path.startswith('/platform-switch')):
+        current_module = 'config'
+    # 其余路径保持 system：/monitor, /docs, /system/*, /actuator/* 等
+
+    return {
+        'app_version': APP_VERSION,
+        'modules': MODULES,
+        'current_module': current_module,
+    }
 
 # tracemalloc.start() 已移除 — 参见 app.py 顶部注释
 

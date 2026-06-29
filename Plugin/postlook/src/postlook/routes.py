@@ -158,9 +158,9 @@ class LogQueryRequest(BaseModel):
     pattern: str = Field(default="*.log", description="文件名通配符")
     keyword: Optional[str] = Field(default=None, description="搜索关键字（不区分大小写）")
     line_start: int = Field(default=1, ge=1, description="起始行号")
-    line_end: int = Field(default=100, ge=1, description="结束行号（含）")
+    line_end: int = Field(default_factory=_get_default_lines, ge=1, description="结束行号（含）")
     tail: bool = Field(default=True, description="无关键字时从尾部读取")
-    recent_files: int = Field(default=10, ge=1, le=50, description="扫描最近修改的 N 个文件")
+    recent_files: int = Field(default_factory=_get_default_recent, ge=1, le=50, description="扫描最近修改的 N 个文件")
 
     @field_validator("line_end")
     @classmethod

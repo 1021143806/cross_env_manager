@@ -28,7 +28,7 @@ SERVER_PORT: int = 5011
 ROOT_DIRS: List[str] = ["/var/log"]
 MAX_LINES: int = 100
 DEFAULT_LINES: int = 50
-DEFAULT_RECENT_FILES: int = 10
+DEFAULT_RECENT_FILES: int = 2
 MAX_RECENT_FILES: int = 50
 MAX_FILE_SIZE: int = 100 * 1024 * 1024  # 100MB，超过此大小的文件将拒绝全文读取
 DEFAULT_THEME: str = "dark"
@@ -197,7 +197,7 @@ def reload_config():
 
         MAX_LINES = int(logs.get("max_lines", 100))
         DEFAULT_LINES = int(logs.get("default_lines", 50))
-        DEFAULT_RECENT_FILES = int(logs.get("default_recent_files", 10))
+        DEFAULT_RECENT_FILES = int(logs.get("default_recent_files", 2))
 
         # 下载大小限制（单位 MB）
         download_size = int(logs.get("max_download_size", 200))
@@ -327,7 +327,7 @@ port = 5011
 root_dirs = ["/var/log"]
 max_lines = 100
 default_lines = 50
-default_recent_files = 10
+default_recent_files = 2
 
 [ui]
 theme = "dark"

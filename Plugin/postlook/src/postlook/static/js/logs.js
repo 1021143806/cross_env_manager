@@ -445,7 +445,6 @@
         if (_liveActive) return;
         _liveActive = true;
         _liveInterval = LIVE_INTERVAL_MIN;
-        els.btnLive.style.display = 'inline-flex';
         els.btnLive.classList.add('active');
         els.btnLive.classList.remove('auto-stop');
         _liveCountdown = LIVE_TIMEOUT;
@@ -464,7 +463,6 @@
         els.btnLive.classList.remove('active', 'auto-stop');
         _liveInterval = LIVE_INTERVAL_MIN;
         updateLiveLabel(0, _liveInterval);
-        els.btnLive.style.display = 'none';
     }
 
     function scheduleNext() {
@@ -534,7 +532,7 @@
     // ── 自动查询（防抖 500ms）
     function autoQuery() {
         clearTimeout(_debounceTimer);
-        _debounceTimer = setTimeout(function() { stopLive(); doQuery(); }, 500);
+        _debounceTimer = setTimeout(function() { if (_liveActive) { stopLive(); } doQuery(); }, 500);
     }
 
     // ── 搜索历史

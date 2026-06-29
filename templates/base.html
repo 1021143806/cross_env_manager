@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-module="{{ current_module }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,45 +14,22 @@
     <link rel="stylesheet" href="/static/vendor/adminlte/adminlte.min.css">
     <link rel="stylesheet" href="/static/vendor/animate.css/animate.min.css">
 
-    {# 同步脚本：在浏览器绘制前确定模块 + 主题，防止闪烁 #}
+    {# 同步脚本：仅主题同步（防闪烁），模块由服务端 data-module 注入 #}
     <script>
         (function(){
-            // --- 模块 ---
-            var path = window.location.pathname;
-            var mod = 'system';
-            if (path.indexOf('/dispatch') === 0) mod = 'dispatch';
-            else if (path.indexOf('/addtask') === 0) mod = 'task';
-            else if (path.indexOf('/query') === 0) mod = 'query';
-            else if (path.indexOf('/postlook') === 0) mod = 'postlook';
-            else if (path.indexOf('/monitor') === 0 || path.indexOf('/stats') === 0 ||
-                     path.indexOf('/platform-switch') === 0 || path.indexOf('/docs') === 0 ||
-                     path.indexOf('/system/config') === 0 || path.indexOf('/config-editor') === 0 ||
-                     path.indexOf('/system/upgrade') === 0 || path.indexOf('/system/plugins') === 0) mod = 'system';
-            else if (path.indexOf('/monitor') === 0 ||
-                     path.indexOf('/docs') === 0 ||
-                     path.indexOf('/system/config') === 0 || path.indexOf('/config-editor') === 0 ||
-                     path.indexOf('/system/upgrade') === 0 || path.indexOf('/system/plugins') === 0) mod = 'system';
-            else if (path === '/' || path.indexOf('/pair') === 0 || path.indexOf('/template') === 0 ||
-                     path.indexOf('/search') === 0 || path.indexOf('/edit') === 0 ||
-                     path.indexOf('/copy') === 0 || path.indexOf('/custom_table') === 0 ||
-                     path.indexOf('/join_qr_nodes') === 0 || path.indexOf('/stats') === 0 ||
-                     path.indexOf('/platform-switch') === 0) mod = 'config';
-            document.documentElement.setAttribute('data-module', mod);
-
-            // --- 主题（从 localStorage 读取，默认 dark）---
             var saved = localStorage.getItem('theme');
             document.documentElement.setAttribute('data-bs-theme', saved || 'dark');
         })();
     </script>
-    {# 同步 CSS：仅显示当前模块的侧边栏，其余隐藏 #}
+    {# 同步 CSS：仅显示当前模块的侧边栏，其余隐藏（data-module 由服务端注入） #}
     <style>
-        [data-sidebar-module] { display: none !important; }
-        html[data-module="config"]  [data-sidebar-module="config"]  { display: flex !important; }
-        html[data-module="dispatch"] [data-sidebar-module="dispatch"] { display: flex !important; }
-        html[data-module="task"]    [data-sidebar-module="task"]    { display: flex !important; }
-        html[data-module="query"]   [data-sidebar-module="query"]   { display: flex !important; }
-        html[data-module="system"]  [data-sidebar-module="system"]  { display: flex !important; }
-        html[data-module="postlook"] [data-sidebar-module="postlook"] { display: flex !important; }
+        [data-sidebar-module] { display: none; }
+        html[data-module="config"]  [data-sidebar-module="config"]  { display: flex; }
+        html[data-module="dispatch"] [data-sidebar-module="dispatch"] { display: flex; }
+        html[data-module="task"]    [data-sidebar-module="task"]    { display: flex; }
+        html[data-module="query"]   [data-sidebar-module="query"]   { display: flex; }
+        html[data-module="system"]  [data-sidebar-module="system"]  { display: flex; }
+        html[data-module="postlook"] [data-sidebar-module="postlook"] { display: flex; }
     </style>
 
     <style>
@@ -760,31 +737,19 @@
         tooltipTriggerList.map(function(t) { return new bootstrap.Tooltip(t); });
     });
 
-    // ========== 侧边栏模块切换逻辑 ==========
+    // ========== 侧边栏模块切换逻辑（模块判断由服务端 data-module 注入，前端仅负责 UI 同步）==========
     (function() {
-        const path = window.location.pathname;
         const topbarTabs = document.querySelectorAll('.module-tab');
         const sidebarModules = document.querySelectorAll('[data-sidebar-module]');
+        // ── 读取服务端注入的当前模块（唯一来源）──
+        let activeModule = document.documentElement.dataset.module || 'system';
 
-        // 根据当前 URL 确定活跃模块
-        let activeModule = 'system';  // 默认系统管理
-        if (path.startsWith('/dispatch')) activeModule = 'dispatch';
-        else if (path.startsWith('/addtask')) activeModule = 'task';
-        else if (path.startsWith('/query')) activeModule = 'query';
-        else if (path.startsWith('/postlook')) activeModule = 'postlook';
-        else if (path.startsWith('/pair') || path.startsWith('/template/device-sync') ||
-                 path.startsWith('/custom_table') || path.startsWith('/search') ||
-                 path.startsWith('/template') || path.startsWith('/edit') ||
-                 path.startsWith('/copy') || path.startsWith('/join_qr_nodes') ||
-                 path.startsWith('/stats') || path.startsWith('/platform-switch') ||
-                 path === '/') activeModule = 'config';
-
-        // 激活顶部 Tab
+        // ① 激活顶部 Tab
         topbarTabs.forEach(t => {
             t.classList.toggle('active', t.dataset.module === activeModule);
         });
 
-        // 显示对应侧边栏（如果存在）
+        // ② 侧边栏不存在时（模块被关闭），回退到 system
         let shown = false;
         sidebarModules.forEach(s => {
             if (s.dataset.sidebarModule === activeModule) {
@@ -792,23 +757,18 @@
                 shown = true;
             }
         });
-        // 如果目标模块的侧边栏不存在（已关闭），回退显示系统管理侧边栏
         if (!shown) {
+            activeModule = 'system';
             sidebarModules.forEach(s => {
-                if (s.dataset.sidebarModule === 'system') {
-                    s.style.display = '';
-                }
+                if (s.dataset.sidebarModule === 'system') s.style.display = '';
             });
-            // 修正顶栏激活为 system
             topbarTabs.forEach(t => {
-                if (t.dataset.module !== 'system') t.classList.remove('active');
-                else t.classList.add('active');
+                t.classList.toggle('active', t.dataset.module === 'system');
             });
-            // 修正页面 data-module
             document.documentElement.setAttribute('data-module', 'system');
         }
 
-        // 根据当前 URL 激活侧边栏菜单项（含 hash 支持）
+        // ③ 根据当前 URL 激活侧边栏菜单项（含 hash 支持）
         function updateSidebarActive() {
             const sidebarLinks = document.querySelectorAll('.sidebar-menu a[href]');
             const curPath = window.location.pathname;
@@ -819,25 +779,21 @@
                 const href = a.getAttribute('href');
                 if (!href || href === '#') return;
                 const hrefPath = href.split('#')[0];
-                // 优先精确匹配（path + hash）
                 if (fullPath === href && href.length > bestLen) {
                     bestMatch = a;
                     bestLen = href.length;
                 }
-                // 回退：按 path 前缀匹配（不含 hash）
                 if (curPath.startsWith(hrefPath) && hrefPath.length > bestLen) {
                     bestMatch = a;
                     bestLen = hrefPath.length;
                 }
             });
             if (bestMatch) {
-                // 清除所有 sidebar-menu 内的 active
                 document.querySelectorAll('.sidebar-menu .nav-link.active').forEach(a => a.classList.remove('active'));
                 bestMatch.classList.add('active');
             }
         }
         updateSidebarActive();
-        // hash 变化时同步侧边栏高亮（iframe 内嵌页面场景）
         window.addEventListener('hashchange', updateSidebarActive);
     })();
 
