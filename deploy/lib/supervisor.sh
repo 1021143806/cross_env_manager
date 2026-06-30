@@ -39,7 +39,8 @@ configure_supervisor() {
     # 备份已有配置
     if [ -f "$SUPERVISOR_CONF" ]; then
         local BACKUP_FILE="$DEPLOY_DIR/backup/${PROJECT_NAME}_$(date +%Y%m%d_%H%M%S).conf"
-        cp "$SUPERVISOR_CONF" "$BACKUP_FILE"
+        mkdir -p "$(dirname "$BACKUP_FILE")" 2>/dev/null || true
+        cp "$SUPERVISOR_CONF" "$BACKUP_FILE" || log_warn "备份配置失败（跳过）"
         log_warn "已备份旧 Supervisor 配置: $BACKUP_FILE"
     fi
 

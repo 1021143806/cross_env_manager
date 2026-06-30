@@ -54,33 +54,48 @@ detect_os() {
     esac
 }
 
+# ---- 验证 Python 二进制是否真正可用（能执行 --version） ----
+_validate_python() {
+    local py_bin="$1"
+    if [ -z "$py_bin" ] || [ ! -x "$py_bin" ]; then
+        return 1
+    fi
+    # 必须能正常执行 --version 并输出版本号
+    local version_out
+    version_out=$("$py_bin" --version 2>&1) || return 1
+    if echo "$version_out" | grep -qP '[0-9]+\.[0-9]+\.[0-9]+'; then
+        return 0
+    fi
+    return 1
+}
+
 detect_python() {
     step "1.2" "检测 Python 环境..."
 
     PYTHON3=""
 
     # 1. deploy.conf 指定了 PYTHON3_PATH
-    if [ -n "${PYTHON3_PATH:-}" ] && [ -x "$PYTHON3_PATH" ]; then
+    if [ -n "${PYTHON3_PATH:-}" ] && _validate_python "$PYTHON3_PATH"; then
         PYTHON3="$PYTHON3_PATH"
         log_info "使用配置指定的 Python: $PYTHON3_PATH"
     # 2. conda base Python（自带 pydantic_core + SSL 完整，离线部署最佳选择）
-    elif [ -x "/home/a1/miniconda3/bin/python3" ]; then
+    elif _validate_python "/home/a1/miniconda3/bin/python3"; then
         PYTHON3="/home/a1/miniconda3/bin/python3"
         log_info "使用 conda base Python: $PYTHON3"
     # 3. 系统默认 python3
-    elif command -v python3 &>/dev/null; then
+    elif command -v python3 &>/dev/null && _validate_python "$(command -v python3)"; then
         PYTHON3="$(command -v python3)"
     # 4. cross_env_manager 项目安装的 Python 3.9（备选，注意：可能缺少 SSL 模块）
-    elif [ -x "/main/app/python39/bin/python3.9" ]; then
+    elif _validate_python "/main/app/python39/bin/python3.9"; then
         PYTHON3="/main/app/python39/bin/python3.9"
         log_info "使用 cross_env_manager 共享 Python: $PYTHON3"
     # 5. CentOS 7 SCL
-    elif [ -x "/opt/rh/rh-python39/root/bin/python3" ]; then
+    elif _validate_python "/opt/rh/rh-python39/root/bin/python3"; then
         PYTHON3="/opt/rh/rh-python39/root/bin/python3"
     # 6. 通用路径
-    elif [ -x "/usr/local/bin/python3" ]; then
+    elif _validate_python "/usr/local/bin/python3"; then
         PYTHON3="/usr/local/bin/python3"
-    elif [ -x "/usr/local/python3/bin/python3" ]; then
+    elif _validate_python "/usr/local/python3/bin/python3"; then
         PYTHON3="/usr/local/python3/bin/python3"
     fi
 
