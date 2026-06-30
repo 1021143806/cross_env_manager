@@ -100,7 +100,12 @@ vim deploy/deploy.conf
 ```bash
 cd cross_env_manager
 chmod +x deploy/deploy.sh
+
+# 默认：部署 CEM + postlook（如果 postlook 存在）
 sudo ./deploy/deploy.sh
+
+# 仅部署 cross_env_manager
+sudo ./deploy/deploy.sh --cem-only
 ```
 
 ## 部署流程详解
@@ -119,6 +124,7 @@ sudo ./deploy/deploy.sh
 | 6 | 验证安装 | 验证 flask、pymysql、paramiko 等可导入 |
 | 7 | Supervisor 配置 | 配置不存在时自动创建，已存在则备份后覆盖 |
 | 8 | 启动服务 | `supervisorctl restart`，失败则 `nohup` 直接启动 |
+| 9 | 部署 postlook | 检测 `Plugin/postlook/deploy/deploy.sh`，存在则自动部署（`--cem-only` 跳过） |
 
 ### Python 检测链（6 级）
 

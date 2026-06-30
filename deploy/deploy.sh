@@ -2,8 +2,22 @@
 # ============================================================
 # cross_env_manager · 多平台离线部署入口
 # 自动检测 OS + Python 版本，按需走平台专属安装策略
+#
+# 用法:
+#   sudo ./deploy.sh             默认：部署 CEM + postlook（如果存在）
+#   sudo ./deploy.sh --cem-only  仅部署 cross_env_manager
 # ============================================================
 set -euo pipefail
+
+# ---- 参数解析 ----
+DEPLOY_POSTLOOK=true
+for arg in "$@"; do
+    case "$arg" in
+        --cem-only) DEPLOY_POSTLOOK=false ;;
+        --help|-h)  echo "用法: sudo ./deploy.sh [--cem-only]" ; exit 0 ;;
+        *)          echo "未知参数: $arg (可用: --cem-only)" ; exit 1 ;;
+    esac
+done
 
 # ---- 定位部署目录 ----
 DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,7 +48,15 @@ source "$DEPLOY_DIR/lib/supervisor.sh"
 # ============================================================
 # 主流程
 # ============================================================
+# 部署模式提示
+if [ "$DEPLOY_POSTLOOK" = "true" ]; then
+    DEPLOY_MODE="CEM + postlook"
+else
+    DEPLOY_MODE="CEM (仅)"
+fi
+
 banner
+echo -e "部署模式: ${COLOR_GREEN}${DEPLOY_MODE}${COLOR_RESET}"
 
 # 1. 环境检测
 detect_os
@@ -103,4 +125,28 @@ echo "  pkill -f 'python.*app.py'  # 杀掉直接启动的进程"
 echo "  sudo supervisorctl restart $PROJECT_NAME  # 转由 Supervisor 管理"
 echo "  supervisorctl status $PROJECT_NAME       # 确认状态为 RUNNING"
 echo ""
+
+# ============================================================
+# 部署 postlook（如果存在且未禁用）
+# ============================================================
+if [ "$DEPLOY_POSTLOOK" = "true" ]; then
+    POSTLOOK_DEPLOY="$PROJECT_DIR/Plugin/postlook/deploy/deploy.sh"
+
+    if [ -f "$POSTLOOK_DEPLOY" ]; then
+        hr
+        echo -e "${COLOR_BOLD}→ 开始部署 postlook...${COLOR_RESET}"
+        echo ""
+        # 子进程执行，环境隔离；失败不影响 CEM 部署结果
+        bash "$POSTLOOK_DEPLOY" && log_ok "postlook 部署完成" || \
+            log_warn "postlook 部署失败（非致命，CEM 已正常运行）"
+        echo ""
+        echo "postlook 管理命令:"
+        echo "  查看状态:   supervisorctl status postlook"
+        echo "  访问地址:   http://localhost:5011"
+        echo "  查看日志:   tail -f /main/log/app/postlook.log"
+    else
+        log_info "未找到 postlook 部署脚本 ($POSTLOOK_DEPLOY)，跳过"
+    fi
+fi
+
 hr
