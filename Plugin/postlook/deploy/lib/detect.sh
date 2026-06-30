@@ -54,19 +54,24 @@ detect_os() {
     esac
 }
 
-# ---- 验证 Python 二进制是否真正可用（能执行 --version） ----
+# ---- 验证 Python 二进制是否真正可用 ----
+# 两级验证: --version 输出 + import sys (排除 glibc 等运行时库缺失)
 _validate_python() {
     local py_bin="$1"
     if [ -z "$py_bin" ] || [ ! -x "$py_bin" ]; then
         return 1
     fi
-    # 必须能正常执行 --version 并输出版本号
     local version_out
     version_out=$("$py_bin" --version 2>&1) || return 1
-    if echo "$version_out" | grep -qP '[0-9]+\.[0-9]+\.[0-9]+'; then
-        return 0
+    if ! echo "$version_out" | grep -qP '[0-9]+\.[0-9]+\.[0-9]+'; then
+        return 1
     fi
-    return 1
+    # 关键：验证能 import sys（排除 glibc/运行时库缺失）
+    if ! "$py_bin" -c "import sys; print(sys.version)" &>/dev/null; then
+        log_warn "Python 可输出版本号但无法 import sys（可能缺少运行时库）: $py_bin"
+        return 1
+    fi
+    return 0
 }
 
 detect_python() {

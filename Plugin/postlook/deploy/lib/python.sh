@@ -68,10 +68,21 @@ ensure_python() {
             ;;
     esac
 
-    # 重新检测 platform setup 后的 Python
-    detect_python
-    if [ "${USE_SYSTEM_PYTHON:-false}" != "true" ]; then
-        die "Python 环境准备失败，无法继续"
+    # 直接验证 platform 脚本设置的 PYTHON3（不重新调用 detect_python 避免覆盖）
+    if [ -z "${PYTHON3:-}" ] || [ ! -x "$PYTHON3" ]; then
+        die "平台脚本未设置有效的 PYTHON3"
+    fi
+
+    PYTHON_VERSION=$($PYTHON3 --version 2>&1 | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' || true)
+    PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
+    PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
+    PYTHON_ABI="cp$PYTHON_MAJOR$PYTHON_MINOR"
+
+    if [ "$PYTHON_MAJOR" -ge 3 ] && [ "$PYTHON_MINOR" -ge 9 ]; then
+        USE_SYSTEM_PYTHON=true
+        log_ok "平台 Python 安装成功: $PYTHON3 ($PYTHON_VERSION)"
+    else
+        die "平台安装的 Python 无法正常运行: $PYTHON3"
     fi
 }
 
