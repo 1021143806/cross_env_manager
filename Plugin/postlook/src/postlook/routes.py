@@ -584,9 +584,9 @@ async def api_help():
                     "pattern": "string (默认 *.log) - 文件名通配符，目录模式下生效",
                     "keyword": "string (可选) - 搜索关键字，不区分大小写",
                     "line_start": "int (默认 1) - 起始行号",
-                    "line_end": "int (默认 100) - 结束行号（含）",
+                    "line_end": "int (默认 50) - 结束行号（含）",
                     "tail": "bool (默认 true) - 无关键字时从尾部读取",
-                    "recent_files": "int (默认 10, 最大 50) - 扫描最近修改的 N 个文件"
+                    "recent_files": "int (默认 2, 最大 50) - 扫描最近修改的 N 个文件"
                 },
                 "example": 'curl -X POST http://localhost:5011/api/logs -H "Content-Type: application/json" -d \'{"folder": "/var/log", "pattern": "*.log", "line_start": 1, "line_end": 20}\''
             },
