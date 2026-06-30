@@ -30,7 +30,7 @@
 | 类型 | 条目 |
 |------|------|
 | 配置 | `config/env.toml`、`dispatch_config.json`、`postlook_servers.json`、`config/old/` |
-| 环境 | `venv/`、`deploy_iraypleos/` |
+| 环境 | `venv/`、`deploy/` |
 | 运行时 | `logs/`、`backup/`、`dev/`、`__pycache__/` |
 | 项目元 | `.git/`、`.gitignore`、`skill.md`、`README.md` |
 | Plugin | `Plugin/postlook/deploy/`、`Plugin/postlook/venv/` |

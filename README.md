@@ -86,17 +86,17 @@ python3 update_local_deps.py
 
 ### 部署脚本
 
- **IRAYPLEOS专用**: `./deploy_iraypleos.sh` - 专为IRAYPLEOS系统环境设计，一键部署
+ **多平台离线部署**: `deploy/deploy.sh` - 自动检测 OS + Python，一键部署
 
 
 ### 推荐部署方式
 
-#### 使用主部署脚本（iraypleos离线部署）
-该脚本基于 python3.9.9 以及 server/supervisor 离线部署
+#### 使用主部署脚本（多平台离线部署）
+自动检测操作系统和 Python 版本，支持 IRAYPLEOS、CentOS 7、Debian/Ubuntu
 ```bash
-cd cross_env_manager/deploy_iraypleos
-chmod +x deploy_iraypleos.sh
-./deploy_iraypleos.sh
+cd cross_env_manager/deploy
+chmod +x deploy.sh
+sudo ./deploy.sh
 ```
 
 #### 1. 手动部署（备用方案）
@@ -407,8 +407,13 @@ cross_env_manager/
 │   ├── js/           # JavaScript文件
 │   └── img/agv/      # AGV图标资源
 ├── data/dispatch/    # 调车模块数据文件（运行时生成）
-├── deploy_iraypleos/ # 离线部署脚本
-│   └── deploy_iraypleos.sh      # 一键部署脚本
+├── deploy/            # 离线部署模块
+│   ├── deploy.sh               # 一键部署入口（多平台自动适配）
+│   ├── deploy.conf             # 部署配置
+│   ├── lib/                    # 公共函数库
+│   ├── vendor_packages/        # 离线依赖包（ABI分层）
+│   ├── platform/               # 平台专属资源
+│   └── backup/                 # Supervisor配置备份
 ├── venv/             # Python虚拟环境（.gitignore）
 ├── backup/           # 备份文件目录（.gitignore）
 └── dev/              # 开发调试文件（.gitignore）

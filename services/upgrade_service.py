@@ -38,7 +38,7 @@ EXCLUDE_PATTERNS = [
     '.gitignore',
     'skill.md',
     'README.md',
-    'deploy_iraypleos/',
+    'deploy/',
     # postlook: 仅排除部署脚本/平台资源，放行 vendor_packages（离线依赖包）
     'Plugin/postlook/deploy/backup/',
     'Plugin/postlook/deploy/lib/',

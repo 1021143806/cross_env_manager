@@ -86,7 +86,7 @@ Content-Type: multipart/form-data
 - `config/env.toml`、`config/dispatch_config.json`、`config/postlook_servers.json`
 - `config/old/`、`venv/`、`logs/`、`backup/`、`dev/`
 - `.git/`、`.gitignore`、`skill.md`、`README.md`
-- `deploy_iraypleos/`、`Plugin/postlook/deploy/`、`Plugin/postlook/venv/`
+- `deploy/`、`Plugin/postlook/deploy/`、`Plugin/postlook/venv/`
 - `__pycache__/`、`*.pyc`
 
 ### 8.4.3 获取升级记录

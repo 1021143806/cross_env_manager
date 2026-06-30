@@ -37,7 +37,7 @@ path.indexOf('/system/upgrade') === 0
 3. 打包时排除（参考 `EXCLUDE_PATTERNS`）：
    - `venv/`、`.git/`、`logs/`、`backup/`、`dev/`
    - `config/env.toml`、`config/dispatch_config.json`、`config/postlook_servers.json`
-   - `deploy_iraypleos/`、`Plugin/postlook/deploy/`、`Plugin/postlook/venv/`
+   - `deploy/`、`Plugin/postlook/deploy/`、`Plugin/postlook/venv/`
 
 ## API 调用
 

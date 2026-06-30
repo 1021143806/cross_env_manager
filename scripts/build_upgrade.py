@@ -187,7 +187,7 @@ def build_upgrade_package(from_commit, to_version, notes, output_dir, export_com
     exclude_patterns = [
         'venv/', '.git/', 'logs/', 'backup/', 'dev/', 'config/env.toml',
         'config/dispatch_config.json', 'config/postlook_servers.json',
-        'config/old/', 'deploy_iraypleos/',
+        'config/old/', 'deploy/',
         # postlook: 仅排除部署脚本/平台资源/配置文件，放行 vendor_packages（离线依赖包）
         'Plugin/postlook/deploy/backup/', 'Plugin/postlook/deploy/lib/',
         'Plugin/postlook/deploy/platform/', 'Plugin/postlook/deploy/deploy.conf',

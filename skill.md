@@ -45,7 +45,7 @@ description: 该cross_env_manager项目相关指导操作
    - components/ - 存放页面组件模板
 
 - static/ - 存放静态资源文件（CSS、JS、图片等）
-- deploy_iraypleos/ - 存放离线部署相关脚本和资源
+- deploy/ - 存放离线部署相关脚本和资源（多平台适配）
 - test/ - 存放测试脚本和测试资源
 
 - skill/ - 存放需要用到的技能，需要同步阅读，在这里更新并整理，api文档也需要在这里更新汇总整理分类，允许创建文件夹，更新后需要同步修改
@@ -57,7 +57,7 @@ description: 该cross_env_manager项目相关指导操作
 ## 离线部署相关
 
 ### 部署脚本位置
-`deploy_iraypleos/deploy_iraypleos.sh` - 作为离线部署脚本,同时用于更新后续的部署测试验证。
+`deploy/deploy.sh` - 作为离线部署脚本，同时用于更新后续的部署测试验证。
 
 ### 重要更新（2026-04-17）
 1. **完全离线支持**：所有外部Web依赖已下载到本地 `static/vendor/` 目录
@@ -115,7 +115,7 @@ charset = "utf8mb4"
 在确认可以进行操作后，执行离线部署脚本进行测试：
 ```bash
 cd /main/app/toolsForPersonal/projects/agv_system/app/cross_env_manager
-./deploy_iraypleos/deploy_iraypleos.sh
+sudo ./deploy/deploy.sh
 ```
 
 验证数据库操作相关功能是否正常工作：
