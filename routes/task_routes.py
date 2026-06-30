@@ -549,7 +549,6 @@ def api_enrich_tasks():
 
 @task_bp.route('/api/task/resend', methods=['POST'])
 @login_required
-@admin_required
 def resend_task():
     try:
         data = request.get_json()
@@ -564,7 +563,6 @@ def resend_task():
 
 @task_bp.route('/api/task/resend/stream')
 @login_required
-@admin_required
 def resend_task_stream():
     """
     SSE 端点：任务重发实时流
@@ -608,7 +606,6 @@ def resend_task_stream():
 
 @task_bp.route('/api/task/cancel-subtask', methods=['POST'])
 @login_required
-@admin_required
 def cancel_subtask():
     """取消子任务：调用 ICS cancelTask 接口"""
     import urllib.request as _urllib
@@ -706,7 +703,6 @@ def api_debug_cross_task_detail():
 
 @task_bp.route('/api/task/force_complete', methods=['POST'])
 @login_required
-@admin_required
 def force_complete_task():
     try:
         data = request.get_json()
