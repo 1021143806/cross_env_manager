@@ -5,7 +5,7 @@
 """
 
 # 调车模块版本号（修改本文件时递增末尾数字）
-DISPATCH_VERSION = '2.3.1'
+DISPATCH_VERSION = '2.3.2'
 
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response
 from functools import wraps
@@ -2817,6 +2817,7 @@ SELF_HEAL_DEFAULTS = {
     'recover_timeout_minutes': 30,  # 异常超时恢复间隔（分钟）
     'device_query_api': '10.68.2.XX:7000/ics/out/device/list/deviceInfo',
     'low_battery_threshold': 30,  # 默认低电量阈值（百分比），区域可覆盖
+    'stale_task_check_minutes': 20,  # stale空车任务检查阈值（分钟），0=禁用
 }
 
 # _not_found 连续计数（防 ICS 瞬态误杀 / 请求过多返回空）
@@ -3833,6 +3834,97 @@ def _self_heal_check_region(region_key, region, force=False, template_code=None)
                     'action': '任务超时清理',
                     'reason': f'模板 {tpl_code} 清理 {task_cleaned} 个超时任务'
                 })
+        
+        # [stale空车任务检测] 任务已完成但ICS漏报status=8，通过查询ICS设备状态自动恢复
+        # 仅检查空车任务（empty_in/empty_out），因为：
+        #   - 空车任务完成快（通常<5分钟）
+        #   - 空车任务卡住会触发互斥保护阻塞调度
+        #   - 负载任务由业务系统追踪，不应自动清理
+        stale_task_minutes = sh.get('stale_task_check_minutes', 
+                                     SELF_HEAL_DEFAULTS['stale_task_check_minutes'])
+        if stale_task_minutes > 0:
+            stale_threshold = (datetime.now() - timedelta(minutes=stale_task_minutes)).isoformat()
+            for t in region.get('templates', []):
+                task_type = _normalize_task_type(t)
+                if not _is_empty_task(task_type):
+                    continue  # 只检查空车任务
+                fpath = _get_template_file_path(region_key, t)
+                if not os.path.exists(fpath):
+                    continue
+                tasks = _load_json(fpath)
+                tpl_code = t.get('code') or t.get('name', '')
+                new_tasks = []
+                stale_cleaned = 0
+                for task in tasks:
+                    should_clean = False
+                    clean_reason = ''
+                    if (task.get('status') in (6, 9, 10) 
+                        and not task.get('_simulated')
+                        and task.get('deviceCode')
+                        and task.get('create_time', '') < stale_threshold):
+                        # 查询ICS确认设备是否已空闲
+                        dc = task.get('deviceCode', '')
+                        dn = task.get('deviceNum', '')
+                        device_info = _query_device_status('', api_path, area_id, dc)
+                        state = device_info.get('state', '') if device_info else ''
+                        if state == 'Idle':
+                            should_clean = True
+                            clean_reason = f'设备空闲(Idle)但任务仍在模板中，疑似ICS漏报status=8'
+                        elif state == '_not_found':
+                            should_clean = True
+                            clean_reason = f'设备已离开区域(_not_found)，任务已完成但漏报'
+                        elif state == 'Charging':
+                            # 充电中也是空闲状态的一种，空车任务完成后可能去充电
+                            should_clean = True
+                            clean_reason = f'设备充电中(Charging)，任务已完成但漏报'
+                        if should_clean:
+                            stale_cleaned += 1
+                            oid = task.get('order_id', '')
+                            print(f"[SelfHeal] stale空车任务清理 | 模板={tpl_code} device={dn}({dc[-8:] if dc else '?'}) "
+                                  f"state={state} order_id={oid} | {clean_reason}")
+                            try:
+                                write_global_log('self_heal_detail', region_key,
+                                    f'[SelfHeal v{DISPATCH_VERSION}] stale空车任务清理 | '
+                                    f'模板={tpl_code} device={dn}({dc if dc else "?"}) '
+                                    f'state={state} | {clean_reason}',
+                                    level='warning')
+                            except: pass
+                            # 按任务类型操作currentCount（同status=8上报逻辑）
+                            task_type = _normalize_task_type(t)
+                            if _is_in_direction(task_type):
+                                # 来方向：写入currentCount（confirm来源同report_status）
+                                now_file = _get_region_file(region_key, 'currentCount.json')
+                                now_devices = _load_json(now_file)
+                                existing = [d for d in now_devices if d.get('deviceCode') == dc]
+                                if not existing:
+                                    now_devices.append({
+                                        'deviceCode': dc, 'deviceNum': dn,
+                                        'create_time': datetime.now().isoformat(),
+                                        'state': 'idle',
+                                        '_source': 'stale_task_heal'
+                                    })
+                                    _save_json(now_file, now_devices)
+                            else:
+                                # 回方向：从currentCount删除
+                                now_file = _get_region_file(region_key, 'currentCount.json')
+                                now_devices = _load_json(now_file)
+                                old_cc = len(now_devices)
+                                now_devices = [d for d in now_devices if d.get('deviceCode') != dc]
+                                if len(now_devices) < old_cc:
+                                    _save_json(now_file, now_devices)
+                            # 记录任务完成统计
+                            _update_daily_stats(region_key, task_type)
+                            continue  # 不加入 new_tasks（清理）
+                    new_tasks.append(task)
+                if stale_cleaned > 0:
+                    _save_json(fpath, new_tasks)
+                    cleaned += stale_cleaned
+                    steps.append({
+                        'device_code': '', 'device_num': '',
+                        'state': f'stale>{stale_task_minutes}min',
+                        'action': 'stale空车任务清理',
+                        'reason': f'模板 {tpl_code} 清理 {stale_cleaned} 个已完成但漏报的任务'
+                    })
         
         # [低电量检查] 仅自动轮询时触发
         low_battery_result = _check_low_battery_return(region_key, region, sh)

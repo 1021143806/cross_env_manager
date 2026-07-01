@@ -376,6 +376,8 @@ function renderVisualEditor(data) {
                     <input class="form-control form-control-sm" type="number" min="0" max="72" value="${(region.self_heal||{}).task_timeout_hours||6}" onchange="updateSelfHeal('${key}','task_timeout_hours',parseInt(this.value)||6)"></div>
                 <div class="col-md-3"><label class="form-label small">🔄 定时全量查询(小时) <small class="text-muted">0=禁用</small></label>
                     <input class="form-control form-control-sm" type="number" min="0" max="24" value="${(region.self_heal||{}).fetch_all_interval_hours||0}" onchange="updateSelfHeal('${key}','fetch_all_interval_hours',parseInt(this.value)||0)"></div>
+                <div class="col-md-3"><label class="form-label small">🔍 stale空车检测(分钟) <small class="text-muted">0=禁用</small></label>
+                    <input class="form-control form-control-sm" type="number" min="0" max="120" value="${(region.self_heal||{}).stale_task_check_minutes??20}" onchange="updateSelfHeal('${key}','stale_task_check_minutes',parseInt(this.value)??20)"></div>
             </div></details></div>`;
         container.appendChild(card);
     });
