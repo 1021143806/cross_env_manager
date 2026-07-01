@@ -5,7 +5,7 @@
 """
 
 # 调车模块版本号（修改本文件时递增末尾数字）
-DISPATCH_VERSION = '2.3.2'
+DISPATCH_VERSION = '2.3.3'
 
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, Response
 from functools import wraps
@@ -1871,16 +1871,24 @@ def api_template_detail():
 @dispatch_bp.route('/api/dispatch/report_status', methods=['POST'])
 def api_report_status():
     """任务状态上报接口（外部设备上报，无需登录）
-    始终返回 {"code": 1000, "desc": "success"}，即使 orderId 不存在也返回 1000，
-    否则服务器会尝试重新上报。
+    始终返回 HTTP 200，code=1000/desc=success，避免 ICS 重试。
+    v2.3.3: 响应体新增 matched/detail 字段，供 ICS 日志区分处理状态。
     """
     try:
         data = request.get_json()
         if not data:
             # 即使请求体为空也返回 1000，避免服务器重试
-            return jsonify({'code': 1000, 'desc': 'success'})
+            return jsonify({'code': 1000, 'desc': 'success',
+                           'matched': False, 'detail': 'empty_request_body'})
         
         success, message, matched = handle_status_report(data)
+        # 构造响应报文（code/desc 保持不变，追加诊断字段）
+        resp_body = {
+            'code': 1000,
+            'desc': 'success',
+            'matched': matched,
+            'detail': message
+        }
         # 统一输出操作日志：handle_status_report 返回 message (含 [oid未匹配] 诊断标记)
         # 不再在 handle_status_report 内部写重复日志
         try:
@@ -1893,9 +1901,9 @@ def api_report_status():
             if oid:
                 detail += f' orderId={oid}'
             detail += f': {message}'
-            # 将返回报文也写入 raw_data，供前端详情展示
+            # 将实际返回报文写入 raw_data，供前端详情展示
             log_data = dict(data) if isinstance(data, dict) else {}
-            log_data['response_body'] = {'code': 1000, 'desc': 'success'}
+            log_data['response_body'] = resp_body
             write_global_log('report_status', rk, detail,
                            'info' if matched else 'warning', raw_data=log_data)
         except:
@@ -1932,12 +1940,13 @@ def api_report_status():
                         threading.Thread(target=_auto_dispatch, daemon=True).start()
             except: pass
         
-        # 始终返回 1000
-        return jsonify({'code': 1000, 'desc': 'success'})
+        # 始终返回 1000（code/desc 不变），附加 matched/detail 诊断字段
+        return jsonify(resp_body)
     except Exception as e:
         # 即使异常也返回 1000，避免服务器重试
         print(f"[Dispatch] report_status 异常: {e}")
-        return jsonify({'code': 1000, 'desc': 'success'})
+        return jsonify({'code': 1000, 'desc': 'success',
+                       'matched': False, 'detail': f'internal_error: {str(e)[:200]}'})
 
 
 @dispatch_bp.route('/api/dispatch/config')
