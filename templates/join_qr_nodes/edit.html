@@ -177,18 +177,21 @@ async function loadAreasForServer(serverIp, targetSelectId) {
     }
 }
 
-// 绑定服务器下拉框 change 事件
+// 绑定服务器下拉框 change 事件（新增和编辑模式均生效）
 document.addEventListener('DOMContentLoaded', function() {
     updateHint();
-    // 编辑模式：页面加载时已有 pair 数据，无需重新加载
-    // 新增模式：服务器初始为空，用户选择后触发
-    {% if not pair %}
-    document.getElementById('serverA').addEventListener('change', function() {
+    const serverA = document.getElementById('serverA');
+    const serverB = document.getElementById('serverB');
+    serverA.addEventListener('change', function() {
         loadAreasForServer(this.value, 'area_a');
     });
-    document.getElementById('serverB').addEventListener('change', function() {
+    serverB.addEventListener('change', function() {
         loadAreasForServer(this.value, 'area_b');
     });
+    // 编辑模式：页面加载时为已选服务器加载对应区域
+    {% if pair %}
+    if (serverA.value) loadAreasForServer(serverA.value, 'area_a');
+    if (serverB.value) loadAreasForServer(serverB.value, 'area_b');
     {% endif %}
 });
 </script>

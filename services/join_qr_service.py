@@ -188,7 +188,7 @@ class JoinQrService:
     def get_areas(self):
         """获取 LEVEL=1 的父区域列表（默认数据库）"""
         rows = execute_query(
-            "SELECT id, name FROM bms_area WHERE level = 1 ORDER BY id"
+            "SELECT ID as id, NAME as name FROM bms_area WHERE LEVEL = 1 ORDER BY ID"
         ) or []
         return [{'id': r['id'], 'name': r['name']} for r in rows]
 
@@ -202,7 +202,7 @@ class JoinQrService:
         }
         try:
             rows = execute_query(
-                "SELECT id, name FROM bms_area WHERE level = 1 ORDER BY id",
+                "SELECT ID as id, NAME as name FROM bms_area WHERE LEVEL = 1 ORDER BY ID",
                 config=config
             ) or []
             return [{'id': r['id'], 'name': r['name']} for r in rows]
