@@ -532,7 +532,7 @@
                     <li class="nav-header">配置管理</li>
                     <li class="nav-item"><a href="/" class="nav-link" data-nav="home"><i class="nav-icon bi bi-grid-1x2"></i><p>配置总览</p></a></li>
                     <li class="nav-item"><a href="/search" class="nav-link" data-nav="search"><i class="nav-icon bi bi-search"></i><p>模板搜索</p></a></li>
-                    <li class="nav-item"><a href="/pair/list" class="nav-link" data-nav="join-qr"><i class="nav-icon bi bi-signpost"></i><p>交接点配置</p></a></li>
+                    <li class="nav-item"><a href="/pair/list" class="nav-link" data-nav="join-qr" data-match-prefix="/pair/"><i class="nav-icon bi bi-signpost"></i><p>交接点配置</p></a></li>
                     <li class="nav-item"><a href="/template/device-sync" class="nav-link" data-nav="device-sync"><i class="nav-icon bi bi-arrow-left-right"></i><p>设备同步</p></a></li>
                     <li class="nav-item"><a href="/custom_table" class="nav-link" data-nav="custom-table"><i class="nav-icon bi bi-table"></i><p>定制表编辑</p></a></li>
                     <li class="nav-item"><a href="/stats" class="nav-link" data-nav="stats"><i class="nav-icon bi bi-graph-up"></i><p>数据统计</p></a></li>
@@ -768,7 +768,7 @@
             document.documentElement.setAttribute('data-module', 'system');
         }
 
-        // ③ 根据当前 URL 激活侧边栏菜单项（含 hash 支持）
+        // ③ 根据当前 URL 激活侧边栏菜单项（含 hash 支持 + data-match-prefix 前缀匹配）
         function updateSidebarActive() {
             const sidebarLinks = document.querySelectorAll('.sidebar-menu a[href]');
             const curPath = window.location.pathname;
@@ -786,6 +786,12 @@
                 if (curPath.startsWith(hrefPath) && hrefPath.length > bestLen) {
                     bestMatch = a;
                     bestLen = hrefPath.length;
+                }
+                // data-match-prefix：支持子页面归属高亮（如 /pair/add 归属 /pair/）
+                const matchPrefix = a.getAttribute('data-match-prefix');
+                if (matchPrefix && curPath.startsWith(matchPrefix) && matchPrefix.length > bestLen) {
+                    bestMatch = a;
+                    bestLen = matchPrefix.length;
                 }
             });
             if (bestMatch) {
