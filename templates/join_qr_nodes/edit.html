@@ -149,8 +149,47 @@ function updateHint() {
     }
 }
 
+// 切换服务器时动态加载对应区域的选项
+async function loadAreasForServer(serverIp, targetSelectId) {
+    const select = document.getElementById(targetSelectId);
+    if (!select || !serverIp) return;
+    // 保存当前选中值
+    const currentVal = select.value;
+    select.innerHTML = '<option value="">加载中...</option>';
+    select.disabled = true;
+    try {
+        const resp = await fetch('/api/pairs/areas?server=' + encodeURIComponent(serverIp));
+        const data = await resp.json();
+        if (!data.success) { select.innerHTML = '<option value="">加载失败</option>'; return; }
+        const areas = data.areas || [];
+        select.innerHTML = areas.length > 0
+            ? areas.map(a => '<option value="' + a.id + '">' + a.id + ' - ' + a.name + '</option>').join('')
+            : '<option value="">无区域数据</option>';
+        // 尝试恢复之前的值
+        if (currentVal && areas.some(a => String(a.id) === String(currentVal))) {
+            select.value = currentVal;
+        }
+    } catch(e) {
+        select.innerHTML = '<option value="">加载失败</option>';
+    } finally {
+        select.disabled = false;
+        updateHint();
+    }
+}
+
+// 绑定服务器下拉框 change 事件
 document.addEventListener('DOMContentLoaded', function() {
     updateHint();
+    // 编辑模式：页面加载时已有 pair 数据，无需重新加载
+    // 新增模式：服务器初始为空，用户选择后触发
+    {% if not pair %}
+    document.getElementById('serverA').addEventListener('change', function() {
+        loadAreasForServer(this.value, 'area_a');
+    });
+    document.getElementById('serverB').addEventListener('change', function() {
+        loadAreasForServer(this.value, 'area_b');
+    });
+    {% endif %}
 });
 </script>
 {% endblock %}

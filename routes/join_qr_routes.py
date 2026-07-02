@@ -187,3 +187,12 @@ def api_pair_list():
     search = request.args.get('search', '').strip() or None
     pairs = _service.get_paired_list(server=server, area=area, search=search)
     return jsonify({'success': True, 'pairs': pairs, 'count': len(pairs)})
+
+
+@join_qr_bp.route('/api/pairs/areas')
+@login_required
+def api_pair_areas():
+    """API 获取指定服务器的父区域列表（?server=10.68.2.17）"""
+    server = request.args.get('server', '').strip()
+    areas = _service.get_areas_by_server(server) if server else _service.get_areas()
+    return jsonify({'success': True, 'areas': areas, 'count': len(areas)})

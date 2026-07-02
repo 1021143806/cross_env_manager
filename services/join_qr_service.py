@@ -160,22 +160,55 @@ class JoinQrService:
     # ======================== 服务器列表 ========================
 
     def get_servers(self):
-        """获取所有已配置的服务器 IP（从 join_qr_node_info 和 task_servicec 合并）"""
-        rows = execute_query(
+        """获取所有服务器 IP（从 join_qr_node_info + fy_cross_model_process_detail.task_servicec 合并）"""
+        servers = set()
+        # 1. 从已配置的交接点获取
+        rows1 = execute_query(
             "SELECT DISTINCT environment_ip FROM join_qr_node_info "
             "WHERE environment_ip IS NOT NULL AND environment_ip != '' "
             "ORDER BY environment_ip"
         ) or []
-        return [r['environment_ip'] for r in rows]
+        for r in rows1:
+            servers.add(r['environment_ip'])
+        # 2. 从模板配置的 task_servicec 中解析 IP（如 http://10.68.2.31:7000）
+        rows2 = execute_query(
+            "SELECT DISTINCT task_servicec FROM fy_cross_model_process_detail "
+            "WHERE task_servicec IS NOT NULL AND task_servicec != ''"
+        ) or []
+        for r in rows2:
+            url = r['task_servicec']
+            # 提取 IP 部分
+            match = re.search(r'//([\d.]+)(?::\d+)?', url)
+            if match:
+                servers.add(match.group(1))
+        return sorted(servers)
 
     # ======================== 区域列表 ========================
 
     def get_areas(self):
-        """获取 LEVEL=1 的父区域列表"""
+        """获取 LEVEL=1 的父区域列表（默认数据库）"""
         rows = execute_query(
             "SELECT id, name FROM bms_area WHERE level = 1 ORDER BY id"
         ) or []
         return [{'id': r['id'], 'name': r['name']} for r in rows]
+
+    def get_areas_by_server(self, server_ip):
+        """获取指定服务器的 LEVEL=1 父区域列表（查询该服务器的 bms_area 表）"""
+        if not server_ip:
+            return self.get_areas()
+        config = {
+            'host': server_ip, 'port': 3306, 'user': 'wms',
+            'password': 'CCshenda889', 'database': 'wms', 'charset': 'utf8mb4'
+        }
+        try:
+            rows = execute_query(
+                "SELECT id, name FROM bms_area WHERE level = 1 ORDER BY id",
+                config=config
+            ) or []
+            return [{'id': r['id'], 'name': r['name']} for r in rows]
+        except Exception as e:
+            print(f"[JoinQrService] 查询 {server_ip} bms_area 失败: {e}")
+            return []
 
     # ======================== 模板交接点检查 ========================
 
