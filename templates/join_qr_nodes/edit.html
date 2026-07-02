@@ -73,7 +73,7 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">区域</label>
-                    <select class="form-select" name="area_a" onchange="updateHint()">
+                    <select class="form-select" name="area_a" id="area_a" onchange="updateHint()">
                         {% for a in areas %}
                         <option value="{{ a.id }}" {% if pair and pair.area_a|string == a.id|string %}selected{% endif %}>{{ a.id }} - {{ a.name }}</option>
                         {% endfor %}
@@ -99,7 +99,7 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">区域</label>
-                    <select class="form-select" name="area_b" onchange="updateHint()">
+                    <select class="form-select" name="area_b" id="area_b" onchange="updateHint()">
                         {% for a in areas %}
                         <option value="{{ a.id }}" {% if pair and pair.area_b|string == a.id|string %}selected{% endif %}>{{ a.id }} - {{ a.name }}</option>
                         {% endfor %}
